@@ -30,6 +30,7 @@ This will generate results and visualizations to help understand the comparative
 # Augmentations Explored
 The repository explores various augmentations, and additional augmentations can be easily added to the evaluation script. Common augmentations include:
 
+---
 brightness
 color_jitter
 contrast
@@ -53,6 +54,7 @@ snow
 spatter
 speckle_noise
 zoom_blur		
+---
 
 Experiment with different combinations and parameters to observe how each affects the model's accuracy.
 
