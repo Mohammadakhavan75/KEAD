@@ -131,9 +131,10 @@ def load_model(args):
     model = torchvision.models.resnet34()
     if args.optimizer == 'sgd':
         optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, 
-                                momentum=args.momentum,weight_decay=args.decay, nesterov=True)
+                                momentum=args.momentum,weight_decay=args.decay)
     elif args.optimizer == 'adam':
-        optimizer = torch.optim.Adam(model.parameters(), args.learning_rate, weight_decay=args.decay)
+        optimizer = torch.optim.Adam(model.parameters(), args.learning_rate,
+                                      weight_decay=args.decay)
     else:
         raise NotImplemented("Not implemented optimizer!")
 
