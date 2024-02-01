@@ -30,31 +30,30 @@ This will generate results and visualizations to help understand the comparative
 # Augmentations Explored
 The repository explores various augmentations, and additional augmentations can be easily added to the evaluation script. Common augmentations include:
 
----
-brightness
-color_jitter
-contrast
-defocus_blur
-elastic_transform
-flip
-fog
-gaussian_blur
-gaussian_noise
-glass_blur
-impulse_noise
-jpeg_compression
-motion_blur
-pixelate
-random_crop
-rot270
-rot90
-saturate
-shot_noise
-snow
-spatter
-speckle_noise
-zoom_blur		
----
+* brightness
+* color_jitter
+* contrast
+* defocus_blur
+* elastic_transform
+* flip
+* fog
+* gaussian_blur
+* gaussian_noise
+* glass_blur
+* impulse_noise
+* jpeg_compression
+* motion_blur
+* pixelate
+* random_crop
+* rot270
+* rot90
+* saturate
+* shot_noise
+* snow
+* spatter
+* speckle_noise
+* zoom_blur		
+
 
 Experiment with different combinations and parameters to observe how each affects the model's accuracy.
 
