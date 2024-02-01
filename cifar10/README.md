@@ -1,6 +1,7 @@
 # CIFAR-10 Compare Augmentation Effect
 
-Overview
+# Overview
+
 This repository explores the impact of various augmentations on the accuracy of a ResNet34 model trained on the CIFAR-10 dataset. The goal is to assess how different augmentations influence the model's performance in detecting and classifying objects in the CIFAR-10 images.
 
 Training Without Augmentation
