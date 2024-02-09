@@ -6,7 +6,7 @@ def conv3x3(in_planes, out_planes, stride=1):
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
 
 class BaseModel(nn.Module):
-    def __init__(self, last_dim, num_classes=10, simclr_dim=128):
+    def __init__(self, last_dim, num_classes=10):
         super(BaseModel, self).__init__()
         self.linear = nn.Linear(last_dim, num_classes)
 
@@ -17,18 +17,15 @@ class BaseModel(nn.Module):
         _aux = {}
         _return_aux = False
 
-        features = self.penultimate(inputs)
+        features, features_list = self.penultimate(inputs, all_features=penultimate)
 
         output = self.linear(features)
-
+        
         if penultimate:
-            _return_aux = True
-            _aux['penultimate'] = features
-
-        if _return_aux:
-            return output, _aux
-
-        return output
+            return output, features_list
+        else:
+            return output
+            
 
 class ResNet(BaseModel):
     def __init__(self, block, num_blocks, num_classes=10):
