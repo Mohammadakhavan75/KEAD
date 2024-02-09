@@ -8,6 +8,7 @@ from tqdm import tqdm
 from datetime import datetime
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
+from model import ResNet18, ResNet34, ResNet50
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, roc_auc_score
 
@@ -48,7 +49,7 @@ def parsing():
                         default=None, help='Path to model to resume training.')
     parser.add_argument('--device', type=str, 
                         default="cuda", help='cuda or cpu.')
-    parser.add_argument('--aug', default='gaussian_noise', type=str, help='which aug to be run')
+    parser.add_argument('--aug', default=None, type=str, help='which aug to be run')
     parser.add_argument('--transform', default=0, type=int, help='is augmentation a transformation or noise')
     parser.add_argument('--run_index', default=0, type=int, help='run index')
     
@@ -89,7 +90,8 @@ def test(loader, net, criterion, device):
 
 def load_model(args):
 
-    model = torchvision.models.resnet34()
+    # model = torchvision.models.resnet34()
+    model = ResNet18(10)
     model.load_state_dict(torch.load(args.model_path))
 
     criterion = torch.nn.CrossEntropyLoss().to(args.device)
@@ -142,7 +144,7 @@ if args.transform:
     cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-R-A/{args.aug}.npy'
     cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-R-A/labels-A.npy'
     aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
-else:
+elif args.aug:
     cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-R-C/{args.aug}.npy'
     cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-R-C/labels-C.npy'
     aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
@@ -156,16 +158,26 @@ loaders_aug = {}
 for class_n in range(10):
     subclass = get_subclass_dataset(test_dataset, classes=class_n)
     loaders_cifar10[str(class_n)] = DataLoader(subclass, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
-    subclass = get_subclass_dataset(aug_dataset, classes=class_n)
-    loaders_aug[str(class_n)] = DataLoader(subclass, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+    if args.aug:
+        subclass = get_subclass_dataset(aug_dataset, classes=class_n)
+        loaders_aug[str(class_n)] = DataLoader(subclass, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
 
-
+avg_acc = []
 for class_n in range(10):
-    eval_loss_cifar10, eval_acc_cifar10 = test(loaders_cifar10[str(class_n)], model, criterion, args.device)
-    eval_loss_aug, eval_acc_aug = test(loaders_aug[str(class_n)], model, criterion, args.device)
+    
+    if args.aug:
+        eval_loss_aug, eval_acc_aug = test(loaders_aug[str(class_n)], model, criterion, args.device)
+        avg_acc.append(np.mean(eval_acc_aug))
+        print(f"class {class_n} acc: {np.mean(eval_acc_aug)}")
+    else:
+        eval_loss_cifar10, eval_acc_cifar10 = test(loaders_cifar10[str(class_n)], model, criterion, args.device)
+        avg_acc.append(np.mean(eval_acc_cifar10))
+        print(f"class {class_n} acc: {np.mean(eval_acc_cifar10)}")
 
     # print(f"avg_loss normal class {class_n}: {np.mean(eval_loss_cifar10)} avg_acc normal class {class_n}: {np.mean(eval_acc_cifar10)}")
     # print(f"avg_loss {args.aug} class {class_n}: {np.mean(eval_loss_aug)} avg_acc {args.aug} class {class_n}: {np.mean(eval_acc_aug)}")
     # print(f"avg_acc class {class_n}: {np.mean(eval_acc_cifar10)} vs {np.mean(eval_acc_aug)}")
-    print(f"{np.mean(eval_acc_aug)}")
+    
+
+print(f"average acc of {args.aug}: {np.mean(avg_acc)}")
     
