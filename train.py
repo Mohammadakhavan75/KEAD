@@ -263,9 +263,13 @@ import torch
 import numpy as np
 
 class load_np_dataset(torch.utils.data.Dataset):
-    def __init__(self, imgs_path, targets_path, transform):
-        self.data = np.load(imgs_path)
-        self.targets = np.load(targets_path)
+    def __init__(self, imgs_path, targets_path, transform, train=True):
+        if train:
+            self.data = np.load(imgs_path)[:50000]
+            self.targets = np.load(targets_path)[:50000]
+        else:
+            self.data = np.load(imgs_path)[:10000]
+            self.targets = np.load(targets_path)[:10000]
         self.transform = transform
         
     def __len__(self):
@@ -322,12 +326,12 @@ def noise_loader(args):
 
     for noise in noises:
         np_train_img_path = np_train_root_path + noise + '.npy'
-        train_dict[noise] = load_np_dataset(np_train_img_path, np_train_target_path, train_transform)
+        train_dict[noise] = load_np_dataset(np_train_img_path, np_train_target_path, train_transform, train=True)
 
     test_dict = {}
     for noise in noises:
         np_test_img_path = np_test_root_path + noise + '.npy'
-        test_dict[noise] = load_np_dataset(np_test_img_path, np_test_target_path, test_transform)
+        test_dict[noise] = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, train=False)
 
     train_loader_dict = {}
     for noise in noises:
