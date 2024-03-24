@@ -94,6 +94,8 @@ def train(train_loader, positives, negetives, net, train_global_iter, criterion,
             negative_imgs[i] = ns[label][i].to(args.device)
             # positive_imgs, negative_imgs = np.asarray(positive_imgs), np.asarray(negative_imgs)
 
+        positive_imgs, negative_imgs = positive_imgs.to(args.device), negative_imgs.to(args.device)
+
         optimizer.zero_grad()
         preds, normal_features = model(imgs, True)
         positive_preds, positive_features = model(positive_imgs, True)
@@ -140,7 +142,7 @@ def train(train_loader, positives, negetives, net, train_global_iter, criterion,
     return train_global_iter, epoch_loss, epoch_accuracies 
 
 
-def test(eval_loader, positives, negatives, net, global_eval_iter, criterion, device, writer):
+def test(eval_loader, positives, negetives, net, global_eval_iter, criterion, device, writer):
 
     print("Evaluating...")
     net = net.to(device)
@@ -174,6 +176,8 @@ def test(eval_loader, positives, negatives, net, global_eval_iter, criterion, de
                 positive_imgs[i] = ps[label][i].to(args.device)
                 negative_imgs[i] = ns[label][i].to(args.device)
                 # positive_imgs, negative_imgs = np.asarray(positive_imgs), np.asarray(negative_imgs)
+
+            positive_imgs, negative_imgs = positive_imgs.to(args.device), negative_imgs.to(args.device)
 
             preds, normal_features = model(imgs, True)
             positive_preds, positive_features = model(positive_imgs, True)
@@ -347,18 +351,22 @@ train_dataset, test_dataset = load_cifar10(cifar10_path)
 train_loader = DataLoader(train_dataset, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
 val_loader = DataLoader(test_dataset, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
 
+print("Start Loading noises")
 train_loader_dict, test_loader_dict = noise_loader(args)
+print("Loading noises finished!")
+
 
 import pickle
 with open('./clip_vec/softmax_sorted.pkl', 'rb') as file:
     clip_probs = pickle.load(file)
 
+print("Creating noises loader")
 train_positives = [train_loader_dict[list(clip_probs[i].keys())[0]] for i in range(10)]
 train_negetives = [train_loader_dict[list(clip_probs[i].keys())[-1]] for i in range(10)]
 
 test_positives = [test_loader_dict[list(clip_probs[i].keys())[0]] for i in range(10)]
 test_negetives = [test_loader_dict[list(clip_probs[i].keys())[-1]] for i in range(10)]
-
+print("Noises loader created!")
 
 
 if args.model_path is not None:
