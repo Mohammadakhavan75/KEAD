@@ -7,8 +7,8 @@ def norm(x):
 def similarity(x, x_prime):
     return x * x_prime / (norm(x) * norm(x_prime))
 
-def contrastive(input, positive, negative):
-    epsilon = 1e-6 # for non getting devided by zero error
+def contrastive(input, positive, negative, temperature=0.5, epsilon = 1e-9): # epsilon for non getting devided by zero error
+    
     sim_n = torch.zeros(negative.shape).to(negative.device)
     sim_p = torch.zeros(positive.shape).to(positive.device)
     if negative.shape[0] != input.shape[0]:
@@ -24,5 +24,4 @@ def contrastive(input, positive, negative):
         
     denom = torch.cat([sim_n, sim_p]).to(negative.device) + epsilon # for non getting devided by zero error
 
-    # for non getting devided by zero error
-    return (- 1/torch.abs(positive + epsilon)) * torch.log(torch.sum(torch.exp(sim_p), dim=0)/torch.sum(torch.exp(denom), dim=0))
+    return (- 1/torch.abs(positive + epsilon)) * torch.log(torch.sum(torch.exp(sim_p)/temperature, dim=0)/torch.sum(torch.exp(denom)/temperature, dim=0))
