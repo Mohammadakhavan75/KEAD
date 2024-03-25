@@ -26,8 +26,6 @@ def parsing():
                         help='seed for np(tinyimages80M sampling); 1|2|8|100|107')
     parser.add_argument('--num_workers', type=int, 
                         default=0, help='starting epoch from.')
-    parser.add_argument('--start_epoch', type=int, 
-                        default=0, help='starting epoch from.')
     parser.add_argument('--save_path', type=str, 
                         default=None, help='Path to save files.')
     parser.add_argument('--model_path', type=str, 
@@ -48,11 +46,12 @@ def parsing():
     parser.add_argument('--last_lr', type=float,
                         default=0, help='The gamma param for updating learning rate.')
                         
+    parser.add_argument('--lamb', type=float, default=1e-6, help='loss scaling parameter')
     parser.add_argument('--momentum', type=float, default=0.9, help='Momentum.')
     parser.add_argument('--decay', '-d', type=float,
                         default=0.0005, help='Weight decay (L2 penalty).')
     
-    parser.add_argument('--noise', default='gaussian_noise', type=str, help='which noise to be run')
+
     parser.add_argument('--run_index', default=0, type=int, help='run index')
     
     args = parser.parse_args()
@@ -111,7 +110,7 @@ def train(train_loader, positives, negetives, net, train_global_iter, criterion,
             loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_f, neg_f))
 
         loss_ce = criterion(preds, labels)
-        loss = loss_ce + loss_contrastive
+        loss = args.lamb * loss_ce + loss_contrastive
 
         normal_output_index = torch.argmax(normal_probs, dim=1)
         positive_output_index = torch.argmax(positive_probs, dim=1)
@@ -124,14 +123,14 @@ def train(train_loader, positives, negetives, net, train_global_iter, criterion,
         epoch_accuracies['normal'].append(acc_normal)
         epoch_accuracies['positive'].append(acc_positive)
         epoch_accuracies['negative'].append(acc_negative)
-        epoch_loss['loss'].append(loss)
-        epoch_loss['ce'].append(loss_ce)
-        epoch_loss['contrastive'].append(loss_contrastive)
+        epoch_loss['loss'].append(loss.item())
+        epoch_loss['ce'].append(loss_ce.item())
+        epoch_loss['contrastive'].append(loss_contrastive.item())
 
         train_global_iter += 1
-        writer.add_scalar("Train/loss", loss, train_global_iter)
+        writer.add_scalar("Train/loss", loss.item(), train_global_iter)
         writer.add_scalar("Train/loss_ce", loss_ce.item(), train_global_iter)
-        writer.add_scalar("Train/loss_contrastive", loss_contrastive, train_global_iter)
+        writer.add_scalar("Train/loss_contrastive", loss_contrastive.item(), train_global_iter)
         writer.add_scalar("Train/acc_normal", acc_normal, train_global_iter)
         writer.add_scalar("Train/acc_positive", acc_positive, train_global_iter)
         writer.add_scalar("Train/acc_negative", acc_negative, train_global_iter)
@@ -193,7 +192,7 @@ def test(eval_loader, positives, negetives, net, global_eval_iter, criterion, de
                 loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_f, neg_f))
 
             loss_ce = criterion(preds, labels)
-            loss = loss_ce + loss_contrastive
+            loss = args.lamb * loss_ce + loss_contrastive
 
             normal_output_index = torch.argmax(normal_probs, dim=1)
             positive_output_index = torch.argmax(positive_probs, dim=1)
@@ -206,14 +205,14 @@ def test(eval_loader, positives, negetives, net, global_eval_iter, criterion, de
             epoch_accuracies['normal'].append(acc_normal)
             epoch_accuracies['positive'].append(acc_positive)
             epoch_accuracies['negative'].append(acc_negative)
-            epoch_loss['loss'].append(loss)
-            epoch_loss['ce'].append(loss_ce)
-            epoch_loss['contrastive'].append(loss_contrastive)
+            epoch_loss['loss'].append(loss.item())
+            epoch_loss['ce'].append(loss_ce.item())
+            epoch_loss['contrastive'].append(loss_contrastive.item())
 
             global_eval_iter += 1
-            writer.add_scalar("Evaluation/loss", loss, global_eval_iter)
+            writer.add_scalar("Evaluation/loss", loss.item(), global_eval_iter)
             writer.add_scalar("Evaluation/loss_ce", loss_ce.item(), global_eval_iter)
-            writer.add_scalar("Evaluation/loss_contrastive", loss_contrastive, global_eval_iter)
+            writer.add_scalar("Evaluation/loss_contrastive", loss_contrastive.item(), global_eval_iter)
             writer.add_scalar("Evaluation/acc_normal", acc_normal, global_eval_iter)
             writer.add_scalar("Evaluation/acc_positive", acc_positive, global_eval_iter)
             writer.add_scalar("Evaluation/acc_negative", acc_negative, global_eval_iter)
