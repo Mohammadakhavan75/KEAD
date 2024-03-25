@@ -46,7 +46,7 @@ def parsing():
     parser.add_argument('--last_lr', type=float,
                         default=0, help='The gamma param for updating learning rate.')
                         
-    parser.add_argument('--lamb', type=float, default=1e-6, help='loss scaling parameter')
+    parser.add_argument('--lamb', type=float, default=5e-6, help='loss scaling parameter')
     parser.add_argument('--momentum', type=float, default=0.9, help='Momentum.')
     parser.add_argument('--decay', '-d', type=float,
                         default=0.0005, help='Weight decay (L2 penalty).')
@@ -377,7 +377,7 @@ if args.model_path is not None:
     model_save_path = save_path + 'models/'
 else:
     addr = datetime.today().strftime('%Y-%m-%d-%H-%M-%S-%f')
-    save_path = f'./run/exp-' + addr + f"_({args.run_index}_{args.noise})_" + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + f'_{args.optimizer}' + '/'
+    save_path = f'./run/exp-' + addr + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + f'_{args.optimizer}' + f'_{args.lamb}' + '/'
     model_save_path = save_path + 'models/'
     if not os.path.exists(model_save_path):
         os.makedirs(model_save_path, exist_ok=True)
@@ -394,18 +394,18 @@ for epoch in range(0, args.epochs):
     train_global_iter, epoch_loss, epoch_accuracies = train(train_loader, train_positives, train_negetives, model, train_global_iter, criterion, optimizer, args.device, writer)
     global_eval_iter, eval_loss, eval_acc = test(val_loader, test_positives, test_negetives, model, global_eval_iter, criterion, args.device, writer)
 
-    writer.add_scalar("Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
-    writer.add_scalar("Train/avg_loss_ce", np.mean(epoch_loss['ce']), epoch)
-    writer.add_scalar("Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
-    writer.add_scalar("Train/avg_acc_normal", np.mean(epoch_accuracies['normal']), epoch)
-    writer.add_scalar("Train/avg_acc_positive", np.mean(epoch_accuracies['positive']), epoch)
-    writer.add_scalar("Train/avg_acc_negative", np.mean(epoch_accuracies['negative']), epoch)
-    writer.add_scalar("Evaluation/avg_loss", np.mean(eval_loss['loss']), epoch)
-    writer.add_scalar("Evaluation/avg_loss_ce", np.mean(eval_loss['ce']), epoch)
-    writer.add_scalar("Evaluation/avg_loss_contrastive", np.mean(eval_loss['contrastive']), epoch)
-    writer.add_scalar("Evaluation/avg_acc_normal", np.mean(eval_acc['normal']), epoch)
-    writer.add_scalar("Evaluation/avg_acc_positive", np.mean(eval_acc['positive']), epoch)
-    writer.add_scalar("Evaluation/avg_acc_negative", np.mean(eval_acc['negative']), epoch)
+    writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
+    writer.add_scalar("AVG_Train/avg_loss_ce", np.mean(epoch_loss['ce']), epoch)
+    writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
+    writer.add_scalar("AVG_Train/avg_acc_normal", np.mean(epoch_accuracies['normal']), epoch)
+    writer.add_scalar("AVG_Train/avg_acc_positive", np.mean(epoch_accuracies['positive']), epoch)
+    writer.add_scalar("AVG_Train/avg_acc_negative", np.mean(epoch_accuracies['negative']), epoch)
+    writer.add_scalar("AVG_Evaluation/avg_loss", np.mean(eval_loss['loss']), epoch)
+    writer.add_scalar("AVG_Evaluation/avg_loss_ce", np.mean(eval_loss['ce']), epoch)
+    writer.add_scalar("AVG_Evaluation/avg_loss_contrastive", np.mean(eval_loss['contrastive']), epoch)
+    writer.add_scalar("AVG_Evaluation/avg_acc_normal", np.mean(eval_acc['normal']), epoch)
+    writer.add_scalar("AVG_Evaluation/avg_acc_positive", np.mean(eval_acc['positive']), epoch)
+    writer.add_scalar("AVG_Evaluation/avg_acc_negative", np.mean(eval_acc['negative']), epoch)
 
     writer.add_scalar("Train/lr", args.last_lr, epoch)
 
