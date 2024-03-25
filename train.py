@@ -46,7 +46,7 @@ def parsing():
     parser.add_argument('--last_lr', type=float,
                         default=0, help='The gamma param for updating learning rate.')
                         
-    parser.add_argument('--lamb', type=float, default=5e-6, help='loss scaling parameter')
+    parser.add_argument('--lamb', type=float, default=1, help='loss scaling parameter')
     parser.add_argument('--momentum', type=float, default=0.9, help='Momentum.')
     parser.add_argument('--decay', '-d', type=float,
                         default=0.0005, help='Weight decay (L2 penalty).')
@@ -419,8 +419,8 @@ for epoch in range(0, args.epochs):
         best_loss = np.mean(eval_loss['loss'])
         torch.save(model.state_dict(), os.path.join(save_path,'best_params.pt'))
     
-    # if np.mean(eval_loss['loss']) > best_loss:
-    #     scheduler.step()
-    #     args.last_lr = scheduler.get_last_lr()[0]
+    if np.mean(eval_loss['loss']) > best_loss:
+        scheduler.step()
+        args.last_lr = scheduler.get_last_lr()[0]
     
 # os.remove(f"./run_counter/{args.noise}.log")
