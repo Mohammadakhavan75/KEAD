@@ -111,8 +111,8 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None):
         test_dataset_negetives_one_class = get_subclass_dataset(test_negetives_datasets[one_class_idx], one_class_idx)
 
         train_positives = DataLoader(train_dataset_positives_one_class, shuffle=False, batch_size=batch_size, num_workers=num_workers)
-        test_positives = DataLoader(test_dataset_positives_one_class, shuffle=False, batch_size=batch_size, num_workers=num_workers)
         train_negetives = DataLoader(train_dataset_negetives_one_class, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+        test_positives = DataLoader(test_dataset_positives_one_class, shuffle=False, batch_size=batch_size, num_workers=num_workers)
         test_negetives = DataLoader(test_dataset_negetives_one_class, shuffle=False, batch_size=batch_size, num_workers=num_workers)
     else:
         train_positives = []
@@ -121,8 +121,8 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None):
         test_negetives = []
         for i in range(10):
             train_positives.append(DataLoader(train_positives_datasets[i], shuffle=False, batch_size=batch_size, num_workers=num_workers))
-            test_positives.append(DataLoader(train_negetives_datasets[i], shuffle=False, batch_size=batch_size, num_workers=num_workers))
-            train_negetives.append(DataLoader(test_positives_datasets[i], shuffle=False, batch_size=batch_size, num_workers=num_workers))
+            train_negetives.append(DataLoader(train_negetives_datasets[i], shuffle=False, batch_size=batch_size, num_workers=num_workers))
+            test_positives.append(DataLoader(test_positives_datasets[i], shuffle=False, batch_size=batch_size, num_workers=num_workers))
             test_negetives.append(DataLoader(test_negetives_datasets[i], shuffle=False, batch_size=batch_size, num_workers=num_workers))
             
     return train_positives, train_negetives, test_positives, test_negetives
