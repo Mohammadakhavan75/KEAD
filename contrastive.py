@@ -4,25 +4,30 @@ import torch
 def norm(x):
     return torch.linalg.vector_norm(x)
 
+
 def similarity(x, x_prime):
     return x * x_prime / (norm(x) * norm(x_prime))
 
-def cosine_similarity(feat_map1, feat_map2):
-  # Flatten the feature maps into vectors
-  feat_map1_vec = feat_map1.flatten()
-  feat_map2_vec = feat_map2.flatten()
 
-  # Calculate dot product and norms
-  dot_product = torch.dot(feat_map1_vec, feat_map2_vec)
-  norm1 = torch.linalg.norm(feat_map1_vec, ord=1)
-  norm2 = torch.linalg.norm(feat_map2_vec, ord=1)
+def cosine_similarity(feature_map1, feature_map2):
+  # Flatten the feature maps to treat them as vectors
+  feature_map1_flat = feature_map1.flatten()
+  feature_map2_flat = feature_map2.flatten()
+
+  # Calculate the dot product and norms
+  # dot_product = np.sum(feature_map1_flat * feature_map2_flat)
+  dot_product = torch.dot(feature_map1_flat, feature_map2_flat)
+  norm1 = torch.linalg.norm(feature_map1_flat)
+  norm2 = torch.linalg.norm(feature_map2_flat)
 
   # Prevent division by zero
   if norm1 == 0 or norm2 == 0:
     return 0
 
-  cosine_sim = dot_product / (norm1 * norm2)
-  return cosine_sim
+  # Cosine similarity
+  cosine_similarity_map = dot_product / (norm1 * norm2)
+  return cosine_similarity_map
+
 
 
 def contrastive(input, positive, negative, temperature=0.5, epsilon = 1e-9): # epsilon for non getting devided by zero error
