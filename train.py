@@ -12,8 +12,12 @@ from cifar10.model import ResNet18, ResNet34, ResNet50
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, roc_auc_score
 
+
+from dataset_loader import noise_loader, load_cifar10
+
 def to_np(x):
     return x.data.cpu().numpy()
+
 
 def parsing():
     parser = argparse.ArgumentParser(description='Tunes a CIFAR Classifier with OE',
@@ -53,6 +57,7 @@ def parsing():
     
 
     parser.add_argument('--run_index', default=0, type=int, help='run index')
+    parser.add_argument('--one_class_idx', default=None, type=int, help='run index')
     
     args = parser.parse_args()
 
@@ -81,8 +86,8 @@ def train(train_loader, positives, negetives, net, train_global_iter, criterion,
                        positives[5], positives[6], positives[7], positives[8], positives[9],
                        negetives[0], negetives[1], negetives[2], negetives[3], negetives[4],
                        negetives[5], negetives[6], negetives[7], negetives[8], negetives[9]):
-        ps = [p0[0], p1[0], p2[0], p3[0], p4[0], p5[0], p6[0], p7[0], p8[0], p9[0]]
-        ns = [n0[0], n1[0], n2[0], n3[0], n4[0], n5[0], n6[0], n7[0], n8[0], n9[0]]
+        ps = [p0[0], p1[0], p2[0], p3[0], p4[0], p5[0], p6[0], p7[0], p8[0], p9[0]] # just loading imgs
+        ns = [n0[0], n1[0], n2[0], n3[0], n4[0], n5[0], n6[0], n7[0], n8[0], n9[0] ]# just loading imgs
         
         imgs, labels = normal
         imgs, labels = imgs.to(args.device), labels.to(args.device)
@@ -164,8 +169,8 @@ def test(eval_loader, positives, negetives, net, global_eval_iter, criterion, de
                        positives[5], positives[6], positives[7], positives[8], positives[9],
                        negetives[0], negetives[1], negetives[2], negetives[3], negetives[4],
                        negetives[5], negetives[6], negetives[7], negetives[8], negetives[9]):
-            ps = [p0[0], p1[0], p2[0], p3[0], p4[0], p5[0], p6[0], p7[0], p8[0], p9[0]]
-            ns = [n0[0], n1[0], n2[0], n3[0], n4[0], n5[0], n6[0], n7[0], n8[0], n9[0]]
+            ps = [p0[0], p1[0], p2[0], p3[0], p4[0], p5[0], p6[0], p7[0], p8[0], p9[0]] # just loading imgs
+            ns = [n0[0], n1[0], n2[0], n3[0], n4[0], n5[0], n6[0], n7[0], n8[0], n9[0]] # just loading imgs
             
             imgs, labels = normal
             imgs, labels = imgs.to(args.device), labels.to(args.device)
@@ -176,6 +181,146 @@ def test(eval_loader, positives, negetives, net, global_eval_iter, criterion, de
                 negative_imgs[i] = ns[label][i].to(args.device)
                 # positive_imgs, negative_imgs = np.asarray(positive_imgs), np.asarray(negative_imgs)
 
+            positive_imgs, negative_imgs = positive_imgs.to(args.device), negative_imgs.to(args.device)
+
+            preds, normal_features = model(imgs, True)
+            positive_preds, positive_features = model(positive_imgs, True)
+            negative_preds, negative_features = model(negative_imgs, True)
+
+            normal_probs = torch.softmax(preds, dim=1)
+            positive_probs = torch.softmax(positive_preds, dim=1)
+            negative_probs = torch.softmax(negative_preds, dim=1)
+
+            # Calculate loss contrastive for layer
+            loss_contrastive = 0
+            for norm_f, pos_f, neg_f in zip(normal_features[-1], positive_features[-1], negative_features[-1]):
+                loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_f, neg_f))
+
+            loss_ce = criterion(preds, labels)
+            loss = args.lamb * loss_ce + loss_contrastive
+
+            normal_output_index = torch.argmax(normal_probs, dim=1)
+            positive_output_index = torch.argmax(positive_probs, dim=1)
+            negative_output_index = torch.argmax(negative_probs, dim=1)
+            acc_normal = accuracy_score(list(to_np(normal_output_index)), list(to_np(labels)))
+            acc_positive = accuracy_score(list(to_np(positive_output_index)), list(to_np(labels)))
+            acc_negative = accuracy_score(list(to_np(negative_output_index)), list(to_np(labels)))
+
+            # Logging section
+            epoch_accuracies['normal'].append(acc_normal)
+            epoch_accuracies['positive'].append(acc_positive)
+            epoch_accuracies['negative'].append(acc_negative)
+            epoch_loss['loss'].append(loss.item())
+            epoch_loss['ce'].append(loss_ce.item())
+            epoch_loss['contrastive'].append(loss_contrastive.item())
+
+            global_eval_iter += 1
+            writer.add_scalar("Evaluation/loss", loss.item(), global_eval_iter)
+            writer.add_scalar("Evaluation/loss_ce", loss_ce.item(), global_eval_iter)
+            writer.add_scalar("Evaluation/loss_contrastive", loss_contrastive.item(), global_eval_iter)
+            writer.add_scalar("Evaluation/acc_normal", acc_normal, global_eval_iter)
+            writer.add_scalar("Evaluation/acc_positive", acc_positive, global_eval_iter)
+            writer.add_scalar("Evaluation/acc_negative", acc_negative, global_eval_iter)
+
+
+    return global_eval_iter, epoch_loss, epoch_accuracies
+
+
+def train_one_class(train_loader, positives, negetives, net, train_global_iter, criterion, optimizer, device, writer):
+
+    print("Traning...")
+    net = net.to(device)
+    net.train()  # enter train mode
+
+    # track train classification accuracy
+    epoch_accuracies = {
+        'normal': [],
+        'positive': [],
+        'negative': []
+    }
+    epoch_loss = {
+        'loss': [],
+        'ce': [],
+        'contrastive': []
+    }
+    for normal, ps, ns in zip(train_loader, positives, negetives):
+
+        imgs, labels = normal
+        positive_imgs, _ = ps
+        negative_imgs, _ = ns
+        imgs, labels = imgs.to(args.device), labels.to(args.device)
+        positive_imgs, negative_imgs = positive_imgs.to(args.device), negative_imgs.to(args.device)
+
+        optimizer.zero_grad()
+        preds, normal_features = model(imgs, True)
+        positive_preds, positive_features = model(positive_imgs, True)
+        negative_preds, negative_features = model(negative_imgs, True)
+
+        normal_probs = torch.softmax(preds, dim=1)
+        positive_probs = torch.softmax(positive_preds, dim=1)
+        negative_probs = torch.softmax(negative_preds, dim=1)
+
+        # Calculate loss contrastive for layer
+        loss_contrastive = 0
+        for norm_f, pos_f, neg_f in zip(normal_features[-1], positive_features[-1], negative_features[-1]):
+            loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_f, neg_f))
+
+        loss_ce = criterion(preds, labels)
+        loss = args.lamb * loss_ce + loss_contrastive
+
+        normal_output_index = torch.argmax(normal_probs, dim=1)
+        positive_output_index = torch.argmax(positive_probs, dim=1)
+        negative_output_index = torch.argmax(negative_probs, dim=1)
+        acc_normal = accuracy_score(list(to_np(normal_output_index)), list(to_np(labels)))
+        acc_positive = accuracy_score(list(to_np(positive_output_index)), list(to_np(labels)))
+        acc_negative = accuracy_score(list(to_np(negative_output_index)), list(to_np(labels)))
+
+        # Logging section
+        epoch_accuracies['normal'].append(acc_normal)
+        epoch_accuracies['positive'].append(acc_positive)
+        epoch_accuracies['negative'].append(acc_negative)
+        epoch_loss['loss'].append(loss.item())
+        epoch_loss['ce'].append(loss_ce.item())
+        epoch_loss['contrastive'].append(loss_contrastive.item())
+
+        train_global_iter += 1
+        writer.add_scalar("Train/loss", loss.item(), train_global_iter)
+        writer.add_scalar("Train/loss_ce", loss_ce.item(), train_global_iter)
+        writer.add_scalar("Train/loss_contrastive", loss_contrastive.item(), train_global_iter)
+        writer.add_scalar("Train/acc_normal", acc_normal, train_global_iter)
+        writer.add_scalar("Train/acc_positive", acc_positive, train_global_iter)
+        writer.add_scalar("Train/acc_negative", acc_negative, train_global_iter)
+
+        loss.backward()
+        optimizer.step()
+
+    return train_global_iter, epoch_loss, epoch_accuracies 
+
+
+def test_one_class(eval_loader, positives, negetives, net, global_eval_iter, criterion, device, writer):
+
+    print("Evaluating...")
+    net = net.to(device)
+    net.eval()  # enter train mode
+
+    # track train classification accuracy
+    epoch_accuracies = {
+        'normal': [],
+        'positive': [],
+        'negative': []
+    }
+    epoch_loss = {
+        'loss': [],
+        'ce': [],
+        'contrastive': []
+    }
+    with torch.no_grad():
+        for normal, ps, ns in zip(eval_loader, positives, negetives):
+            
+            imgs, labels = normal         
+            positive_imgs, _ = ps
+            negative_imgs, _ = ns
+            imgs, labels = imgs.to(args.device), labels.to(args.device)
             positive_imgs, negative_imgs = positive_imgs.to(args.device), negative_imgs.to(args.device)
 
             preds, normal_features = model(imgs, True)
@@ -242,135 +387,17 @@ def load_model(args):
     return model, criterion, optimizer, scheduler
 
 
-def load_cifar10(cifar10_path):
-
-    mean = [x / 255 for x in [125.3, 123.0, 113.9]]
-    std = [x / 255 for x in [63.0, 62.1, 66.7]]
-
-    train_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
-    test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
-
-    train_data = torchvision.datasets.CIFAR10(
-        cifar10_path, train=True, transform=train_transform, download=True)
-    test_data = torchvision.datasets.CIFAR10(
-        cifar10_path, train=False, transform=test_transform, download=True)
-
-    return train_data, test_data
-
-import PIL
-import torch
-import numpy as np
-
-class load_np_dataset(torch.utils.data.Dataset):
-    def __init__(self, imgs_path, targets_path, transform, train=True):
-        if train:
-            self.data = np.load(imgs_path)[:50000]
-            self.targets = np.load(targets_path)[:50000]
-        else:
-            self.data = np.load(imgs_path)[:10000]
-            self.targets = np.load(targets_path)[:10000]
-        self.transform = transform
-        
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        img , target = self.data[idx], self.targets[idx]
-            
-        img = PIL.Image.fromarray(img)
-        img = self.transform(img)
-
-        return img, target
-
-
-def noise_loader(args):
-    noises = [
-    'brightness',
-    'color_jitter',
-    'contrast',
-    'defocus_blur',
-    'elastic_transform',
-    'flip',
-    'fog',
-    'gaussian_blur',
-    'gaussian_noise',
-    'glass_blur',
-    'impulse_noise',
-    'jpeg_compression',
-    'motion_blur',
-    'pixelate',
-    'random_crop',
-    'rot270',
-    'rot90',
-    'saturate',
-    'shot_noise',
-    'snow',
-    'spatter',
-    'speckle_noise',
-    'zoom_blur',
-    ]
-
-    np_train_target_path = '/storage/users/makhavan/CSI/finals/datasets/data_aug/CorCIFAR10_train/labels.npy'
-    np_test_target_path = '/storage/users/makhavan/CSI/finals/datasets/data_aug/CorCIFAR10_test/labels.npy'
-
-    np_train_root_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Train_AC/'
-    np_test_root_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC/'
-
-    train_dict = {}
-    mean = [x / 255 for x in [125.3, 123.0, 113.9]]
-    std = [x / 255 for x in [63.0, 62.1, 66.7]]
-
-    train_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
-    test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
-
-    for noise in noises:
-        np_train_img_path = np_train_root_path + noise + '.npy'
-        train_dict[noise] = load_np_dataset(np_train_img_path, np_train_target_path, train_transform, train=True)
-
-    test_dict = {}
-    for noise in noises:
-        np_test_img_path = np_test_root_path + noise + '.npy'
-        test_dict[noise] = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, train=False)
-
-    train_loader_dict = {}
-    for noise in noises:
-        train_loader_dict[noise] = DataLoader(train_dict[noise], shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
-    
-    test_loader_dict = {}
-    for noise in noises:
-        test_loader_dict[noise] = DataLoader(test_dict[noise], shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
-
-    return train_loader_dict, test_loader_dict
-
 args = parsing()
 torch.manual_seed(args.seed)
 model, criterion, optimizer, scheduler = load_model(args)
 
-
-
 cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
-train_dataset, test_dataset = load_cifar10(cifar10_path)
-
-train_loader = DataLoader(train_dataset, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
-val_loader = DataLoader(test_dataset, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+print("Start Loading noises")
+train_loader, test_loader = load_cifar10(cifar10_path, one_class_idx=args.one_class_idx)
 
 print("Start Loading noises")
-train_loader_dict, test_loader_dict = noise_loader(args)
+train_positives, train_negetives, test_positives, test_negetives = noise_loader(one_class_idx=args.one_class_idx)
 print("Loading noises finished!")
-
-
-import pickle
-with open('./clip_vec/softmax_sorted.pkl', 'rb') as file:
-    clip_probs = pickle.load(file)
-
-print("Creating noises loader")
-train_positives = [train_loader_dict[list(clip_probs[i].keys())[0]] for i in range(10)]
-train_negetives = [train_loader_dict[list(clip_probs[i].keys())[-1]] for i in range(10)]
-
-test_positives = [test_loader_dict[list(clip_probs[i].keys())[0]] for i in range(10)]
-test_negetives = [test_loader_dict[list(clip_probs[i].keys())[-1]] for i in range(10)]
-print("Noises loader created!")
-
 
 if args.model_path is not None:
     save_path = args.save_path
@@ -391,8 +418,12 @@ best_loss = np.inf
 args.last_lr = args.learning_rate
 for epoch in range(0, args.epochs):
     print('epoch', epoch + 1, '/', args.epochs)
-    train_global_iter, epoch_loss, epoch_accuracies = train(train_loader, train_positives, train_negetives, model, train_global_iter, criterion, optimizer, args.device, writer)
-    global_eval_iter, eval_loss, eval_acc = test(val_loader, test_positives, test_negetives, model, global_eval_iter, criterion, args.device, writer)
+    if args.one_class_idx:
+        train_global_iter, epoch_loss, epoch_accuracies = train_one_class(train_loader, train_positives, train_negetives, model, train_global_iter, criterion, optimizer, args.device, writer)
+        global_eval_iter, eval_loss, eval_acc = test_one_class(test_loader, test_positives, test_negetives, model, global_eval_iter, criterion, args.device, writer)
+    else:
+        train_global_iter, epoch_loss, epoch_accuracies = train(train_loader, train_positives, train_negetives, model, train_global_iter, criterion, optimizer, args.device, writer)
+        global_eval_iter, eval_loss, eval_acc = test(test_loader, test_positives, test_negetives, model, global_eval_iter, criterion, args.device, writer)
 
     writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
     writer.add_scalar("AVG_Train/avg_loss_ce", np.mean(epoch_loss['ce']), epoch)
@@ -421,6 +452,11 @@ for epoch in range(0, args.epochs):
     
     if np.mean(eval_loss['loss']) > best_loss:
         scheduler.step()
+        if args.last_lr != scheduler.get_last_lr()[0]:
+            scheduler.step_size = scheduler.step_size + 3
+            print(f"scheduler step_size has increased into: {scheduler.step_size}")
+
         args.last_lr = scheduler.get_last_lr()[0]
+
     
 # os.remove(f"./run_counter/{args.noise}.log")
