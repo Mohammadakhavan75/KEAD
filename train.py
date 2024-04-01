@@ -58,6 +58,7 @@ def parsing():
 
     parser.add_argument('--run_index', default=0, type=int, help='run index')
     parser.add_argument('--one_class_idx', default=None, type=int, help='run index')
+    parser.add_argument('--auc_cal', default=0, type=int, help='run index')
     
     args = parser.parse_args()
 
@@ -366,6 +367,60 @@ def test_one_class(eval_loader, positives, negetives, net, global_eval_iter, cri
     return global_eval_iter, epoch_loss, epoch_accuracies
 
 
+def eval_auc_one_class(eval_in, eval_out, net, global_eval_iter, criterion, device):
+
+    print("Evaluating...")
+    net = net.to(device)
+    net.eval()  # enter train mode
+
+    # track train classification accuracy
+    epoch_accuracies = {
+        'acc': [],
+        'auc': [],
+    }
+    epoch_loss = {
+        'loss': [],
+    }
+    with torch.no_grad():
+        for data_in, data_out in zip(eval_in, eval_out):
+            
+            inputs_in, targets_in = data_in
+            targets_in_auc = [1 for _ in targets_in]
+            targets_in_auc = torch.tensor(targets_in_auc, dtype=torch.float32)
+
+            inputs_out, targets_out = data_out
+            targets_out_auc = [0 for _ in targets_out]
+            targets_out_auc = torch.tensor(targets_out_auc, dtype=torch.float32)
+
+            
+            inputs_ = torch.cat((inputs_in, inputs_out), dim=0)
+            targets_auc_ = torch.cat((targets_in_auc, targets_out_auc), dim=0)
+            targets_ = torch.cat((targets_in, targets_out), dim=0)
+            random_indices = torch.randperm(inputs_.size(0))
+            inputs = inputs_[random_indices]
+            targets = targets_[random_indices]
+            targets_auc = targets_auc_[random_indices]
+
+            inputs , targets = inputs.to(device) , targets.to(device)
+
+            preds, normal_features = net(inputs, True)            
+
+            loss = criterion(preds, targets)
+            
+            acc = accuracy_score(list(to_np(torch.argmax(torch.softmax(preds, dim=1), axis=1))), list(to_np(targets)))
+            auc = roc_auc_score(to_np(torch.argmax(torch.softmax(preds, dim=1), axis=1) == targets) , to_np(targets_auc))
+
+            # Logging section
+            epoch_accuracies['acc'].append(acc)
+            epoch_accuracies['auc'].append(auc)
+            epoch_loss['loss'].append(loss.item())
+
+            global_eval_iter += 1
+
+    return global_eval_iter, epoch_loss, epoch_accuracies
+
+
+
 def load_model(args):
 
     # model = torchvision.models.resnet34()
@@ -378,6 +433,9 @@ def load_model(args):
                                       weight_decay=args.decay)
     else:
         raise NotImplemented("Not implemented optimizer!")
+
+    if args.model_path:
+        model.load_state_dict(torch.load(args.model_path))
 
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_update_rate, gamma=args.lr_gamma)
     criterion = torch.nn.CrossEntropyLoss().to(args.device)
@@ -404,7 +462,7 @@ if args.model_path is not None:
     model_save_path = save_path + 'models/'
 else:
     addr = datetime.today().strftime('%Y-%m-%d-%H-%M-%S-%f')
-    save_path = f'./run/exp-' + addr + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + f'_{args.optimizer}' + f'_{args.lamb}' + '/'
+    save_path = f'./run/exp-' + addr + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + f'_{args.optimizer}' + f'_{args.lamb}' + f'_one_class_idx_{args.one_class_idx}' + '/'
     model_save_path = save_path + 'models/'
     if not os.path.exists(model_save_path):
         os.makedirs(model_save_path, exist_ok=True)
@@ -416,9 +474,11 @@ global_eval_iter = 0
 best_acc = 0.0
 best_loss = np.inf
 args.last_lr = args.learning_rate
+
+
 for epoch in range(0, args.epochs):
     print('epoch', epoch + 1, '/', args.epochs)
-    if args.one_class_idx:
+    if args.one_class_idx != None:
         train_global_iter, epoch_loss, epoch_accuracies = train_one_class(train_loader, train_positives, train_negetives, model, train_global_iter, criterion, optimizer, args.device, writer)
         global_eval_iter, eval_loss, eval_acc = test_one_class(test_loader, test_positives, test_negetives, model, global_eval_iter, criterion, args.device, writer)
     else:
@@ -459,4 +519,32 @@ for epoch in range(0, args.epochs):
         args.last_lr = scheduler.get_last_lr()[0]
 
     
-# os.remove(f"./run_counter/{args.noise}.log")
+if args.auc_cal:
+    from dataset_loader import get_subclass_dataset
+    mean = [x / 255 for x in [125.3, 123.0, 113.9]]
+    std = [x / 255 for x in [63.0, 62.1, 66.7]]
+
+    train_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+
+    test_data = torchvision.datasets.CIFAR10(
+        cifar10_path, train=False, transform=test_transform, download=True)
+
+    idxes = [i for i in range(10)]
+    idxes.pop(args.one_class_idx)
+    eval_in_data = get_subclass_dataset(test_data, args.one_class_idx)
+    eval_out_data = get_subclass_dataset(test_data, idxes)
+
+    eval_in = DataLoader(eval_in_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+    eval_out = DataLoader(eval_out_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+
+    model_path = save_path + 'best_params.pt'
+    model.load_state_dict(torch.load(model_path))
+
+    global_eval_iter, eval_loss, eval_acc = eval_auc_one_class(eval_in, eval_out, model, global_eval_iter, criterion, args.device)
+
+    print(f"Results/avg_loss: {np.mean(eval_loss['loss'])}, Results/avg_acc: {np.mean(eval_acc['acc'])}, Results/avg_auc: {np.mean(eval_acc['auc'])}")
+
+    exit()
+
+        
