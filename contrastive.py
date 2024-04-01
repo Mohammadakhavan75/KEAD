@@ -22,7 +22,7 @@ def cosine_similarity(feature_map1, feature_map2):
 
   # Prevent division by zero
   if norm1 == 0 or norm2 == 0:
-    return 0
+    return torch.tensor(0).to(feature_map1.device)
 
   # Cosine similarity
   cosine_similarity_map = dot_product / (norm1 * norm2)
@@ -54,4 +54,5 @@ def contrastive(input, positive, negative, temperature=0.5, epsilon = 1e-9): # e
         card = len(positive)
     else:
         card = 1
+    
     return (- 1/card) * torch.log(torch.sum(torch.exp(sim_p)/temperature, dim=0)/torch.sum(torch.exp(denom)/temperature, dim=0))
