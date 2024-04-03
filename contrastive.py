@@ -55,4 +55,4 @@ def contrastive(input, positive, negative, temperature=0.5, epsilon = 1e-9): # e
     else:
         card = 1
     
-    return (- 1/card) * torch.log(torch.sum(torch.exp(sim_p)/temperature, dim=0)/torch.sum(denom, dim=0))
+    return (- 1/card) * torch.log(torch.sum(torch.exp(sim_p/temperature), dim=0)/torch.sum(denom, dim=0))
