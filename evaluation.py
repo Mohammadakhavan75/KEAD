@@ -107,7 +107,7 @@ def eval_auc_one_class(eval_in, eval_out, net, global_eval_iter, criterion, devi
             loss = criterion(preds, targets)
             
             acc = accuracy_score(list(to_np(torch.argmax(torch.softmax(preds, dim=1), axis=1))), list(to_np(targets)))
-            auc = roc_auc_score(to_np(torch.argmax(torch.softmax(preds, dim=1), axis=1) == targets) , to_np(targets_auc))
+            auc = roc_auc_score(to_np(targets_auc), to_np(torch.argmax(torch.softmax(preds, dim=1), axis=1) == args.one_class_idx))
 
             # Logging section
             epoch_accuracies['acc'].append(acc)
