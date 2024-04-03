@@ -227,7 +227,7 @@ def test(eval_loader, positives, negetives, net, global_eval_iter, criterion, de
     return global_eval_iter, epoch_loss, epoch_accuracies
 
 
-def train_one_class(train_loader, positives, negetives, net, train_global_iter, criterion, optimizer, device, writer):
+def train_one_class(train_loader, positives, negetives, net, train_global_iter, criterion, optimizer, device, writer, stage):
 
     print("Traning...")
     net = net.to(device)
@@ -267,7 +267,10 @@ def train_one_class(train_loader, positives, negetives, net, train_global_iter, 
             loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_f, neg_f))
 
         loss_ce = criterion(preds, labels)
-        loss = args.lamb * loss_ce + loss_contrastive
+        if stage == 'feature_extraction':
+            loss = loss_contrastive
+        if stage == 'classifier':
+            loss = loss_ce
 
         normal_output_index = torch.argmax(normal_probs, dim=1)
         positive_output_index = torch.argmax(positive_probs, dim=1)
@@ -298,7 +301,7 @@ def train_one_class(train_loader, positives, negetives, net, train_global_iter, 
     return train_global_iter, epoch_loss, epoch_accuracies 
 
 
-def test_one_class(eval_loader, positives, negetives, net, global_eval_iter, criterion, device, writer):
+def test_one_class(eval_loader, positives, negetives, net, global_eval_iter, criterion, device, writer, stage):
 
     print("Evaluating...")
     net = net.to(device)
@@ -338,7 +341,11 @@ def test_one_class(eval_loader, positives, negetives, net, global_eval_iter, cri
                 loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_f, neg_f))
 
             loss_ce = criterion(preds, labels)
-            loss = args.lamb * loss_ce + loss_contrastive
+
+            if stage == 'feature_extraction':
+                loss = loss_contrastive
+            if stage == 'classifier':
+                loss = loss_ce
 
             normal_output_index = torch.argmax(normal_probs, dim=1)
             positive_output_index = torch.argmax(positive_probs, dim=1)
@@ -408,7 +415,7 @@ def eval_auc_one_class(eval_in, eval_out, net, global_eval_iter, criterion, devi
             loss = criterion(preds, targets)
             
             acc = accuracy_score(list(to_np(torch.argmax(torch.softmax(preds, dim=1), axis=1))), list(to_np(targets)))
-            auc = roc_auc_score(to_np(torch.argmax(torch.softmax(preds, dim=1), axis=1) == targets) , to_np(targets_auc))
+            auc = roc_auc_score(to_np(targets_auc), to_np(torch.argmax(torch.softmax(preds, dim=1), axis=1) == targets) )
 
             # Logging section
             epoch_accuracies['acc'].append(acc)
@@ -475,12 +482,26 @@ best_acc = 0.0
 best_loss = np.inf
 args.last_lr = args.learning_rate
 
+stage = 'feature_extraction'
 
 for epoch in range(0, args.epochs):
+    if epoch + 3 > args.epochs:
+        stage = 'classifier'
     print('epoch', epoch + 1, '/', args.epochs)
     if args.one_class_idx != None:
-        train_global_iter, epoch_loss, epoch_accuracies = train_one_class(train_loader, train_positives, train_negetives, model, train_global_iter, criterion, optimizer, args.device, writer)
-        global_eval_iter, eval_loss, eval_acc = test_one_class(test_loader, test_positives, test_negetives, model, global_eval_iter, criterion, args.device, writer)
+        if stage == 'feature_extraction':
+            model.linear.requires_grad_ = False
+            train_global_iter, epoch_loss, epoch_accuracies = train_one_class(train_loader, train_positives, train_negetives, model, train_global_iter, criterion, optimizer, args.device, writer, stage)
+            global_eval_iter, eval_loss, eval_acc = test_one_class(test_loader, test_positives, test_negetives, model, global_eval_iter, criterion, args.device, writer, stage)
+        if stage == 'classifier':
+            model.linear.requires_grad_ = True
+            model.layer1.requires_grad_ = False
+            model.layer2.requires_grad_ = False
+            model.layer3.requires_grad_ = False
+            model.layer4.requires_grad_ = False
+            model.conv1.requires_grad_ = False
+            train_global_iter, epoch_loss, epoch_accuracies = train_one_class(train_loader, train_positives, train_negetives, model, train_global_iter, criterion, optimizer, args.device, writer)
+            global_eval_iter, eval_loss, eval_acc = test_one_class(test_loader, test_positives, test_negetives, model, global_eval_iter, criterion, args.device, writer)
     else:
         train_global_iter, epoch_loss, epoch_accuracies = train(train_loader, train_positives, train_negetives, model, train_global_iter, criterion, optimizer, args.device, writer)
         global_eval_iter, eval_loss, eval_acc = test(test_loader, test_positives, test_negetives, model, global_eval_iter, criterion, args.device, writer)
@@ -512,11 +533,37 @@ for epoch in range(0, args.epochs):
     
     if np.mean(eval_loss['loss']) > best_loss:
         scheduler.step()
-        if args.last_lr != scheduler.get_last_lr()[0]:
-            scheduler.step_size = scheduler.step_size + 3
-            print(f"scheduler step_size has increased into: {scheduler.step_size}")
+        # if args.last_lr != scheduler.get_last_lr()[0]:
+        #     scheduler.step_size = scheduler.step_size + 3
+        #     print(f"scheduler step_size has increased into: {scheduler.step_size}")
 
         args.last_lr = scheduler.get_last_lr()[0]
+
+    if args.auc_cal and epoch % 11 == 1:
+        from dataset_loader import get_subclass_dataset
+        __mean = [x / 255 for x in [125.3, 123.0, 113.9]]
+        __std = [x / 255 for x in [63.0, 62.1, 66.7]]
+
+        __test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(__mean, __std)])
+
+        __test_data = torchvision.datasets.CIFAR10(
+            cifar10_path, train=False, transform=__test_transform, download=True)
+
+        __idxes = [i for i in range(10)]
+        __idxes.pop(args.one_class_idx)
+        __eval_in_data = get_subclass_dataset(__test_data, args.one_class_idx)
+        __eval_out_data = get_subclass_dataset(__test_data, __idxes)
+
+        __eval_in = DataLoader(__eval_in_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+        __eval_out = DataLoader(__eval_out_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+
+        __model_path = save_path + 'best_params.pt'
+        __model = ResNet18(10)
+        __model.load_state_dict(torch.load(__model_path))
+        __global_eval_iter=0
+        __global_eval_iter, __eval_loss, __eval_acc = eval_auc_one_class(__eval_in, __eval_out, __model, __global_eval_iter, criterion, args.device)
+
+        print(f"Results/avg_loss: {np.mean(__eval_loss['loss'])}, Results/avg_acc: {np.mean(__eval_acc['acc'])}, Results/avg_auc: {np.mean(__eval_acc['auc'])}")
 
     
 if args.auc_cal:
@@ -544,7 +591,4 @@ if args.auc_cal:
     global_eval_iter, eval_loss, eval_acc = eval_auc_one_class(eval_in, eval_out, model, global_eval_iter, criterion, args.device)
 
     print(f"Results/avg_loss: {np.mean(eval_loss['loss'])}, Results/avg_acc: {np.mean(eval_acc['acc'])}, Results/avg_auc: {np.mean(eval_acc['auc'])}")
-
     exit()
-
-        
