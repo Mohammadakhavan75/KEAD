@@ -170,7 +170,7 @@ model, criterion, optimizer, scheduler = load_model(args)
 
 
 
-cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
+cifar10_path = '/storage/users/rkashefi/CSI/finals/datasets/data/'
 train_dataset, test_dataset = load_cifar10(cifar10_path)
 
 train_loader = DataLoader(train_dataset, shuffle=True, batch_size=args.batch_size, num_workers=args.num_workers)

@@ -137,16 +137,16 @@ mean = [x / 255 for x in [125.3, 123.0, 113.9]]
 std = [x / 255 for x in [63.0, 62.1, 66.7]]
 transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
 
-cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
+cifar10_path = '/storage/users/rkashefi/CSI/finals/datasets/data/'
 test_dataset = torchvision.datasets.CIFAR10(cifar10_path, train=False, transform=transform, download=True)
 
 if args.transform:
-    cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-R-A/{args.aug}.npy'
-    cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-R-A/labels-A.npy'
+    cifar_train_cor_img_path = f'/storage/users/rkashefi/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-R-A/{args.aug}.npy'
+    cifar_train_cor_target_path = '/storage/users/rkashefi/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-R-A/labels-A.npy'
     aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
 elif args.aug:
-    cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-R-C/{args.aug}.npy'
-    cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-R-C/labels-C.npy'
+    cifar_train_cor_img_path = f'/storage/users/rkashefi/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-R-C/{args.aug}.npy'
+    cifar_train_cor_target_path = '/storage/users/rkashefi/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-R-C/labels-C.npy'
     aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
 
 

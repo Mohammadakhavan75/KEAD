@@ -55,16 +55,16 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 model, transform = clip.load("ViT-B/32", device=device)
 
 
-cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
+cifar10_path = '/storage/users/rkashefi/CSI/finals/datasets/data/'
 cifar10_dataset = CIFAR10(root=cifar10_path, train=True, download=True, transform=transform)
 
 if args.transform:
-    cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-A/{args.aug}.npy'
-    cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-A/labels-A.npy'
+    cifar_train_cor_img_path = f'/storage/users/rkashefi/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-A/{args.aug}.npy'
+    cifar_train_cor_target_path = '/storage/users/rkashefi/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-A/labels-A.npy'
     train_aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
 else:
-    cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-C/{args.aug}.npy'
-    cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-C/labels-C.npy'
+    cifar_train_cor_img_path = f'/storage/users/rkashefi/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-C/{args.aug}.npy'
+    cifar_train_cor_target_path = '/storage/users/rkashefi/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-C/labels-C.npy'
     train_aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
 
 cifar10_loader = DataLoader(cifar10_dataset, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
