@@ -71,7 +71,9 @@ class ResNet(BaseModel):
         out_list.append(out)
 
         out = F.avg_pool2d(out, 4)
+        out_list.append(out)
         out = out.view(out.size(0), -1)
+        out_list.append(out)
 
         if all_features:
             return out, out_list
