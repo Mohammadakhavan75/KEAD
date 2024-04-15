@@ -9,6 +9,7 @@ from datetime import datetime
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
 from cifar10.model import ResNet18, ResNet34, ResNet50
+# from cifar10.models.resnet import ResNet18, ResNet34, ResNet50
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, roc_auc_score
 
@@ -59,6 +60,7 @@ def parsing():
     parser.add_argument('--run_index', default=0, type=int, help='run index')
     parser.add_argument('--one_class_idx', default=None, type=int, help='run index')
     parser.add_argument('--auc_cal', default=0, type=int, help='run index')
+    parser.add_argument('--noise', default='snow', type=str, help='noise')
     
     args = parser.parse_args()
 
@@ -144,6 +146,94 @@ def load_model(args):
     return model, criterion, optimizer, scheduler
 
 
+def mahalanobis_parameters(loader_in, net, args):
+    print("Calculating mahalanobis parameters...")
+    net = net.to(args.device)
+    net.eval()  # enter train mode
+    
+    features = []
+    with torch.no_grad():
+        for data_in in loader_in:
+            inputs_in, _ = data_in
+            
+            inputs = inputs_in.to(args.device)
+
+            _, normal_features = net(inputs, True)            
+            # features.append(normal_features['penultimate'])
+            features.append(normal_features[-1])
+    
+    features = torch.cat(features, dim=0)
+    mean = torch.mean(features, dim=0)
+    
+    for feature in features:
+        feature[feature==0] += 1e-12 # To preventing zero for torch.linalg.inv
+
+    inv_covariance = torch.linalg.inv(torch.cov(features.t()))
+
+    return mean, inv_covariance, features
+
+
+def mahalanobis_distance(x, mu, inv_cov):
+
+  centered_x = x - mu
+
+  mahalanobis_dist = torch.sqrt(torch.matmul(torch.matmul(centered_x.unsqueeze(0), inv_cov), centered_x))
+
+  return mahalanobis_dist
+
+
+def out_features_extractor(eval_out, model, args):
+    out_features = []
+    model = model.to(args.device)
+    for data_in in eval_out:
+        inputs_in, _ = data_in
+
+        inputs = inputs_in.to(args.device)
+        
+        preds, normal_features = model(inputs, True)  
+        out_features.append(normal_features['penultimate'])          
+        # break
+    out_features = torch.cat(out_features, dim=0)
+    
+    return out_features
+
+
+def evaluator(model, eval_out, mean, inv_covariance, args):
+    out_features = []
+    model = model.to(args.device)
+    for data_in in eval_out:
+        inputs_in, _ = data_in
+
+        inputs = inputs_in.to(args.device)
+        
+        preds, normal_features = model(inputs, True)  
+        out_features.append(normal_features[-1])
+        # break
+    out_features = torch.cat(out_features, dim=0)
+    out_dist = []
+    for out_feature in out_features:
+        out_dist.append(mahalanobis_distance(out_feature, mean, inv_covariance))
+
+    return torch.mean(torch.tensor(out_dist))
+
+
+from dataset_loader import load_np_dataset
+def noise_loading(noise):
+    np_test_target_path = '/storage/users/makhavan/CSI/finals/datasets/data_aug/CorCIFAR10_test/labels.npy'
+    np_test_root_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC/'
+
+    mean = [x / 255 for x in [125.3, 123.0, 113.9]]
+    std = [x / 255 for x in [63.0, 62.1, 66.7]]
+
+    test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+
+    np_test_img_path = np_test_root_path + noise + '.npy'
+    test_dataset_noise = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, train=False)
+
+    return test_dataset_noise
+
+
+
 args = parsing()
 torch.manual_seed(args.seed)
 model, criterion, optimizer, scheduler = load_model(args)
@@ -161,7 +251,6 @@ from dataset_loader import get_subclass_dataset
 mean = [x / 255 for x in [125.3, 123.0, 113.9]]
 std = [x / 255 for x in [63.0, 62.1, 66.7]]
 
-train_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
 test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
 
 test_data = torchvision.datasets.CIFAR10(
@@ -170,11 +259,30 @@ test_data = torchvision.datasets.CIFAR10(
 idxes = [i for i in range(10)]
 idxes.pop(args.one_class_idx)
 eval_in_data = get_subclass_dataset(test_data, args.one_class_idx)
-eval_out_data = get_subclass_dataset(test_data, idxes)
 
 eval_in = DataLoader(eval_in_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
-eval_out = DataLoader(eval_out_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+mean, inv_covariance, in_features = mahalanobis_parameters(eval_in, model, args)
 
-global_eval_iter, eval_loss, eval_acc = eval_auc_one_class(eval_in, eval_out, model, global_eval_iter, criterion, args.device)
+in_distance = evaluator(model, eval_in, mean, inv_covariance, args)
 
-print(f"Evaluation/avg_loss: {np.mean(eval_loss['loss'])}, Evaluation/avg_acc: {np.mean(eval_acc['acc'])}, Evaluation/avg_auc: {np.mean(eval_acc['auc'])}")
+
+test_dataset_noise = noise_loading(args.noise)
+resutls = {}
+for id in range(10):
+    eval_out_data = get_subclass_dataset(test_dataset_noise, id)
+    eval_out = DataLoader(eval_out_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+
+    m_distance = evaluator(model, eval_out, mean, inv_covariance, args)
+
+    resutls[id]=(in_distance - m_distance).detach().cpu().numpy()
+    print(f"Evaluation distance on class {id}: {m_distance}, diff: {in_distance - m_distance}")
+
+import pandas as pd
+df = pd.DataFrame(resutls, index=[0])
+
+# Save DataFrame as CSV file
+save_path = f'./csv_results/report_class_{args.one_class_idx}/'
+if not os.path.exists(save_path):
+    os.makedirs(save_path, exist_ok=True)
+
+df.to_csv(save_path+f"{args.noise}.csv", index=False) 
