@@ -32,8 +32,8 @@ def cosine_similarity(feature_map1, feature_map2):
 
 def contrastive(input, positive, negative, temperature=0.5, epsilon = 1e-9): # epsilon for non getting devided by zero error
     
-    sim_n = torch.zeros(negative.shape).to(negative.device)
-    sim_p = torch.zeros(positive.shape).to(positive.device)
+    sim_n = torch.zeros(negative.shape[0]).to(negative.device)
+    sim_p = torch.zeros(positive.shape[0]).to(positive.device)
     if negative.shape[0] != input.shape[0]:
         for j, feature in enumerate(negative):
             sim_n[j] = cosine_similarity(input, feature)
@@ -47,7 +47,7 @@ def contrastive(input, positive, negative, temperature=0.5, epsilon = 1e-9): # e
     else:
         # sim_p = similarity(input, positive)
         sim_p = cosine_similarity(input, positive)
-        
+    
     denom = torch.exp(sim_n/temperature) + torch.exp(sim_p/temperature) + epsilon # for non getting devided by zero error
 
     if positive.shape[0] != input.shape[0]:
