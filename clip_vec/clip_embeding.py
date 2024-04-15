@@ -79,7 +79,7 @@ for i, data in enumerate(tqdm(loader)):
     imgs_n, targets = data_normal
     imgs_aug, _ = data_aug
     # imgs_n, imgs_aug = transform(imgs_n).to(device), transform(imgs_aug).to(device)
-    if len(imgs_n) != len(imgs_aug):
+    if len(imgs_n) != len(imgs_aug): # if len imgs_aug was larger than imgs_normal
         imgs_aug = imgs_aug[:len(imgs_n)]
         imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
         imgs_n_features = model.encode_image(imgs_n)
@@ -105,3 +105,13 @@ with open(f'./tensors/diffs_target_{args.aug}.pkl', 'wb') as f:
 t, g = zip(*sorted(zip(targets_list, diffs)))
 for i in range(10):
     print(f"class {i}: {np.mean(g[i*5000:(i+1)*5000])}")
+
+
+vals_softmax=[]
+for i in range(10):
+    vals = torch.tensor(np.mean(g[i*5000:(i+1)*5000]))
+    vals_softmax.append(torch.nn.functional.softmax(vals).detach().cpu().numpy())
+
+with open(f'./softmax/{args.aug}.out', 'w') as file:
+    for val in vals_softmax:
+        file.write(str(val)+'\n')
