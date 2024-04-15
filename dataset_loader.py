@@ -42,7 +42,7 @@ def get_subclass_dataset(dataset, classes):
     return dataset
 
 
-def noise_loader(batch_size=32, num_workers=32, one_class_idx=None):
+def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail=False):
     noises = [
     'brightness',
     'color_jitter',
@@ -96,11 +96,26 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None):
         clip_probs = pickle.load(file)
 
     print("Creating noises loader")
-    train_positives_datasets = [train_dict[list(clip_probs[i].keys())[0]] for i in range(10)]
-    train_negetives_datasets = [train_dict[list(clip_probs[i].keys())[-1]] for i in range(10)]
+    train_positives_datasets = []
+    train_negetives_datasets = []
+    test_positives_datasets = []
+    test_negetives_datasets = []
+    for i in range(10):
+        # creating positive noise loader
+        noise = list(clip_probs[i].keys())[0]
+        np_train_img_path = np_train_root_path + noise + '.npy'
+        train_positives_datasets.append(load_np_dataset(np_train_img_path, np_train_target_path, train_transform, train=True))
 
-    test_positives_datasets = [test_dict[list(clip_probs[i].keys())[0]] for i in range(10)]
-    test_negetives_datasets = [test_dict[list(clip_probs[i].keys())[-1]] for i in range(10)]
+        np_test_img_path = np_test_root_path + noise + '.npy'
+        test_positives_datasets.append(load_np_dataset(np_test_img_path, np_test_target_path, test_transform, train=False))
+
+        # creating negative noise loader
+        noise = list(clip_probs[i].keys())[-1]
+        np_train_img_path = np_train_root_path + noise + '.npy'
+        train_negetives_datasets.append(load_np_dataset(np_train_img_path, np_train_target_path, train_transform, train=True))
+
+        np_test_img_path = np_test_root_path + noise + '.npy'
+        test_negetives_datasets.append(load_np_dataset(np_test_img_path, np_test_target_path, test_transform, train=False))
 
     print("Noises loader created!")
 
@@ -109,11 +124,23 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None):
         train_dataset_negetives_one_class = get_subclass_dataset(train_negetives_datasets[one_class_idx], one_class_idx)
         test_dataset_positives_one_class = get_subclass_dataset(test_positives_datasets[one_class_idx], one_class_idx)
         test_dataset_negetives_one_class = get_subclass_dataset(test_negetives_datasets[one_class_idx], one_class_idx)
+        
+        if tail:
+            with open(f'./clip_vec/tensors/diffs_{list(clip_probs[one_class_idx].keys())[-1]}.pkl', 'rb') as file:
+                diffs = pickle.load(file)
+                
+                i = one_class_idx
+                class_diff = diffs[i*5000:i*5000 + 5000] / np.max(diffs[i*5000:i*5000 + 5000])
+                class_diff_normalized = (class_diff - np.mean(class_diff)) / np.std(class_diff)
+                idices = [i for i, element in enumerate(class_diff_normalized) if element  > np.percentile(class_diff_normalized, 95)]
+
+            train_dataset_negetives_one_class = Subset(train_dataset_negetives_one_class, idices)
 
         train_positives = DataLoader(train_dataset_positives_one_class, shuffle=False, batch_size=batch_size, num_workers=num_workers)
         train_negetives = DataLoader(train_dataset_negetives_one_class, shuffle=False, batch_size=batch_size, num_workers=num_workers)
         test_positives = DataLoader(test_dataset_positives_one_class, shuffle=False, batch_size=batch_size, num_workers=num_workers)
         test_negetives = DataLoader(test_dataset_negetives_one_class, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+
     else:
         train_positives = []
         test_positives = []
@@ -147,6 +174,6 @@ def load_cifar10(cifar10_path, batch_size=32, num_workers=32, one_class_idx=None
 
     train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
     val_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
-
-    return train_loader, val_loader
+    normal_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+    return train_loader, val_loader, normal_loader
 
