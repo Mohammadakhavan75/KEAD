@@ -43,32 +43,7 @@ def get_subclass_dataset(dataset, classes):
 
 
 def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail=False):
-    noises = [
-    'brightness',
-    'color_jitter',
-    'contrast',
-    'defocus_blur',
-    'elastic_transform',
-    'flip',
-    'fog',
-    'gaussian_blur',
-    'gaussian_noise',
-    'glass_blur',
-    'impulse_noise',
-    'jpeg_compression',
-    'motion_blur',
-    'pixelate',
-    'random_crop',
-    'rot270',
-    'rot90',
-    'saturate',
-    'shot_noise',
-    'snow',
-    'spatter',
-    'speckle_noise',
-    'zoom_blur',
-    ]
-
+    
     np_train_target_path = '/storage/users/makhavan/CSI/finals/datasets/data_aug/CorCIFAR10_train/labels.npy'
     np_test_target_path = '/storage/users/makhavan/CSI/finals/datasets/data_aug/CorCIFAR10_test/labels.npy'
 
@@ -80,16 +55,6 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail=False):
 
     train_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
     test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
-
-    train_dict = {}
-    test_dict = {}
-
-    for noise in noises:
-        np_train_img_path = np_train_root_path + noise + '.npy'
-        train_dict[noise] = load_np_dataset(np_train_img_path, np_train_target_path, train_transform, train=True)
-
-        np_test_img_path = np_test_root_path + noise + '.npy'
-        test_dict[noise] = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, train=False)
 
 
     with open('./clip_vec/softmax_sorted.pkl', 'rb') as file:
