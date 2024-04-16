@@ -1,5 +1,6 @@
 import os
 import torch
+import random
 import argparse
 import torchvision
 import numpy as np
@@ -59,7 +60,7 @@ def parsing():
     parser.add_argument('--run_index', default=0, type=int, help='run index')
     parser.add_argument('--one_class_idx', default=None, type=int, help='select one class index')
     parser.add_argument('--auc_cal', action="store_true", help='check if auc calculate')
-    parser.add_argument('--tail', action="store_true", help='using tail data as negative')
+    parser.add_argument('--tail', default=None, type=float, help='using tail data as negative')
     
     args = parser.parse_args()
 
@@ -123,6 +124,7 @@ def train_one_class(train_loader, positives, negetives, shuffle_loader, net, tra
         loss = loss_contrastive
         
         epoch_loss['loss'].append(loss.item())
+        epoch_loss['contrastive'].append(loss.item())
 
         train_global_iter += 1
         writer.add_scalar("Train/loss", loss.item(), train_global_iter)
@@ -274,7 +276,13 @@ def load_model(args):
     if args.model_path:
         model.load_state_dict(torch.load(args.model_path))
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_update_rate, gamma=args.lr_gamma)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_update_rate, gamma=args.lr_gamma)
+    
+    milestones = [3, 7, 13]  # Epochs at which to decrease learning rate
+    gamma = 0.1  # Factor by which to decrease learning rate at milestones
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
+
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
     criterion = torch.nn.CrossEntropyLoss().to(args.device)
 
 
@@ -309,13 +317,18 @@ def evaluation(model, save_path, cifar10_path, args):
 
 args = parsing()
 torch.manual_seed(args.seed)
+random.seed(args.seed)
+np.random.seed(args.seed)
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.deterministic = True
+
 model, criterion, optimizer, scheduler = load_model(args)
 
 cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
 train_loader, test_loader, shuffle_loader = load_cifar10(cifar10_path, one_class_idx=args.one_class_idx)
 
 print("Start Loading noises")
-train_positives, train_negetives, test_positives, test_negetives = noise_loader(one_class_idx=args.one_class_idx, tail=True)
+train_positives, train_negetives, test_positives, test_negetives = noise_loader(one_class_idx=args.one_class_idx, tail=args.tail)
 print("Loading noises finished!")
 
 if args.model_path is not None:
@@ -385,7 +398,9 @@ for epoch in range(0, args.epochs):
     if args.auc_cal and epoch % 11 == 1:
         evaluation(model, save_path, cifar10_path, args)
 
-    
+    scheduler.step()
+
+torch.save(model.state_dict(), os.path.join(save_path,'last_params.pt'))
 if args.auc_cal:
     evaluation(model, save_path, cifar10_path, args)
     exit()
