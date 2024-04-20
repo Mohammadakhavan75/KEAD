@@ -61,6 +61,7 @@ def parsing():
     parser.add_argument('--one_class_idx', default=None, type=int, help='select one class index')
     parser.add_argument('--auc_cal', action="store_true", help='check if auc calculate')
     parser.add_argument('--tail', default=None, type=float, help='using tail data as negative')
+    parser.add_argument('--temperature', default=0.5, type=float, help='using tail data as negative')
     
     args = parser.parse_args()
 
@@ -116,9 +117,11 @@ def train_one_class(train_loader, positives, negetives, shuffle_loader, net, tra
         
         # Calculate loss contrastive for layer
         loss_contrastive = 0
-        for norm_f, pos_f, neg_f, sl_f in zip(normal_features, positive_features, negative_features, positive_noraml_features):
+        # for norm_f, pos_f, neg_f, sl_f in zip(normal_features, positive_features, negative_features, positive_noraml_features):
+        for norm_f, pos_f, sl_f in zip(normal_features, positive_features, positive_noraml_features):
             pos_sl_f = torch.stack([pos_f, sl_f])
-            loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_sl_f, neg_f))
+            loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_sl_f, negative_features, temperature=args.temperature))
+            # loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_f, sl_f, temperature=args.temperature))
 
         # loss_ce = criterion(preds, labels)
         loss = loss_contrastive
@@ -172,7 +175,7 @@ def test_one_class(eval_loader, positives, negetives, net, global_eval_iter, cri
             # Calculate loss contrastive for layer
             loss_contrastive = 0
             for norm_f, pos_f, neg_f in zip(normal_features[-1], positive_features[-1], negative_features[-1]):
-                loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_f, neg_f))
+                loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_f, neg_f, temperature=args.temperature))
 
             # loss_ce = criterion(preds, labels)
 
@@ -278,7 +281,7 @@ def load_model(args):
 
     # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_update_rate, gamma=args.lr_gamma)
     
-    milestones = [3, 7, 13]  # Epochs at which to decrease learning rate
+    milestones = [3, 7, 13, 30, 70]  # Epochs at which to decrease learning rate
     gamma = 0.1  # Factor by which to decrease learning rate at milestones
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
 
@@ -336,7 +339,7 @@ if args.model_path is not None:
     model_save_path = save_path + 'models/'
 else:
     addr = datetime.today().strftime('%Y-%m-%d-%H-%M-%S-%f')
-    save_path = f'./run/exp-' + addr + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + f'_{args.optimizer}' + f'_{args.lamb}' + f'_one_class_idx_{args.one_class_idx}' + f'_tail_{args.tail}' + '/'
+    save_path = f'./run/exp-' + addr + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + f'_{args.optimizer}' + f'_epochs_{args.epochs}' + f'_one_class_idx_{args.one_class_idx}' + f'_temprature_{args.temperature}' + f'_tail_{args.tail}' + '/'
     model_save_path = save_path + 'models/'
     if not os.path.exists(model_save_path):
         os.makedirs(model_save_path, exist_ok=True)
