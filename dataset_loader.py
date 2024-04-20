@@ -42,7 +42,7 @@ def get_subclass_dataset(dataset, classes):
     return dataset
 
 
-def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail=None):
+def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positive=None, tail_negative=None):
     
     np_train_target_path = '/storage/users/makhavan/CSI/finals/datasets/data_aug/CorCIFAR10_train/labels.npy'
     np_test_target_path = '/storage/users/makhavan/CSI/finals/datasets/data_aug/CorCIFAR10_test/labels.npy'
@@ -90,14 +90,29 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail=None):
         test_dataset_positives_one_class = get_subclass_dataset(test_positives_datasets[one_class_idx], one_class_idx)
         test_dataset_negetives_one_class = get_subclass_dataset(test_negetives_datasets[one_class_idx], one_class_idx)
         
-        if tail:
+        if tail_positive:
+            print(f"Loading positive with tail {tail_positive}")
+            with open(f'./clip_vec/tensors/diffs_{list(clip_probs[one_class_idx].keys())[0]}.pkl', 'rb') as file:
+                diffs = pickle.load(file)
+                
+                i = one_class_idx
+                class_diff = diffs[i*5000:i*5000 + 5000] / np.max(diffs[i*5000:i*5000 + 5000])
+                class_diff_normalized = (class_diff - np.mean(class_diff)) / np.std(class_diff)
+                idices = [i for i, element in enumerate(class_diff_normalized) if element  < np.percentile(class_diff_normalized, tail_positive)]
+
+            train_dataset_positives_one_class = Subset(train_dataset_positives_one_class, idices)
+
+
+
+        if tail_negative:
+            print(f"Loading negatives with tail {tail_negative}")
             with open(f'./clip_vec/tensors/diffs_{list(clip_probs[one_class_idx].keys())[-1]}.pkl', 'rb') as file:
                 diffs = pickle.load(file)
                 
                 i = one_class_idx
                 class_diff = diffs[i*5000:i*5000 + 5000] / np.max(diffs[i*5000:i*5000 + 5000])
                 class_diff_normalized = (class_diff - np.mean(class_diff)) / np.std(class_diff)
-                idices = [i for i, element in enumerate(class_diff_normalized) if element  > np.percentile(class_diff_normalized, tail)]
+                idices = [i for i, element in enumerate(class_diff_normalized) if element  > np.percentile(class_diff_normalized, tail_negative)]
 
             train_dataset_negetives_one_class = Subset(train_dataset_negetives_one_class, idices)
 
