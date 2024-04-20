@@ -60,7 +60,7 @@ def parsing():
     parser.add_argument('--run_index', default=0, type=int, help='run index')
     parser.add_argument('--one_class_idx', default=None, type=int, help='run index')
     parser.add_argument('--auc_cal', default=0, type=int, help='run index')
-    parser.add_argument('--noise', default='snow', type=str, help='noise')
+    parser.add_argument('--noise', default=None, type=str, help='noise')
     parser.add_argument('--csv', action="store_true", help='noise')
     parser.add_argument('--score', default='mahal', type=str, help='noise')
     
@@ -300,10 +300,15 @@ in_distance = evaluator(model, eval_in, mean, inv_covariance, args)
 
 print(f"Original distance: {in_distance}")
 
-test_dataset_noise = noise_loading(args.noise)
+if args.noise:
+    test_dataset_noise = noise_loading(args.noise)
+    
 resutls = {}
 for id in range(10):
-    eval_out_data = get_subclass_dataset(test_dataset_noise, id)
+    if args.noise:
+        eval_out_data = get_subclass_dataset(test_dataset_noise, id)
+    else:
+        eval_out_data = get_subclass_dataset(test_data, id)
     eval_out = DataLoader(eval_out_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
 
     m_distance = evaluator(model, eval_out, mean, inv_covariance, args)
