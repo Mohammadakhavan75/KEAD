@@ -12,7 +12,7 @@ from cifar10.model import ResNet18, ResNet34, ResNet50
 # from cifar10.models.resnet import ResNet18, ResNet34, ResNet50
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, roc_auc_score
-
+from contrastive import cosine_similarity
 
 from dataset_loader import noise_loader, load_cifar10
 
@@ -61,6 +61,8 @@ def parsing():
     parser.add_argument('--one_class_idx', default=None, type=int, help='run index')
     parser.add_argument('--auc_cal', default=0, type=int, help='run index')
     parser.add_argument('--noise', default='snow', type=str, help='noise')
+    parser.add_argument('--csv', action="store_true", help='noise')
+    parser.add_argument('--score', default='mahal', type=str, help='noise')
     
     args = parser.parse_args()
 
@@ -165,10 +167,12 @@ def mahalanobis_parameters(loader_in, net, args):
     features = torch.cat(features, dim=0)
     mean = torch.mean(features, dim=0)
     
-    for feature in features:
-        feature[feature==0] += 1e-12 # To preventing zero for torch.linalg.inv
-
-    inv_covariance = torch.linalg.inv(torch.cov(features.t()))
+    # for feature in features:
+    #     feature[feature==0] += 1e-12 # To preventing zero for torch.linalg.inv
+    cov = torch.cov(features.t())
+    cov += 1e-12 * torch.eye(cov.shape[0]).to(args.device)
+    # inv_covariance = torch.linalg.inv(torch.cov(features.t()))
+    inv_covariance = torch.linalg.inv(cov)
 
     return mean, inv_covariance, features
 
@@ -177,7 +181,7 @@ def mahalanobis_distance(x, mu, inv_cov):
 
   centered_x = x - mu
 
-  mahalanobis_dist = torch.sqrt(torch.matmul(torch.matmul(centered_x.unsqueeze(0), inv_cov), centered_x))
+  mahalanobis_dist = torch.sqrt(torch.clamp(torch.matmul(torch.matmul(centered_x.unsqueeze(0), inv_cov), centered_x), min=0))
 
   return mahalanobis_dist
 
@@ -215,6 +219,31 @@ def evaluator(model, eval_out, mean, inv_covariance, args):
         out_dist.append(mahalanobis_distance(out_feature, mean, inv_covariance))
 
     return torch.mean(torch.tensor(out_dist))
+
+
+def in_similarity(loader_in, net, args):
+    print("Calculating mahalanobis parameters...")
+    net = net.to(args.device)
+    net.eval()  # enter train mode
+    
+    features = []
+    with torch.no_grad():
+        for data_in in loader_in:
+            inputs_in, _ = data_in
+            
+            inputs = inputs_in.to(args.device)
+
+            _, normal_features = net(inputs, True)            
+            # features.append(normal_features['penultimate'])
+            features.append(normal_features[-1])
+    
+    features = torch.cat(features, dim=0)
+    similarity = torch.zeros((features.shape[0], features.shape[0])).to(args.device)
+    for i, f1 in enumerate(features):
+        for j, f2 in enumerate(features):
+            similarity[i,j] = cosine_similarity(f1, f2)
+    
+    return similarity
 
 
 from dataset_loader import load_np_dataset
@@ -261,10 +290,15 @@ idxes.pop(args.one_class_idx)
 eval_in_data = get_subclass_dataset(test_data, args.one_class_idx)
 
 eval_in = DataLoader(eval_in_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
-mean, inv_covariance, in_features = mahalanobis_parameters(eval_in, model, args)
+
+if args.score == 'mahal':
+    mean, inv_covariance, in_features = mahalanobis_parameters(eval_in, model, args)
+if args.score == 'cosine':
+    pass
 
 in_distance = evaluator(model, eval_in, mean, inv_covariance, args)
 
+print(f"Original distance: {in_distance}")
 
 test_dataset_noise = noise_loading(args.noise)
 resutls = {}
@@ -274,15 +308,16 @@ for id in range(10):
 
     m_distance = evaluator(model, eval_out, mean, inv_covariance, args)
 
-    resutls[id]=(in_distance - m_distance).detach().cpu().numpy()
-    print(f"Evaluation distance on class {id}: {m_distance}, diff: {in_distance - m_distance}")
+    resutls[id]=(m_distance - in_distance).detach().cpu().numpy()
+    print(f"Evaluation distance on class {id}: {m_distance}, diff: {m_distance - in_distance}")
 
-import pandas as pd
-df = pd.DataFrame(resutls, index=[0])
+if args.csv:
+    import pandas as pd
+    df = pd.DataFrame(resutls, index=[0])
 
-# Save DataFrame as CSV file
-save_path = f'./csv_results/report_class_{args.one_class_idx}/'
-if not os.path.exists(save_path):
-    os.makedirs(save_path, exist_ok=True)
+    # Save DataFrame as CSV file
+    save_path = f'./csv_results/report_class_{args.one_class_idx}/'
+    if not os.path.exists(save_path):
+        os.makedirs(save_path, exist_ok=True)
 
-df.to_csv(save_path+f"{args.noise}.csv", index=False) 
+    df.to_csv(save_path+f"{args.noise}.csv", index=False) 
