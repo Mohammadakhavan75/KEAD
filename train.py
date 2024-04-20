@@ -60,7 +60,8 @@ def parsing():
     parser.add_argument('--run_index', default=0, type=int, help='run index')
     parser.add_argument('--one_class_idx', default=None, type=int, help='select one class index')
     parser.add_argument('--auc_cal', action="store_true", help='check if auc calculate')
-    parser.add_argument('--tail', default=None, type=float, help='using tail data as negative')
+    parser.add_argument('--tail_positive', default=None, type=float, help='using tail data as negative')
+    parser.add_argument('--tail_negative', default=None, type=float, help='using tail data as negative')
     parser.add_argument('--temperature', default=0.5, type=float, help='using tail data as negative')
     
     args = parser.parse_args()
@@ -68,7 +69,8 @@ def parsing():
     return args
 
 
-def train_one_class(train_loader, positives, negetives, shuffle_loader, net, train_global_iter, criterion, optimizer, device, writer, stage):
+def train_one_class(train_loader, positives, negetives, shuffle_loader,
+                     net, train_global_iter, criterion, optimizer, device, writer, stage):
 
     print("Traning...")
     net = net.to(device)
@@ -86,23 +88,33 @@ def train_one_class(train_loader, positives, negetives, shuffle_loader, net, tra
         'contrastive': []
     }
     
+
     a_ = list(negetives)
     b_ = []
     for aa_ in a_:
         b_.append(aa_[0])
     negative_imgs_list = torch.concatenate(b_)
 
+    a_ = list(positives)
+    b_ = []
+    for aa_ in a_:
+        b_.append(aa_[0])
+    positives_imgs_list = torch.concatenate(b_)
+
     # for normal, ps, ns, sl in zip(train_loader, positives, negetives, shuffle_loader):
-    for normal, ps, sl in zip(train_loader, positives, shuffle_loader):
+    for normal, sl in zip(train_loader, shuffle_loader):
 
         imgs, labels = normal
-        positive_imgs, _ = ps
-        
-        negative_imgs = negative_imgs_list[torch.randint(0, len(negative_imgs_list), size=(2,))]
+        # positive_imgs, _ = ps
         # negative_imgs, _ = ns
         positive_noraml_img, _ = sl
+
+        negative_imgs = negative_imgs_list[torch.randint(0, len(negative_imgs_list), size=(2,))]
+        positive_imgs = positives_imgs_list[torch.randint(0, len(positives_imgs_list), size=(1,))]
+
         imgs, labels = imgs.to(args.device), labels.to(args.device)
-        positive_imgs, negative_imgs, positive_noraml_img = positive_imgs.to(args.device), negative_imgs.to(args.device), positive_noraml_img.to(args.device)
+        positive_imgs, negative_imgs, positive_noraml_img = \
+            positive_imgs.to(args.device), negative_imgs.to(args.device), positive_noraml_img.to(args.device)
 
         optimizer.zero_grad()
         _, normal_features = model(imgs, True)
@@ -118,9 +130,11 @@ def train_one_class(train_loader, positives, negetives, shuffle_loader, net, tra
         # Calculate loss contrastive for layer
         loss_contrastive = 0
         # for norm_f, pos_f, neg_f, sl_f in zip(normal_features, positive_features, negative_features, positive_noraml_features):
-        for norm_f, pos_f, sl_f in zip(normal_features, positive_features, positive_noraml_features):
-            pos_sl_f = torch.stack([pos_f, sl_f])
-            loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_sl_f, negative_features, temperature=args.temperature))
+        for norm_f, sl_f in zip(normal_features, positive_noraml_features):
+            pos_sl_f = torch.stack([positive_features[0], sl_f])
+            # pos_sl_f = torch.stack([pos_f, sl_f])
+            loss_contrastive = loss_contrastive + torch.sum(contrastive(
+                norm_f, pos_sl_f, negative_features, temperature=args.temperature))
             # loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_f, sl_f, temperature=args.temperature))
 
         # loss_ce = criterion(preds, labels)
@@ -262,7 +276,6 @@ def eval_auc_one_class(eval_in, eval_out, net, global_eval_iter, criterion, devi
     return epoch_loss, epoch_accuracies
 
 
-
 def load_model(args):
 
     # model = torchvision.models.resnet34()
@@ -318,6 +331,7 @@ def evaluation(model, save_path, cifar10_path, args):
 
     print(f"Evaluation_Results/avg_loss: {np.mean(eval_loss['loss'])}, Evaluation_Results/avg_acc: {np.mean(eval_acc['acc'])}, Results/avg_auc: {np.mean(eval_acc['auc'])}")
 
+
 args = parsing()
 torch.manual_seed(args.seed)
 random.seed(args.seed)
@@ -331,7 +345,8 @@ cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
 train_loader, test_loader, shuffle_loader = load_cifar10(cifar10_path, one_class_idx=args.one_class_idx)
 
 print("Start Loading noises")
-train_positives, train_negetives, test_positives, test_negetives = noise_loader(one_class_idx=args.one_class_idx, tail=args.tail)
+train_positives, train_negetives, test_positives, test_negetives = \
+    noise_loader(one_class_idx=args.one_class_idx, tail_negative=args.tail_negative, tail_positive=args.tail_positive)
 print("Loading noises finished!")
 
 if args.model_path is not None:
@@ -339,7 +354,9 @@ if args.model_path is not None:
     model_save_path = save_path + 'models/'
 else:
     addr = datetime.today().strftime('%Y-%m-%d-%H-%M-%S-%f')
-    save_path = f'./run/exp-' + addr + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + f'_{args.optimizer}' + f'_epochs_{args.epochs}' + f'_one_class_idx_{args.one_class_idx}' + f'_temprature_{args.temperature}' + f'_tail_{args.tail}' + '/'
+    save_path = f'./run/exp-' + addr + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + \
+    f'_{args.optimizer}' + f'_epochs_{args.epochs}' + f'_one_class_idx_{args.one_class_idx}' + \
+        f'_temprature_{args.temperature}' + f'_tailpos_{args.tail_positive}' + f'_tailneg_{args.tail_negative}' + '/'
     model_save_path = save_path + 'models/'
     if not os.path.exists(model_save_path):
         os.makedirs(model_save_path, exist_ok=True)
