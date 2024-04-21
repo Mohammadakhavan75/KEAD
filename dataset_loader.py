@@ -135,7 +135,7 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positiv
     return train_positives, train_negetives, test_positives, test_negetives
 
 
-def load_cifar10(cifar10_path, batch_size=32, num_workers=32, one_class_idx=None):
+def load_cifar10(cifar10_path, batch_size=32, num_workers=32, one_class_idx=None, tail_normal=None):
 
     mean = [x / 255 for x in [125.3, 123.0, 113.9]]
     std = [x / 255 for x in [63.0, 62.1, 66.7]]
@@ -154,6 +154,17 @@ def load_cifar10(cifar10_path, batch_size=32, num_workers=32, one_class_idx=None
 
     train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
     val_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
-    normal_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+    if tail_normal:
+        print(f"Loading normal_shuffler with tail {tail_normal}")
+        with open(f'./clip_vec/tensors/normal_data.pkl', 'rb') as file:
+            diffs = pickle.load(file)            
+            i = one_class_idx
+            class_diff = diffs[i*5000:i*5000 + 5000] / np.max(diffs[i*5000:i*5000 + 5000])
+            class_diff_normalized = (class_diff - np.mean(class_diff)) / np.std(class_diff)
+            idices = [i for i, element in enumerate(class_diff_normalized) if element  < np.percentile(class_diff_normalized, tail_normal)]
+            normal_data = Subset(train_data, idices)
+            normal_loader = DataLoader(normal_data, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+    else:
+        normal_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=num_workers)
     return train_loader, val_loader, normal_loader
 
