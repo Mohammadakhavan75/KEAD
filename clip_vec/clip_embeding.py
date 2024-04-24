@@ -5,7 +5,7 @@ import torch
 from PIL import Image
 from torchvision import transforms
 from clip import clip
-from torchvision.datasets import CIFAR10
+from torchvision.datasets import CIFAR10, SVHN
 from torch.utils.data import DataLoader
 import numpy as np
 import PIL
@@ -44,6 +44,8 @@ def parsing():
                         default=0, help='number of workers')
     parser.add_argument('--transform', type=int, 
                         default=0, help='use transformation dataset')
+    parser.add_argument('--dataset', type=str, 
+                        default='cifar10', help='cifar10-cifar100-svhn')
 
     args = parser.parse_args()
     return args
@@ -55,23 +57,39 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 model, transform = clip.load("ViT-B/32", device=device)
 
 
-cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
-cifar10_dataset = CIFAR10(root=cifar10_path, train=True, download=True, transform=transform)
+if args.dataset == 'cifar10':
+    cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
+    noraml_dataset = CIFAR10(root=cifar10_path, train=True, download=True, transform=transform)
+    if args.transform:
+        cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-A/{args.aug}.npy'
+        cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-A/labels-A.npy'
+    else:
+        cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-C/{args.aug}.npy'
+        cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-C/labels-C.npy'
 
-if args.transform:
-    cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-A/{args.aug}.npy'
-    cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-A/labels-A.npy'
-    train_aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
+    aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
+
+elif args.dataset == 'svhn':
+    svhn_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
+    noraml_dataset = SVHN(root=svhn_path, split="train", transform=transform)
+    if args.transform:
+        svhn_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN-R-A/{args.aug}.npy'
+        svhn_train_cor_target_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN-R-A/labels-A.npy'
+    else:
+        svhn_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN-R-C/{args.aug}.npy'
+        svhn_train_cor_target_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN-R-C/labels-C.npy'
+
+    aug_dataset = load_np_dataset(svhn_train_cor_img_path, svhn_train_cor_target_path, transform=transform)
+
 else:
-    cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-C/{args.aug}.npy'
-    cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-C/labels-C.npy'
-    train_aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
-
-cifar10_loader = DataLoader(cifar10_dataset, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
-aug_loader = DataLoader(train_aug_dataset, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+    raise NotImplemented(f"Not Available Dataset {args.dataset}!")
 
 
-loader = zip(cifar10_loader, aug_loader)
+normal_loader = DataLoader(noraml_dataset, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+aug_loader = DataLoader(aug_dataset, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+
+
+loader = zip(normal_loader, aug_loader)
 diffs = []
 targets_list = []
 for i, data in enumerate(tqdm(loader)):
@@ -96,9 +114,9 @@ for i, data in enumerate(tqdm(loader)):
 
 diffs = np.asarray(diffs)
 targets_list = np.asarray(targets_list)
-with open(f'./tensors/diffs_{args.aug}.pkl', 'wb') as f:
+with open(f'./tensors/{args.dataset}_diffs_{args.aug}.pkl', 'wb') as f:
     pickle.dump(diffs, f)
-with open(f'./tensors/diffs_target_{args.aug}.pkl', 'wb') as f:
+with open(f'./tensors/{args.dataset}_diffs_target_{args.aug}.pkl', 'wb') as f:
     pickle.dump(targets_list, f)
 
 
@@ -110,8 +128,8 @@ for i in range(10):
 vals_softmax=[]
 for i in range(10):
     vals = torch.tensor(np.mean(g[i*5000:(i+1)*5000]))
-    vals_softmax.append(torch.nn.functional.softmax(vals).detach().cpu().numpy())
+    vals_softmax.append(torch.nn.functional.softmax(vals.float()).detach().cpu().numpy())
 
-with open(f'./softmax/{args.aug}.out', 'w') as file:
+with open(f'./softmax/{args.dataset}_{args.aug}.out', 'w') as file:
     for val in vals_softmax:
         file.write(str(val)+'\n')
