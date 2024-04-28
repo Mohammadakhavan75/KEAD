@@ -14,7 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, roc_auc_score
 
 
-from dataset_loader import noise_loader, load_cifar10
+from dataset_loader import noise_loader, load_cifar10, load_svhn
 
 def to_np(x):
     return x.data.cpu().numpy()
@@ -55,9 +55,10 @@ def parsing():
     parser.add_argument('--momentum', type=float, default=0.9, help='Momentum.')
     parser.add_argument('--decay', '-d', type=float,
                         default=0.0005, help='Weight decay (L2 penalty).')
-    
 
     parser.add_argument('--run_index', default=0, type=int, help='run index')
+
+    parser.add_argument('--dataset', default='cifar10', type=str, help='cifar10-cifar100-svhn')
     parser.add_argument('--one_class_idx', default=None, type=int, help='select one class index')
     parser.add_argument('--auc_cal', action="store_true", help='check if auc calculate')
     parser.add_argument('--tail_positive', default=None, type=float, help='using tail data as positive')
@@ -350,12 +351,21 @@ torch.backends.cudnn.deterministic = True
 
 model, criterion, optimizer, scheduler = load_model(args)
 
-cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
-train_loader, test_loader, shuffle_loader = load_cifar10(cifar10_path, one_class_idx=args.one_class_idx, tail_normal=args.tail_normal)
+if args.dataset == 'cifar10':
+    cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
+    train_loader, test_loader, shuffle_loader = load_cifar10(cifar10_path, 
+                                                             one_class_idx=args.one_class_idx, 
+                                                             tail_normal=args.tail_normal)
+elif args.dataset == 'svhn':
+    svhn_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
+    train_loader, test_loader, shuffle_loader = load_svhn(svhn_path, 
+                                                          one_class_idx=args.one_class_idx, 
+                                                          tail_normal=args.tail_normal)
 
 print("Start Loading noises")
 train_positives, train_negetives, test_positives, test_negetives = \
-    noise_loader(one_class_idx=args.one_class_idx, tail_negative=args.tail_negative, tail_positive=args.tail_positive)
+    noise_loader(one_class_idx=args.one_class_idx, tail_negative=args.tail_negative,
+                  tail_positive=args.tail_positive, dataset=args.dataset)
 print("Loading noises finished!")
 
 if args.model_path is not None:
@@ -363,12 +373,19 @@ if args.model_path is not None:
     model_save_path = save_path + 'models/'
 else:
     addr = datetime.today().strftime('%Y-%m-%d-%H-%M-%S-%f')
-    save_path = f'./run/exp-' + addr + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + \
+    save_path = f'./run/exp-' + f'_{args.dataset}' + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + \
     f'_{args.optimizer}' + f'_epochs_{args.epochs}' + f'_one_class_idx_{args.one_class_idx}' + \
         f'_temprature_{args.temperature}' + f'_tailpos_{str(args.tail_positive)}' + f'_tailneg_{str(args.tail_negative)}' + \
             f'_tailnorm_{str(args.tail_normal)}' + '/'
     model_save_path = save_path + 'models/'
     if not os.path.exists(model_save_path):
+        os.makedirs(model_save_path, exist_ok=True)
+    else:
+        save_path = f'./run/exp-' + addr + f'_{args.dataset}' + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + \
+        f'_{args.optimizer}' + f'_epochs_{args.epochs}' + f'_one_class_idx_{args.one_class_idx}' + \
+            f'_temprature_{args.temperature}' + f'_tailpos_{str(args.tail_positive)}' + f'_tailneg_{str(args.tail_negative)}' + \
+                f'_tailnorm_{str(args.tail_normal)}' + '/'
+        model_save_path = save_path + 'models/'
         os.makedirs(model_save_path, exist_ok=True)
 
 writer = SummaryWriter(save_path)
