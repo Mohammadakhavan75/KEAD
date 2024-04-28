@@ -61,11 +61,11 @@ if args.dataset == 'cifar10':
     cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
     noraml_dataset = CIFAR10(root=cifar10_path, train=True, download=True, transform=transform)
     if args.transform:
-        cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-A/{args.aug}.npy'
-        cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-A/labels-A.npy'
+        cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/manual/CIFAR-10-Train-R-A/{args.aug}.npy'
+        cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/manual/CIFAR-10-Train-R-A/labels-A.npy'
     else:
-        cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-C/{args.aug}.npy'
-        cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR-10-Train-R-C/labels-C.npy'
+        cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/manual/CIFAR-10-Train-R-C/{args.aug}.npy'
+        cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/manual/CIFAR-10-Train-R-C/labels-C.npy'
 
     aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
 
@@ -73,11 +73,11 @@ elif args.dataset == 'svhn':
     svhn_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
     noraml_dataset = SVHN(root=svhn_path, split="train", transform=transform)
     if args.transform:
-        svhn_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN-R-A/{args.aug}.npy'
-        svhn_train_cor_target_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN-R-A/labels-A.npy'
+        svhn_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/manual/SVHN-Train-R-A/{args.aug}.npy'
+        svhn_train_cor_target_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/manual/SVHN-Train-R-A/labels-A.npy'
     else:
-        svhn_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN-R-C/{args.aug}.npy'
-        svhn_train_cor_target_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN-R-C/labels-C.npy'
+        svhn_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/manual/SVHN-Train-R-C/{args.aug}.npy'
+        svhn_train_cor_target_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/manual/SVHN-Train-R-C/labels-C.npy'
 
     aug_dataset = load_np_dataset(svhn_train_cor_img_path, svhn_train_cor_target_path, transform=transform)
 
@@ -102,14 +102,14 @@ for i, data in enumerate(tqdm(loader)):
         imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
         imgs_n_features = model.encode_image(imgs_n)
         imgs_aug_features = model.encode_image(imgs_aug)
-        diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).detach().cpu().numpy())
+        diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
         targets_list.extend(targets.detach().cpu().numpy())
         break
 
     imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
     imgs_n_features = model.encode_image(imgs_n)
     imgs_aug_features = model.encode_image(imgs_aug)
-    diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).detach().cpu().numpy())
+    diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
     targets_list.extend(targets.detach().cpu().numpy())
 
 diffs = np.asarray(diffs)
@@ -120,16 +120,18 @@ with open(f'./tensors/{args.dataset}_diffs_target_{args.aug}.pkl', 'wb') as f:
     pickle.dump(targets_list, f)
 
 
-t, g = zip(*sorted(zip(targets_list, diffs)))
-for i in range(10):
-    print(f"class {i}: {np.mean(g[i*5000:(i+1)*5000])}")
+# t, g = zip(*sorted(zip(targets_list, diffs)))
+# for i in range(10):
+#     print(f"class {i}: {np.mean(g[i*5000:(i+1)*5000])}")
 
 
-vals_softmax=[]
-for i in range(10):
-    vals = torch.tensor(np.mean(g[i*5000:(i+1)*5000]))
-    vals_softmax.append(torch.nn.functional.softmax(vals.float()).detach().cpu().numpy())
+# vals = []
+# vals_softmax = []
+# for i in range(10):
+#     vals.append(torch.tensor(np.mean(g[i*5000:(i+1)*5000])).float())
 
-with open(f'./softmax/{args.dataset}_{args.aug}.out', 'w') as file:
-    for val in vals_softmax:
-        file.write(str(val)+'\n')
+# vals_softmax = torch.nn.functional.softmax(torch.tensor(vals)).detach().cpu().numpy()
+
+# with open(f'./softmax/{args.dataset}_{args.aug}.out', 'w') as file:
+#     for val in vals_softmax:
+#         file.write(str(val)+'\n')
