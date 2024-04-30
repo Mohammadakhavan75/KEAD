@@ -162,7 +162,7 @@ def get_subclass_dataset(dataset, classes):
     return dataset
 
 
-def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positive=None, tail_negative=None, dataset='cifar10'):
+def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positive=None, tail_negative=None, dataset='cifar10', preprocessing='clip'):
 
     if dataset == 'cifar10':
         np_train_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Train_AC/labels_train.npy'
@@ -179,12 +179,17 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positiv
     mean = [x / 255 for x in [125.3, 123.0, 113.9]]
     std = [x / 255 for x in [63.0, 62.1, 66.7]]
 
-    train_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
-    test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    # train_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    # test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    train_transform = transforms.Compose([transforms.ToTensor()])
+    test_transform = transforms.Compose([transforms.ToTensor()])
 
-
-    with open(f'./{dataset}_softmaxed.pkl', 'rb') as file:
-        clip_probs = pickle.load(file)
+    if preprocessing == 'clip':
+        with open(f'./{dataset}_softmaxed.pkl', 'rb') as file:
+            clip_probs = pickle.load(file)
+    elif preprocessing == 'cosine':
+        with open(f'./{dataset}_cosine_softmaxed.pkl', 'rb') as file:
+            clip_probs = pickle.load(file)
 
     print("Creating noises loader")
     train_positives_datasets = []
@@ -194,6 +199,7 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positiv
     for i in range(10):
         # creating positive noise loader
         noise = list(clip_probs[i].keys())[0]
+        print(f"Selecting {noise} for positive pair for class {i}")
         np_train_img_path = np_train_root_path + noise + '.npy'
         train_positives_datasets.append(load_np_dataset(np_train_img_path, np_train_target_path, train_transform, train=True))
 
@@ -202,6 +208,7 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positiv
 
         # creating negative noise loader
         noise = list(clip_probs[i].keys())[-1]
+        print(f"Selecting {noise} for negetive pair for class {i}")
         np_train_img_path = np_train_root_path + noise + '.npy'
         train_negetives_datasets.append(load_np_dataset(np_train_img_path, np_train_target_path, train_transform, train=True))
 
@@ -218,12 +225,24 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positiv
         
         if tail_positive:
             print(f"Loading positive with tail {tail_positive}")
-            with open(f'./clip_vec/tensors/{dataset}_diffs_{list(clip_probs[one_class_idx].keys())[0]}.pkl', 'rb') as file:
-                diffs = pickle.load(file)
-                
-                class_diff = diffs[one_class_idx*5000:one_class_idx*5000 + 5000] / np.max(diffs[one_class_idx*5000:one_class_idx*5000 + 5000])
-                class_diff_normalized = (class_diff - np.mean(class_diff)) / np.std(class_diff)
-                idices = [j for j, element in enumerate(class_diff_normalized) if element  < np.percentile(class_diff_normalized, tail_positive)]
+            
+            
+            if preprocessing == 'clip':
+                target_list = np.load(np_train_target_path)
+                indices = [k for k in range(len(target_list)) if target_list[k]==one_class_idx]
+                with open(f'./clip_vec/tensors/{dataset}_diffs_{list(clip_probs[one_class_idx].keys())[0]}.pkl', 'rb') as file:
+                    diffs = pickle.load(file)
+                diffs_vals = [diffs[idx] for idx in indices]
+
+            elif preprocessing == 'cosine':
+                with open(f'./{dataset}_cosine_totals.pkl', 'rb') as file:
+                    diffs = pickle.load(file)
+                    diffs_vals = diffs[one_class_idx][list(clip_probs[one_class_idx].keys())[0]]
+
+            
+            class_diff = diffs_vals / np.max(diffs_vals)
+            class_diff_normalized = (class_diff - np.mean(class_diff)) / np.std(class_diff)
+            idices = [j for j, element in enumerate(class_diff_normalized) if element  < np.percentile(class_diff_normalized, tail_positive)]
 
             train_dataset_positives_one_class = Subset(train_dataset_positives_one_class, idices)
 
@@ -231,12 +250,22 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positiv
 
         if tail_negative:
             print(f"Loading negatives with tail {tail_negative}")
-            with open(f'./clip_vec/tensors/{dataset}_diffs_{list(clip_probs[one_class_idx].keys())[-1]}.pkl', 'rb') as file:
-                diffs = pickle.load(file)
-                
-                class_diff = diffs[one_class_idx*5000:one_class_idx*5000 + 5000] / np.max(diffs[one_class_idx*5000:one_class_idx*5000 + 5000])
-                class_diff_normalized = (class_diff - np.mean(class_diff)) / np.std(class_diff)
-                idices = [j for j, element in enumerate(class_diff_normalized) if element  > np.percentile(class_diff_normalized, tail_negative)]
+            if preprocessing == 'clip':
+                target_list = np.load(np_train_target_path)
+                indices = [k for k in range(len(target_list)) if target_list[k]==one_class_idx]
+                with open(f'./clip_vec/tensors/{dataset}_diffs_{list(clip_probs[one_class_idx].keys())[-1]}.pkl', 'rb') as file:
+                    diffs = pickle.load(file)
+                diffs_vals = [diffs[idx] for idx in indices]
+
+            elif preprocessing == 'cosine':
+                with open(f'./{dataset}_cosine_totals.pkl', 'rb') as file:
+                    diffs = pickle.load(file)
+                    diffs_vals = diffs[one_class_idx][list(clip_probs[one_class_idx].keys())[-1]]
+                    
+            
+            class_diff = diffs_vals / np.max(diffs_vals)
+            class_diff_normalized = (class_diff - np.mean(class_diff)) / np.std(class_diff)
+            idices = [j for j, element in enumerate(class_diff_normalized) if element  > np.percentile(class_diff_normalized, tail_negative)]
 
             train_dataset_negetives_one_class = Subset(train_dataset_negetives_one_class, idices)
 
@@ -264,8 +293,10 @@ def load_cifar10(cifar10_path, batch_size=32, num_workers=32, one_class_idx=None
     mean = [x / 255 for x in [125.3, 123.0, 113.9]]
     std = [x / 255 for x in [63.0, 62.1, 66.7]]
 
-    train_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
-    test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    # train_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    # test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    train_transform = transforms.Compose([transforms.ToTensor()])
+    test_transform = transforms.Compose([transforms.ToTensor()])
 
     train_data = torchvision.datasets.CIFAR10(
         cifar10_path, train=True, transform=train_transform, download=True)
@@ -299,7 +330,8 @@ def load_svhn(svhn_path, batch_size=32, num_workers=32, one_class_idx=None, tail
 
     mean = [x / 255 for x in [125.3, 123.0, 113.9]]
     std = [x / 255 for x in [63.0, 62.1, 66.7]]
-    transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    # transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    transform = transforms.Compose([transforms.ToTensor()])
     print('loading SVHN')
     train_data = SVHN(root=svhn_path, split="train", transform=transform)
 
