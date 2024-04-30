@@ -3,18 +3,16 @@ import torch
 import argparse
 import torchvision
 import numpy as np
-from tqdm import tqdm
-from contrastive import contrastive
-from datetime import datetime
 from torch.utils.data import DataLoader
+from contrastive import cosine_similarity
+from dataset_loader import load_np_dataset
 from torchvision.transforms import transforms
+from dataset_loader import SVHN, get_subclass_dataset
 from cifar10.model import ResNet18, ResNet34, ResNet50
 # from cifar10.models.resnet import ResNet18, ResNet34, ResNet50
-from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, roc_auc_score
-from contrastive import cosine_similarity
 
-from dataset_loader import noise_loader, load_cifar10
+
 
 def to_np(x):
     return x.data.cpu().numpy()
@@ -56,71 +54,68 @@ def parsing():
     parser.add_argument('--decay', '-d', type=float,
                         default=0.0005, help='Weight decay (L2 penalty).')
     
-
+    parser.add_argument('--dataset', default='cifar10', type=str, help='run index')
     parser.add_argument('--run_index', default=0, type=int, help='run index')
     parser.add_argument('--one_class_idx', default=None, type=int, help='run index')
     parser.add_argument('--auc_cal', default=0, type=int, help='run index')
     parser.add_argument('--noise', default=None, type=str, help='noise')
     parser.add_argument('--csv', action="store_true", help='noise')
     parser.add_argument('--score', default='mahal', type=str, help='noise')
+    parser.add_argument('--thresh', default=0, type=int, help='noise')
+    parser.add_argument('--svm_model', default=None, help='noise')
     
     args = parser.parse_args()
 
     return args
 
 
+def eval_auc_one_class(eval_in, eval_out, mahal_thresh, net, args):
 
-def eval_auc_one_class(eval_in, eval_out, net, global_eval_iter, criterion, device):
-
-    print("Evaluating...")
-    net = net.to(device)
+    # print("Evaluating...")
+    net = net.to(args.device)
     net.eval()  # enter train mode
 
-    # track train classification accuracy
-    epoch_accuracies = {
-        'acc': [],
-        'auc': [],
-    }
-    epoch_loss = {
-        'loss': [],
-    }
+    pred_in = []
+    pred_out = []
+    targets_in_list = []
+    targets_out_list = []
+    in_features_list = []
+    out_features_list = []
     with torch.no_grad():
-        for data_in, data_out in zip(eval_in, eval_out):
-            
+        for data_in, data_out in zip(eval_in, eval_out):       
             inputs_in, targets_in = data_in
-            targets_in_auc = [1 for _ in targets_in]
-            targets_in_auc = torch.tensor(targets_in_auc, dtype=torch.float32)
-
             inputs_out, targets_out = data_out
-            targets_out_auc = [0 for _ in targets_out]
-            targets_out_auc = torch.tensor(targets_out_auc, dtype=torch.float32)
+            targets_in_list.extend([1 for _ in range(len(targets_in))])
+            targets_out_list.extend([0 for _ in range(len(targets_out))])
+            inputs_in , inputs_out = inputs_in.to(args.device) , inputs_out.to(args.device)
 
+            preds, normal_features = net(inputs_in, True)     
+            preds, out_features = net(inputs_out, True)     
             
-            inputs_ = torch.cat((inputs_in, inputs_out), dim=0)
-            targets_auc_ = torch.cat((targets_in_auc, targets_out_auc), dim=0)
-            targets_ = torch.cat((targets_in, targets_out), dim=0)
-            random_indices = torch.randperm(inputs_.size(0))
-            inputs = inputs_[random_indices]
-            targets = targets_[random_indices]
-            targets_auc = targets_auc_[random_indices]
+            in_features_list.append(normal_features[-1])
+            out_features_list.append(out_features[-1])
+    
+        in_features_list = torch.cat(in_features_list, dim=0)
+        out_features_list = torch.cat(out_features_list, dim=0)
 
-            inputs , targets = inputs.to(device) , targets.to(device)
+        if args.score == 'mahal':
+            for in_feature in in_features_list:
+                pred_in.append(mahalanobis_distance(in_feature, mean, inv_covariance) < mahal_thresh)
+            for out_feature in out_features_list:
+                pred_out.append(not (mahalanobis_distance(out_feature, mean, inv_covariance) > mahal_thresh))
+        elif args.score == 'svm':
+            # for in_feature in in_features_list:
+            pred_in.append(torch.tensor(args.svm_model.predict(in_features_list.detach().cpu().numpy())==1))
+            # for out_feature in out_features_list:
+            pred_out.append(torch.tensor(args.svm_model.predict(out_features_list.detach().cpu().numpy())==-1))
+            pred_in = np.concatenate(pred_in)
+            pred_out = np.concatenate(pred_out)
 
-            preds, normal_features = net(inputs, True)            
+        targets = torch.cat([torch.tensor(targets_in_list), torch.tensor(targets_out_list)], dim=0)
+        preds = torch.cat([torch.tensor(pred_in), torch.tensor(pred_out)], dim=0)
+        auc = roc_auc_score(to_np(targets), to_np(preds))
 
-            loss = criterion(preds, targets)
-            
-            acc = accuracy_score(list(to_np(torch.argmax(torch.softmax(preds, dim=1), axis=1))), list(to_np(targets)))
-            auc = roc_auc_score(to_np(targets_auc), to_np(torch.argmax(torch.softmax(preds, dim=1), axis=1) == args.one_class_idx))
-
-            # Logging section
-            epoch_accuracies['acc'].append(acc)
-            epoch_accuracies['auc'].append(auc)
-            epoch_loss['loss'].append(loss.item())
-
-            global_eval_iter += 1
-
-    return global_eval_iter, epoch_loss, epoch_accuracies
+    return auc
 
 
 
@@ -142,8 +137,6 @@ def load_model(args):
 
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_update_rate, gamma=args.lr_gamma)
     criterion = torch.nn.CrossEntropyLoss().to(args.device)
-
-
 
     return model, criterion, optimizer, scheduler
 
@@ -184,22 +177,6 @@ def mahalanobis_distance(x, mu, inv_cov):
   mahalanobis_dist = torch.sqrt(torch.clamp(torch.matmul(torch.matmul(centered_x.unsqueeze(0), inv_cov), centered_x), min=0))
 
   return mahalanobis_dist
-
-
-def out_features_extractor(eval_out, model, args):
-    out_features = []
-    model = model.to(args.device)
-    for data_in in eval_out:
-        inputs_in, _ = data_in
-
-        inputs = inputs_in.to(args.device)
-        
-        preds, normal_features = model(inputs, True)  
-        out_features.append(normal_features['penultimate'])          
-        # break
-    out_features = torch.cat(out_features, dim=0)
-    
-    return out_features
 
 
 def evaluator(model, eval_out, mean, inv_covariance, args):
@@ -246,7 +223,6 @@ def in_similarity(loader_in, net, args):
     return similarity
 
 
-from dataset_loader import load_np_dataset
 def noise_loading(noise):
     np_test_target_path = '/storage/users/makhavan/CSI/finals/datasets/data_aug/CorCIFAR10_test/labels.npy'
     np_test_root_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC/'
@@ -262,60 +238,104 @@ def noise_loading(noise):
     return test_dataset_noise
 
 
+def feature_extraction(loader, net):
+    print("extracting features...")
+    net = net.to(args.device)
+    net.eval()  # enter train mode
+    
+    features = []
+    with torch.no_grad():
+        for data_in in loader:
+            inputs_in, _ = data_in
+            
+            inputs = inputs_in.to(args.device)
+
+            _, normal_features = net(inputs, True)            
+            # features.append(normal_features['penultimate'])
+            features.append(normal_features[-1])
+    
+    features = torch.cat(features, dim=0)
+    return features
 
 args = parsing()
 torch.manual_seed(args.seed)
 model, criterion, optimizer, scheduler = load_model(args)
 
-cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
-
-
+root_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
 train_global_iter = 0
 global_eval_iter = 0
 best_acc = 0.0
 best_loss = np.inf
 args.last_lr = args.learning_rate
 
-from dataset_loader import get_subclass_dataset
+
 mean = [x / 255 for x in [125.3, 123.0, 113.9]]
 std = [x / 255 for x in [63.0, 62.1, 66.7]]
 
 test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
 
-test_data = torchvision.datasets.CIFAR10(
-    cifar10_path, train=False, transform=test_transform, download=True)
+if args.dataset == 'cifar10':
+    test_data = torchvision.datasets.CIFAR10(
+        root_path, train=False, transform=test_transform, download=True)
+    train_data = torchvision.datasets.CIFAR10(
+        root_path, train=True, transform=test_transform, download=True)
+elif args.dataset == 'svhn':
+    test_data = SVHN(root=root_path, split="test", transform=test_transform)
+
 
 idxes = [i for i in range(10)]
 idxes.pop(args.one_class_idx)
+eval_in_train_data = get_subclass_dataset(train_data, args.one_class_idx)
 eval_in_data = get_subclass_dataset(test_data, args.one_class_idx)
 
+eval_in_train = DataLoader(eval_in_train_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
 eval_in = DataLoader(eval_in_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
 
 if args.score == 'mahal':
-    mean, inv_covariance, in_features = mahalanobis_parameters(eval_in, model, args)
+    mean, inv_covariance, in_features = mahalanobis_parameters(eval_in_train, model, args)
+if args.score == 'svm':
+    from sklearn.svm import OneClassSVM
+    svm_model = OneClassSVM(kernel='rbf', gamma='auto', nu=0.1)
+    features_in = feature_extraction(eval_in_train, model)
+    print("Fitting svm model")
+    svm_model.fit(features_in.detach().cpu().numpy())
+    args.svm_model = svm_model
 if args.score == 'cosine':
     pass
 
-in_distance = evaluator(model, eval_in, mean, inv_covariance, args)
+if args.score == 'mahal':
+    in_distance = evaluator(model, eval_in, mean, inv_covariance, args)
+    print(f"Original distance: {in_distance}")
+else:
+    in_distance = torch.tensor(0)
 
-print(f"Original distance: {in_distance}")
 
 if args.noise:
     test_dataset_noise = noise_loading(args.noise)
     
 resutls = {}
+aucs = []
+# resutls['OD']=in_distance.detach().cpu().numpy()
 for id in range(10):
     if args.noise:
         eval_out_data = get_subclass_dataset(test_dataset_noise, id)
     else:
         eval_out_data = get_subclass_dataset(test_data, id)
     eval_out = DataLoader(eval_out_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+    if args.score == 'mahal':
+        m_distance = evaluator(model, eval_out, mean, inv_covariance, args)
 
-    m_distance = evaluator(model, eval_out, mean, inv_covariance, args)
+    auc = eval_auc_one_class(eval_in, eval_out, in_distance + args.thresh, model, args)
+    aucs.append(auc)
+    if args.score == 'mahal':
+        resutls[id]=(m_distance - in_distance).detach().cpu().numpy()
+        print(f"Evaluation distance on class {id}: {m_distance}, diff: {m_distance - in_distance}, auc: {auc}")
+    elif args.score == 'svm':
+        print(f"Evaluation distance on class {id}: auc: {auc}")
 
-    resutls[id]=(m_distance - in_distance).detach().cpu().numpy()
-    print(f"Evaluation distance on class {id}: {m_distance}, diff: {m_distance - in_distance}")
-
+print(f"Results of model: {args.model_path}")
+print(f"Average auc is: {np.mean(aucs)}")
+resutls['avg_auc']=np.mean(aucs)
 if args.csv:
     import pandas as pd
     df = pd.DataFrame(resutls, index=[0])
@@ -325,4 +345,4 @@ if args.csv:
     if not os.path.exists(save_path):
         os.makedirs(save_path, exist_ok=True)
 
-    df.to_csv(save_path+f"{args.noise}.csv", index=False) 
+    df.to_csv(save_path+f"{args.noise}_{args.model_path.split('/')[-2]}.csv", index=False) 
