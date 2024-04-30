@@ -26,7 +26,7 @@ def parsing():
     parser.add_argument('--epochs', '-e', type=int, default=50,
                         help='Number of epochs to train.')
     parser.add_argument('--batch_size', '-b', type=int,
-                        default=128, help='Batch size.')
+                        default=64, help='Batch size.')
     parser.add_argument('--seed', type=int, default=1,
                         help='seed for np(tinyimages80M sampling); 1|2|8|100|107')
     parser.add_argument('--num_workers', type=int, 
@@ -65,7 +65,8 @@ def parsing():
     parser.add_argument('--tail_negative', default=None, type=float, help='using tail data as negative')
     parser.add_argument('--tail_normal', default=None, type=float, help='using tail data as normal')
     parser.add_argument('--temperature', default=0.5, type=float, help='chaning temperature of contrastive loss')
-    
+    parser.add_argument('--preprocessing', default='clip', type=str, help='which preprocessing use for noise order')
+    parser.add_argument('--milestones', nargs='+', type=int, default=[10, 50, 200, 500], help='A list of milestones')
     args = parser.parse_args()
 
     return args
@@ -110,16 +111,22 @@ def train_one_class(train_loader, positives, negetives, shuffle_loader,
     shuffle_imgs_list = torch.concatenate(b_)
 
     # for normal, ps, ns, sl in zip(train_loader, positives, negetives, shuffle_loader):
-    for normal in train_loader:
+    for normal, ps, ns in zip(train_loader, positives, negetives):
+    # for normal in train_loader:
 
         imgs, labels = normal
-        # positive_imgs, _ = ps
-        # negative_imgs, _ = ns
+        positive_imgs, _ = ps
+        negative_imgs, _ = ns
         # positive_noraml_img, _ = sl
 
-        negative_imgs = negative_imgs_list[torch.randint(0, len(negative_imgs_list), size=(2,))]
-        positive_imgs = positives_imgs_list[torch.randint(0, len(positives_imgs_list), size=(1,))]
+        # negative_imgs = negative_imgs_list[torch.randint(0, len(negative_imgs_list), size=(2,))]
+        # positive_imgs = positives_imgs_list[torch.randint(0, len(positives_imgs_list), size=(1,))]
         positive_noraml_img = shuffle_imgs_list[torch.randint(0, len(shuffle_imgs_list), size=(1,))]
+
+        tg = transforms.GaussianBlur(kernel_size=3, sigma=(0.5))
+        tg_idices = torch.randint(0, len(imgs), size=(int(len(imgs) * 0.3),))
+        for tg_idx in tg_idices:
+            imgs[tg_idx] = tg(imgs[tg_idx])
 
         imgs, labels = imgs.to(args.device), labels.to(args.device)
         positive_imgs, negative_imgs, positive_noraml_img = \
@@ -129,29 +136,32 @@ def train_one_class(train_loader, positives, negetives, shuffle_loader,
         _, normal_features = model(imgs, True)
         _, positive_features = model(positive_imgs, True)
         _, negative_features = model(negative_imgs, True)
-        _, positive_noraml_features = model(positive_noraml_img, True)
+        # _, positive_noraml_features = model(positive_noraml_img, True)
 
         positive_features = positive_features[-1]
         normal_features = normal_features[-1]
         negative_features = negative_features[-1]
-        positive_noraml_features = positive_noraml_features[-1]
+        # positive_noraml_features = positive_noraml_features[-1]
         
         # Calculate loss contrastive for layer
         loss_contrastive = 0
         # for norm_f, pos_f, neg_f, sl_f in zip(normal_features, positive_features, negative_features, positive_noraml_features):
-        for norm_f in normal_features:
+        for norm_f, pos_f, neg_f in zip(normal_features, positive_features, negative_features):
+        # for norm_f in normal_features:
             # pos_sl_f = torch.stack([pos_f, sl_f])
             # loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_f, sl_f, temperature=args.temperature))
-            pos_sl_f = torch.stack([positive_features[0], positive_noraml_features[0]])
+            # pos_sl_f = torch.stack([positive_features[0], positive_noraml_features[0]])
+            pos_sl_f = pos_f
             loss_contrastive = loss_contrastive + torch.sum(contrastive(
-                norm_f, pos_sl_f, negative_features, temperature=args.temperature))
+                norm_f, pos_sl_f, neg_f, temperature=args.temperature))
             
 
         # loss_ce = criterion(preds, labels)
-        loss = loss_contrastive
+        # loss = loss_contrastive
+        loss = loss_contrastive / len(normal_features)
         
         epoch_loss['loss'].append(loss.item())
-        epoch_loss['contrastive'].append(loss.item())
+        epoch_loss['contrastive'].append(loss_contrastive.item())
 
         train_global_iter += 1
         writer.add_scalar("Train/loss", loss.item(), train_global_iter)
@@ -304,7 +314,7 @@ def load_model(args):
 
     # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_update_rate, gamma=args.lr_gamma)
     
-    milestones = [3, 7, 13, 30, 70]  # Epochs at which to decrease learning rate
+    milestones = args.milestones  # Epochs at which to decrease learning rate
     gamma = 0.1  # Factor by which to decrease learning rate at milestones
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
 
@@ -354,18 +364,21 @@ model, criterion, optimizer, scheduler = load_model(args)
 if args.dataset == 'cifar10':
     cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
     train_loader, test_loader, shuffle_loader = load_cifar10(cifar10_path, 
+                                                             batch_size=args.batch_size,
                                                              one_class_idx=args.one_class_idx, 
                                                              tail_normal=args.tail_normal)
 elif args.dataset == 'svhn':
     svhn_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
     train_loader, test_loader, shuffle_loader = load_svhn(svhn_path, 
+                                                          batch_size=args.batch_size,
                                                           one_class_idx=args.one_class_idx, 
                                                           tail_normal=args.tail_normal)
 
 print("Start Loading noises")
 train_positives, train_negetives, test_positives, test_negetives = \
-    noise_loader(one_class_idx=args.one_class_idx, tail_negative=args.tail_negative,
-                  tail_positive=args.tail_positive, dataset=args.dataset)
+    noise_loader(batch_size=args.batch_size, one_class_idx=args.one_class_idx,
+                 tail_negative=args.tail_negative, tail_positive=args.tail_positive,
+                 dataset=args.dataset, preprocessing=args.preprocessing)
 print("Loading noises finished!")
 
 if args.model_path is not None:
@@ -373,10 +386,10 @@ if args.model_path is not None:
     model_save_path = save_path + 'models/'
 else:
     addr = datetime.today().strftime('%Y-%m-%d-%H-%M-%S-%f')
-    save_path = f'./run/exp-' + f'_{args.dataset}' + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + \
+    save_path = f'./run/exp' + f'_{args.dataset}' + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + \
     f'_{args.optimizer}' + f'_epochs_{args.epochs}' + f'_one_class_idx_{args.one_class_idx}' + \
         f'_temprature_{args.temperature}' + f'_tailpos_{str(args.tail_positive)}' + f'_tailneg_{str(args.tail_negative)}' + \
-            f'_tailnorm_{str(args.tail_normal)}' + '/'
+            f'_tailnorm_{str(args.tail_normal)}' + f'_preprocessing_{args.preprocessing}' + '/'
     model_save_path = save_path + 'models/'
     if not os.path.exists(model_save_path):
         os.makedirs(model_save_path, exist_ok=True)
@@ -406,7 +419,7 @@ for epoch in range(0, args.epochs):
         if stage == 'feature_extraction':
             model.linear.requires_grad_ = False
             train_global_iter, epoch_loss, epoch_accuracies = train_one_class(train_loader, train_positives, train_negetives, shuffle_loader, model, train_global_iter, criterion, optimizer, args.device, writer, stage)
-            global_eval_iter, eval_loss, eval_acc = test_one_class(test_loader, test_positives, test_negetives, model, global_eval_iter, criterion, args.device, writer, stage)
+            # global_eval_iter, eval_loss, eval_acc = test_one_class(test_loader, test_positives, test_negetives, model, global_eval_iter, criterion, args.device, writer, stage)
         if stage == 'classifier':
             print("\nSTAGE changed from feature_extraction into classifier\n\n")
             model.linear.requires_grad_ = True
@@ -416,23 +429,24 @@ for epoch in range(0, args.epochs):
             model.layer4.requires_grad_ = False
             model.conv1.requires_grad_ = False
             train_global_iter, epoch_loss, epoch_accuracies = train_one_class(train_loader, train_positives, train_negetives, model, train_global_iter, criterion, optimizer, args.device, writer, stage)
-            global_eval_iter, eval_loss, eval_acc = test_one_class(test_loader, test_positives, test_negetives, model, global_eval_iter, criterion, args.device, writer, stage)
+            # global_eval_iter, eval_loss, eval_acc = test_one_class(test_loader, test_positives, test_negetives, model, global_eval_iter, criterion, args.device, writer, stage)
 
     writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
     writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
-    writer.add_scalar("AVG_Evaluation/avg_loss", np.mean(eval_loss['loss']), epoch)
-    writer.add_scalar("AVG_Evaluation/avg_loss_contrastive", np.mean(eval_loss['contrastive']), epoch)
+    # writer.add_scalar("AVG_Evaluation/avg_loss", np.mean(eval_loss['loss']), epoch)
+    # writer.add_scalar("AVG_Evaluation/avg_loss_contrastive", np.mean(eval_loss['contrastive']), epoch)
 
     writer.add_scalar("Train/lr", args.last_lr, epoch)
 
-    print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])} Evaluation/avg_loss: {np.mean(eval_loss['loss'])}")
+    # print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])} Evaluation/avg_loss: {np.mean(eval_loss['loss'])}")
+    print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}")
     
     if (epoch+1) % 5 == 0:
         torch.save(model.state_dict(), os.path.join(model_save_path,f'model_params_epoch_{epoch}.pt'))
 
-    if np.mean(eval_loss['loss']) < best_loss:
-        best_loss = np.mean(eval_loss['loss'])
-        torch.save(model.state_dict(), os.path.join(save_path,'best_params.pt'))
+    # if np.mean(eval_loss['loss']) < best_loss:
+        # best_loss = np.mean(eval_loss['loss'])
+        # torch.save(model.state_dict(), os.path.join(save_path,'best_params.pt'))
     
     # if np.mean(eval_loss['loss']) > best_loss:
     #     scheduler.step()
@@ -440,7 +454,7 @@ for epoch in range(0, args.epochs):
         #     scheduler.step_size = scheduler.step_size + 3
         #     print(f"scheduler step_size has increased into: {scheduler.step_size}")
 
-        args.last_lr = scheduler.get_last_lr()[0]
+    args.last_lr = scheduler.get_last_lr()[0]
 
     if args.auc_cal and epoch % 11 == 1:
         evaluation(model, save_path, cifar10_path, args)
