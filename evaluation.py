@@ -223,14 +223,19 @@ def in_similarity(loader_in, net, args):
     return similarity
 
 
-def noise_loading(noise):
-    np_test_target_path = '/storage/users/makhavan/CSI/finals/datasets/data_aug/CorCIFAR10_test/labels.npy'
-    np_test_root_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC/'
+def noise_loading(dataset, noise):
+    if dataset == 'cifar10':
+        np_test_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC/labels_test.npy'
+        np_test_root_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC/'
+    elif dataset == 'svhn':
+        np_test_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN_Test_AC/labels_test.npy'
+        np_test_root_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN_Test_AC/'
 
-    mean = [x / 255 for x in [125.3, 123.0, 113.9]]
-    std = [x / 255 for x in [63.0, 62.1, 66.7]]
+    # mean = [x / 255 for x in [125.3, 123.0, 113.9]]
+    # std = [x / 255 for x in [63.0, 62.1, 66.7]]
 
-    test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    # test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    test_transform = transforms.Compose([transforms.ToTensor()])
 
     np_test_img_path = np_test_root_path + noise + '.npy'
     test_dataset_noise = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, train=False)
@@ -311,10 +316,11 @@ else:
 
 
 if args.noise:
-    test_dataset_noise = noise_loading(args.noise)
+    test_dataset_noise = noise_loading(args.dataset, args.noise)
     
 resutls = {}
 aucs = []
+
 # resutls['OD']=in_distance.detach().cpu().numpy()
 for id in range(10):
     if args.noise:
@@ -333,8 +339,9 @@ for id in range(10):
     elif args.score == 'svm':
         print(f"Evaluation distance on class {id}: auc: {auc}")
 
-print(f"Results of model: {args.model_path}")
 print(f"Average auc is: {np.mean(aucs)}")
+print(f"Results of model: {args.model_path}")
+print(f"In class is {args.one_class_idx}")
 resutls['avg_auc']=np.mean(aucs)
 if args.csv:
     import pandas as pd
