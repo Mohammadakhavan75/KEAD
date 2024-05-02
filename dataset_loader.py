@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
 from torch.utils.data.dataset import Subset
 from torch.utils.data import Dataset
-
+from PIL import Image
 class SVHN(Dataset):
     url = ""
     filename = ""
