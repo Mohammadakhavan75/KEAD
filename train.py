@@ -67,6 +67,7 @@ def parsing():
     parser.add_argument('--temperature', default=0.5, type=float, help='chaning temperature of contrastive loss')
     parser.add_argument('--preprocessing', default='clip', type=str, help='which preprocessing use for noise order')
     parser.add_argument('--milestones', nargs='+', type=int, default=[10, 50, 200, 500], help='A list of milestones')
+    parser.add_argument('--shift_normal', action="store_true", help='A list of milestones')
     args = parser.parse_args()
 
     return args
@@ -110,6 +111,8 @@ def train_one_class(train_loader, positives, negetives, shuffle_loader,
         b_.append(aa_[0])
     shuffle_imgs_list = torch.concatenate(b_)
 
+    if args.tail_negative:
+        negetives = train_loader
     # for normal, ps, ns, sl in zip(train_loader, positives, negetives, shuffle_loader):
     for normal, ps, ns in zip(train_loader, positives, negetives):
     # for normal in train_loader:
@@ -119,14 +122,15 @@ def train_one_class(train_loader, positives, negetives, shuffle_loader,
         negative_imgs, _ = ns
         # positive_noraml_img, _ = sl
 
-        # negative_imgs = negative_imgs_list[torch.randint(0, len(negative_imgs_list), size=(2,))]
+        if args.tail_negative:
+            negative_imgs = negative_imgs_list[torch.randint(0, len(negative_imgs_list), size=(torch.min(torch.tensor([len(imgs), len(negative_imgs_list)])),))]
         # positive_imgs = positives_imgs_list[torch.randint(0, len(positives_imgs_list), size=(1,))]
         positive_noraml_img = shuffle_imgs_list[torch.randint(0, len(shuffle_imgs_list), size=(1,))]
 
-        tg = transforms.GaussianBlur(kernel_size=3, sigma=(0.5))
-        tg_idices = torch.randint(0, len(imgs), size=(int(len(imgs) * 0.3),))
-        for tg_idx in tg_idices:
-            imgs[tg_idx] = tg(imgs[tg_idx])
+        # tg = transforms.GaussianBlur(kernel_size=3, sigma=(0.5))
+        # tg_idices = torch.randint(0, len(imgs), size=(int(len(imgs) * 0.3),))
+        # for tg_idx in tg_idices:
+        #     imgs[tg_idx] = tg(imgs[tg_idx])
 
         imgs, labels = imgs.to(args.device), labels.to(args.device)
         positive_imgs, negative_imgs, positive_noraml_img = \
@@ -136,25 +140,51 @@ def train_one_class(train_loader, positives, negetives, shuffle_loader,
         _, normal_features = model(imgs, True)
         _, positive_features = model(positive_imgs, True)
         _, negative_features = model(negative_imgs, True)
-        # _, positive_noraml_features = model(positive_noraml_img, True)
+        if args.shift_normal:
+            _, positive_noraml_features = model(positive_noraml_img, True)
 
         positive_features = positive_features[-1]
         normal_features = normal_features[-1]
         negative_features = negative_features[-1]
-        # positive_noraml_features = positive_noraml_features[-1]
+        if args.shift_normal:
+            positive_noraml_features = positive_noraml_features[-1]
         
         # Calculate loss contrastive for layer
         loss_contrastive = 0
         # for norm_f, pos_f, neg_f, sl_f in zip(normal_features, positive_features, negative_features, positive_noraml_features):
-        for norm_f, pos_f, neg_f in zip(normal_features, positive_features, negative_features):
-        # for norm_f in normal_features:
-            # pos_sl_f = torch.stack([pos_f, sl_f])
-            # loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_f, sl_f, temperature=args.temperature))
-            # pos_sl_f = torch.stack([positive_features[0], positive_noraml_features[0]])
-            pos_sl_f = pos_f
-            loss_contrastive = loss_contrastive + torch.sum(contrastive(
-                norm_f, pos_sl_f, neg_f, temperature=args.temperature))
-            
+        if args.shift_normal:
+            if len(negative_features) == len(normal_features):
+                for norm_f, pos_f, neg_f, pn_f in zip(normal_features, positive_features, negative_features, positive_noraml_features):
+                # for norm_f in normal_features:
+                    # pos_sl_f = torch.stack([pos_f, sl_f])
+                    # loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_f, sl_f, temperature=args.temperature))
+                    # pos_sl_f = torch.stack([positive_features[0], positive_noraml_features[0]])
+                    pos_sl_f = torch.stack([pos_f, pn_f])
+                    loss_contrastive = loss_contrastive + torch.sum(contrastive(
+                        norm_f, pos_sl_f, neg_f, temperature=args.temperature))
+            else:
+                for norm_f, pos_f, pn_f in zip(normal_features, positive_features, positive_noraml_features):
+                    pos_sl_f = torch.stack([pos_f, pn_f])
+                    loss_contrastive = loss_contrastive + torch.sum(contrastive(
+                        norm_f, pos_sl_f, negative_features, temperature=args.temperature))
+
+
+        else:
+            if len(negative_features) == len(normal_features):
+                for norm_f, pos_f, neg_f in zip(normal_features, positive_features, negative_features):
+                # for norm_f in normal_features:
+                    # pos_sl_f = torch.stack([pos_f, sl_f])
+                    # loss_contrastive = loss_contrastive + torch.sum(contrastive(norm_f, pos_f, sl_f, temperature=args.temperature))
+                    # pos_sl_f = torch.stack([positive_features[0], positive_noraml_features[0]])
+                    pos_sl_f = pos_f
+                    loss_contrastive = loss_contrastive + torch.sum(contrastive(
+                        norm_f, pos_sl_f, neg_f, temperature=args.temperature))
+            else:
+                for norm_f, pos_f in zip(normal_features, positive_features):
+                    pos_sl_f = pos_f
+                    loss_contrastive = loss_contrastive + torch.sum(contrastive(
+                        norm_f, pos_sl_f, negative_features, temperature=args.temperature))
+
 
         # loss_ce = criterion(preds, labels)
         # loss = loss_contrastive
@@ -389,7 +419,7 @@ else:
     save_path = f'./run/exp' + f'_{args.dataset}' + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + \
     f'_{args.optimizer}' + f'_epochs_{args.epochs}' + f'_one_class_idx_{args.one_class_idx}' + \
         f'_temprature_{args.temperature}' + f'_tailpos_{str(args.tail_positive)}' + f'_tailneg_{str(args.tail_negative)}' + \
-            f'_tailnorm_{str(args.tail_normal)}' + f'_preprocessing_{args.preprocessing}' + '/'
+            f'_tailnorm_{str(args.tail_normal)}' + f'_shift_normal_{str(args.shift_normal)}' + f'_preprocessing_{args.preprocessing}' + '/'
     model_save_path = save_path + 'models/'
     if not os.path.exists(model_save_path):
         os.makedirs(model_save_path, exist_ok=True)
@@ -397,7 +427,7 @@ else:
         save_path = f'./run/exp-' + addr + f'_{args.dataset}' + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + \
         f'_{args.optimizer}' + f'_epochs_{args.epochs}' + f'_one_class_idx_{args.one_class_idx}' + \
             f'_temprature_{args.temperature}' + f'_tailpos_{str(args.tail_positive)}' + f'_tailneg_{str(args.tail_negative)}' + \
-                f'_tailnorm_{str(args.tail_normal)}' + '/'
+                f'_tailnorm_{str(args.tail_normal)}' + f'_preprocessing_{args.preprocessing}' + '/'
         model_save_path = save_path + 'models/'
         os.makedirs(model_save_path, exist_ok=True)
 
