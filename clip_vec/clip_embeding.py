@@ -3,6 +3,7 @@
 
 import os
 import PIL
+import sys
 import torch
 import random
 import pickle
@@ -11,11 +12,13 @@ import numpy as np
 from clip import clip
 from tqdm import tqdm
 from PIL import Image
+from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
-from torchvision.datasets import CIFAR10
+from scipy.stats import wasserstein_distance
+from torchvision.datasets import CIFAR10, CIFAR100
 
-
-
+sys.path.append('/storage/users/makhavan/CSI/exp10/new_contrastive/')
+from contrastive import cosine_similarity
 
 
 class SVHN(Dataset):
@@ -138,9 +141,13 @@ class SVHN(Dataset):
 
 
 class load_np_dataset(torch.utils.data.Dataset):
-    def __init__(self, imgs_path, targets_path, transform):
-        self.data = np.load(imgs_path)
-        self.targets = np.load(targets_path)
+    def __init__(self, imgs_path, targets_path, transform, train=True):
+        if train:
+            self.data = np.load(imgs_path)[:50000]
+            self.targets = np.load(targets_path)[:50000]
+        else:
+            self.data = np.load(imgs_path)[:10000]
+            self.targets = np.load(targets_path)[:10000]
         self.transform = transform
         
     def __len__(self):
@@ -150,10 +157,32 @@ class load_np_dataset(torch.utils.data.Dataset):
         img , target = self.data[idx], self.targets[idx]
             
         img = PIL.Image.fromarray(img)
-        if transform:
-            img = self.transform(img)
+        img = self.transform(img)
 
         return img, target
+
+
+class load_np_dataset_SVHN(torch.utils.data.Dataset):
+    def __init__(self, imgs_path, targets_path, transform, len_data, train=True):
+        if train:
+            self.data = np.load(imgs_path)[:len_data]
+            self.targets = np.load(targets_path)[:len_data]
+        else:
+            self.data = np.load(imgs_path)[:len_data]
+            self.targets = np.load(targets_path)[:len_data]
+        self.transform = transform
+        
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        img , target = self.data[idx], self.targets[idx]
+            
+        img = PIL.Image.fromarray(img)
+        img = self.transform(img)
+
+        return img, target
+
 
 def parsing():
     parser = argparse.ArgumentParser(description='Tunes a CIFAR Classifier with OE',
@@ -168,6 +197,10 @@ def parsing():
                         default=0, help='number of workers')
     parser.add_argument('--dataset', type=str, 
                         default='cifar10', help='cifar10-cifar100-svhn')
+    parser.add_argument('--save_rep_norm', action='store_true',
+                        help='cifar10-cifar100-svhn')
+    parser.add_argument('--save_rep_aug', action='store_true',
+                        help='cifar10-cifar100-svhn')
 
     args = parser.parse_args()
     return args
@@ -184,7 +217,10 @@ torch.backends.cudnn.deterministic = True
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model, transform = clip.load("ViT-B/32", device=device)
-
+if args.save_rep_norm:
+    os.makedirs(f'./representations/{args.dataset}/', exist_ok=True)
+    if args.save_rep_aug:
+        os.makedirs(f'./representations/{args.dataset}/{args.aug}/', exist_ok=True)
 
 if args.dataset == 'cifar10':
     cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
@@ -193,15 +229,23 @@ if args.dataset == 'cifar10':
     
     noraml_dataset = CIFAR10(root=cifar10_path, train=True, transform=transform)
     aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
-
+    
 elif args.dataset == 'svhn':
     svhn_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
     svhn_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN_Train_AC/{args.aug}.npy'
     svhn_train_cor_target_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN_Train_AC/labels_train.npy'
     
     noraml_dataset = SVHN(root=svhn_path, split="train", transform=transform)
-    aug_dataset = load_np_dataset(svhn_train_cor_img_path, svhn_train_cor_target_path, transform=transform)
+    aug_dataset = load_np_dataset_SVHN(svhn_train_cor_img_path, svhn_train_cor_target_path, transform=transform, len_data=len(noraml_dataset))
 
+elif args.dataset == 'cifar100':
+    cifar100_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
+    cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR100_Train_AC/{args.aug}.npy'
+    cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR100_Train_AC/labels_train.npy'
+    
+    noraml_dataset = CIFAR100(root=cifar100_path, train=True, transform=transform)
+    aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
+    
 else:
     raise NotImplemented(f"Not Available Dataset {args.dataset}!")
 
@@ -211,9 +255,11 @@ aug_loader = DataLoader(aug_dataset, shuffle=False, batch_size=args.batch_size, 
 
 
 loader = zip(normal_loader, aug_loader)
+cosine_diff = []
+wasser_diff = []
 diffs = []
 targets_list = []
-for i, data in enumerate(tqdm(loader)):
+for i, data in enumerate(loader):
     data_normal, data_aug = data
     imgs_n, targets = data_normal
     imgs_aug, _ = data_aug
@@ -223,6 +269,18 @@ for i, data in enumerate(tqdm(loader)):
         imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
         imgs_n_features = model.encode_image(imgs_n)
         imgs_aug_features = model.encode_image(imgs_aug)
+        # New impelementation
+        if args.save_rep_norm:
+            with open(f'./representations/{args.dataset}/batch_{i}.pkl', 'wb') as f:
+                pickle.dump(imgs_n_features, f)
+        if args.save_rep_aug:
+            with open(f'./representations/{args.dataset}/{args.aug}/batch_{i}.pkl', 'wb') as f:
+                pickle.dump(imgs_aug_features, f)
+
+        for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
+            cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
+            wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
+
         diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
         targets_list.extend(targets.detach().cpu().numpy())
         break
@@ -230,15 +288,42 @@ for i, data in enumerate(tqdm(loader)):
     imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
     imgs_n_features = model.encode_image(imgs_n)
     imgs_aug_features = model.encode_image(imgs_aug)
+
+    # New impelementation
+    if args.save_rep_norm:
+        with open(f'./representations/{args.dataset}/batch_{i}.pkl', 'wb') as f:
+            pickle.dump(imgs_n_features, f)
+    if args.save_rep_aug:
+        with open(f'./representations/{args.dataset}/{args.aug}/batch_{i}.pkl', 'wb') as f:
+            pickle.dump(imgs_aug_features, f)
+
+    for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
+        cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
+        wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
+
     diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
     targets_list.extend(targets.detach().cpu().numpy())
 
 diffs = np.asarray(diffs)
 targets_list = np.asarray(targets_list)
-with open(f'./tensors_selection/{args.dataset}_diffs_{args.aug}.pkl', 'wb') as f:
+
+
+
+os.makedirs(f'./saved_pickles/{args.dataset}/', exist_ok=True)
+os.makedirs(f'./saved_pickles/{args.dataset}/diffs/', exist_ok=True)
+os.makedirs(f'./saved_pickles/{args.dataset}/targets/', exist_ok=True)
+os.makedirs(f'./saved_pickles/{args.dataset}/cosine/', exist_ok=True)
+os.makedirs(f'./saved_pickles/{args.dataset}/wasser/', exist_ok=True)
+
+
+with open(f'./saved_pickles/{args.dataset}/diffs/{args.aug}.pkl', 'wb') as f:
     pickle.dump(diffs, f)
-with open(f'./tensors_selection/{args.dataset}_diffs_target_{args.aug}.pkl', 'wb') as f:
+with open(f'./saved_pickles/{args.dataset}/targets/{args.aug}.pkl', 'wb') as f:
     pickle.dump(targets_list, f)
+with open(f'./saved_pickles/{args.dataset}/cosine/{args.aug}.pkl', 'wb') as f:
+    pickle.dump(cosine_diff, f)
+with open(f'./saved_pickles/{args.dataset}/wasser/{args.aug}.pkl', 'wb') as f:
+    pickle.dump(wasser_diff, f)
 
 
 # t, g = zip(*sorted(zip(targets_list, diffs)))
