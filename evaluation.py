@@ -8,8 +8,6 @@ from contrastive import cosine_similarity
 from dataset_loader import load_np_dataset
 from torchvision.transforms import transforms
 from dataset_loader import SVHN, get_subclass_dataset
-from cifar10.model import ResNet18, ResNet34, ResNet50
-# from cifar10.models.resnet import ResNet18, ResNet34, ResNet50
 from sklearn.metrics import accuracy_score, roc_auc_score
 
 
@@ -63,6 +61,7 @@ def parsing():
     parser.add_argument('--score', default='mahal', type=str, help='noise')
     parser.add_argument('--thresh', default=0, type=int, help='noise')
     parser.add_argument('--svm_model', default=None, help='noise')
+    parser.add_argument('--aug', default=None, type=str, help='noise')
     
     args = parser.parse_args()
 
@@ -85,15 +84,23 @@ def eval_auc_one_class(eval_in, eval_out, mahal_thresh, net, args):
         for data_in, data_out in zip(eval_in, eval_out):       
             inputs_in, targets_in = data_in
             inputs_out, targets_out = data_out
-            targets_in_list.extend([1 for _ in range(len(targets_in))])
-            targets_out_list.extend([0 for _ in range(len(targets_out))])
+            if args.dataset == 'anomaly':
+                targets_in_list.extend(targets_in)
+                targets_out_list.extend(targets_out)
+            else:
+                targets_in_list.extend([1 for _ in range(len(targets_in))])
+                targets_out_list.extend([0 for _ in range(len(targets_out))])
             inputs_in , inputs_out = inputs_in.to(args.device) , inputs_out.to(args.device)
 
             preds, normal_features = net(inputs_in, True)     
             preds, out_features = net(inputs_out, True)     
             
-            in_features_list.append(normal_features[-1])
-            out_features_list.append(out_features[-1])
+            if 'CSI' in args.model_path:
+                in_features_list.append(normal_features['penultimate'])
+                out_features_list.append(out_features['penultimate'])
+            else:
+                in_features_list.append(normal_features[-1])
+                out_features_list.append(out_features[-1])
     
         in_features_list = torch.cat(in_features_list, dim=0)
         out_features_list = torch.cat(out_features_list, dim=0)
@@ -103,20 +110,75 @@ def eval_auc_one_class(eval_in, eval_out, mahal_thresh, net, args):
                 pred_in.append(mahalanobis_distance(in_feature, mean, inv_covariance) < mahal_thresh)
             for out_feature in out_features_list:
                 pred_out.append(not (mahalanobis_distance(out_feature, mean, inv_covariance) > mahal_thresh))
+            
+            targets = torch.cat([torch.tensor(targets_in_list), torch.tensor(targets_out_list)], dim=0)
+            preds = torch.cat([torch.tensor(pred_in), torch.tensor(pred_out)], dim=0)
+            auc = roc_auc_score(to_np(targets), to_np(preds))
         elif args.score == 'svm':
-            # for in_feature in in_features_list:
-            pred_in.append(torch.tensor(args.svm_model.predict(in_features_list.detach().cpu().numpy())==1))
-            # for out_feature in out_features_list:
-            pred_out.append(torch.tensor(args.svm_model.predict(out_features_list.detach().cpu().numpy())==-1))
-            pred_in = np.concatenate(pred_in)
-            pred_out = np.concatenate(pred_out)
+            if args.dataset == 'anomaly':
+                targets = torch.cat([torch.tensor(targets_in_list), torch.tensor(targets_out_list)], dim=0)
+                f_list = torch.cat([in_features_list, out_features_list], dim=0)
+                preds = torch.tensor(args.svm_model.predict(f_list.detach().cpu().numpy()))
+                preds = (preds + 1)/2
+                pp = []
+                for k in range(len(preds)):
+                    if preds[k] == targets[k]:
+                        pp.append(1)
+                    else:
+                        pp.append(0)
+                pp = torch.tensor(pp)
+                auc = roc_auc_score(to_np(targets), to_np(pp))      
 
-        targets = torch.cat([torch.tensor(targets_in_list), torch.tensor(targets_out_list)], dim=0)
-        preds = torch.cat([torch.tensor(pred_in), torch.tensor(pred_out)], dim=0)
-        auc = roc_auc_score(to_np(targets), to_np(preds))
+            else:
+                # for in_feature in in_features_list:
+                pred_in.append(torch.tensor(args.svm_model.predict(in_features_list.detach().cpu().numpy())==1))
+                # for out_feature in out_features_list:
+                pred_out.append(torch.tensor(args.svm_model.predict(out_features_list.detach().cpu().numpy())==-1))
+                pred_in = np.concatenate(pred_in)
+                pred_out = np.concatenate(pred_out)
+                targets = torch.cat([torch.tensor(targets_in_list), torch.tensor(targets_out_list)], dim=0)
+                preds = torch.cat([torch.tensor(pred_in), torch.tensor(pred_out)], dim=0)
+                preds = (preds + 1)/2
+                auc = roc_auc_score(to_np(targets), to_np(preds))
 
     return auc
 
+def eval_auc_anomaly(loader, net, args):
+    net = net.to(args.device)
+    net.eval()  # enter train mode
+
+    preds = []
+    targets_list = []
+    anomaly_list = []
+    features_list = []
+    with torch.no_grad():
+        for inputs, targets, anomaly in loader:
+            targets_list.extend(targets)
+            anomaly_list.extend(anomaly)
+            inputs = inputs.to(args.device)
+
+            _, normal_features = net(inputs, True)     
+            
+            if 'CSI' in args.model_path:
+                features_list.append(normal_features['penultimate'])
+            else:
+                features_list.append(normal_features[-1])
+    
+        features_list = torch.cat(features_list, dim=0)
+
+        preds = torch.tensor(args.svm_model.predict(features_list.detach().cpu().numpy()))
+        preds = (preds + 1)/2
+        pp = []
+        for k in range(len(preds)):
+            if preds[k] == anomaly_list[k]:
+                pp.append(1)
+            else:
+                pp.append(0)
+        pp = torch.tensor(pp)
+        anomaly_list = torch.tensor(anomaly_list)
+        auc = roc_auc_score(to_np(anomaly_list), to_np(pp))      
+
+    return auc
 
 
 def load_model(args):
@@ -257,12 +319,21 @@ def feature_extraction(loader, net):
 
             _, normal_features = net(inputs, True)            
             # features.append(normal_features['penultimate'])
-            features.append(normal_features[-1])
+            if 'CSI' in args.model_path:
+                features.append(normal_features['penultimate'])
+            else:
+                features.append(normal_features[-1])
     
     features = torch.cat(features, dim=0)
     return features
 
+os.environ['CUDA_VISIBLE_DEVICES']='1'
+
 args = parsing()
+if 'CSI' in args.model_path:
+    from cifar10.models.resnet import ResNet18, ResNet34, ResNet50
+else:
+    from cifar10.model import ResNet18, ResNet34, ResNet50
 torch.manual_seed(args.seed)
 model, criterion, optimizer, scheduler = load_model(args)
 
@@ -280,13 +351,49 @@ std = [x / 255 for x in [63.0, 62.1, 66.7]]
 test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
 
 if args.dataset == 'cifar10':
-    test_data = torchvision.datasets.CIFAR10(
-        root_path, train=False, transform=test_transform, download=True)
     train_data = torchvision.datasets.CIFAR10(
         root_path, train=True, transform=test_transform, download=True)
+    test_data = torchvision.datasets.CIFAR10(
+        root_path, train=False, transform=test_transform, download=True)
 elif args.dataset == 'svhn':
+    train_data = SVHN(root=root_path, split="train", transform=test_transform)
     test_data = SVHN(root=root_path, split="test", transform=test_transform)
+elif args.dataset == 'cifar100':
+    train_data = torchvision.datasets.CIFAR100(
+        root_path, train=True, transform=test_transform, download=True)
+    test_data = torchvision.datasets.CIFAR100(
+        root_path, train=False, transform=test_transform, download=True)
+elif args.dataset == 'custom':
+    np_test_img_path = '/storage/users/makhavan/CSI/exp10/new_contrastive/new_test_set/cifar10_test.npy'
+    np_test_target_path = '/storage/users/makhavan/CSI/exp10/new_contrastive/new_test_set/cifar10_test_labels.npy'
+    train_data = torchvision.datasets.CIFAR10(
+        root_path, train=True, transform=test_transform, download=True)
+    test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10', train=False)
+elif args.dataset == 'custom6':
+    np_test_img_path = '/storage/users/makhavan/CSI/exp10/new_contrastive/new_test_set/cifar10_test_s6.npy'
+    np_test_target_path = '/storage/users/makhavan/CSI/exp10/new_contrastive/new_test_set/cifar10_test_labels_s6.npy'
+    train_data = torchvision.datasets.CIFAR10(
+        root_path, train=True, transform=test_transform, download=True)
+    test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10', train=False)
+elif args.dataset == 'anomaly':
 
+    np_test_img_path = '/storage/users/makhavan/CSI/exp10/new_contrastive/new_test_set/cifar10_test.npy'
+    np_test_target_path = '/storage/users/makhavan/CSI/exp10/new_contrastive/new_test_set/cifar10_test_labels.npy'
+    
+    train_data = torchvision.datasets.CIFAR10(
+        root_path, train=True, transform=test_transform, download=True)
+    test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='anomaly', train=False)
+elif args.dataset == 'aug':
+    if args.aug:
+        np_test_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC/{args.aug}.npy'
+        np_test_target_path = '/storage/users/makhavan/CSI/exp10/new_contrastive/new_test_set/cifar10_test_labels.npy'
+    else:
+        np_test_img_path = '/storage/users/makhavan/CSI/exp10/new_contrastive/new_test_set/cifar10_test.npy'
+        np_test_target_path = '/storage/users/makhavan/CSI/exp10/new_contrastive/new_test_set/cifar10_test_labels.npy'
+    
+    train_data = torchvision.datasets.CIFAR10(
+        root_path, train=True, transform=test_transform, download=True)
+    test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10', train=False)
 
 idxes = [i for i in range(10)]
 idxes.pop(args.one_class_idx)
@@ -300,9 +407,10 @@ if args.score == 'mahal':
     mean, inv_covariance, in_features = mahalanobis_parameters(eval_in_train, model, args)
 if args.score == 'svm':
     from sklearn.svm import OneClassSVM
-    svm_model = OneClassSVM(kernel='rbf', gamma='auto', nu=0.1)
+    # svm_model = OneClassSVM(kernel='rbf', gamma='auto', nu=0.1)
+    svm_model = OneClassSVM(kernel='sigmoid', gamma='auto', nu=0.1)
     features_in = feature_extraction(eval_in_train, model)
-    print("Fitting svm model")
+    print(f"Fitting svm model {features_in.shape}")
     svm_model.fit(features_in.detach().cpu().numpy())
     args.svm_model = svm_model
 if args.score == 'cosine':
@@ -331,7 +439,10 @@ for id in range(10):
     if args.score == 'mahal':
         m_distance = evaluator(model, eval_out, mean, inv_covariance, args)
 
-    auc = eval_auc_one_class(eval_in, eval_out, in_distance + args.thresh, model, args)
+    if args.dataset == 'anomaly':
+        auc = eval_auc_anomaly(eval_out, model, args)
+    else:
+        auc = eval_auc_one_class(eval_in, eval_out, in_distance + args.thresh, model, args)
     aucs.append(auc)
     if args.score == 'mahal':
         resutls[id]=(m_distance - in_distance).detach().cpu().numpy()
