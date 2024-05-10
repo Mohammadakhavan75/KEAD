@@ -4,10 +4,12 @@ import torch
 import pickle
 import torchvision
 import numpy as np
+import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
 from torch.utils.data.dataset import Subset
 from torch.utils.data import Dataset
+import transform_layers as TL
 from PIL import Image
 class SVHN(Dataset):
     url = ""
@@ -128,13 +130,22 @@ class SVHN(Dataset):
 
 
 class load_np_dataset(torch.utils.data.Dataset):
-    def __init__(self, imgs_path, targets_path, transform, train=True):
-        if train:
+    def __init__(self, imgs_path, targets_path, transform, dataset, train=True):
+        self.dataset = dataset
+        if train and dataset == 'cifar10':
             self.data = np.load(imgs_path)[:50000]
             self.targets = np.load(targets_path)[:50000]
-        else:
+        elif dataset == 'cifar10':
             self.data = np.load(imgs_path)[:10000]
             self.targets = np.load(targets_path)[:10000]
+        elif dataset == 'anomaly':
+            self.data = np.load(imgs_path)[:10000]
+            self.targets = np.load(targets_path)[:10000]
+            self.anomaly = np.load('/storage/users/makhavan/CSI/exp10/new_contrastive/new_test_set/cifar10_test_anomaly_labels.npy')[:10000]
+        else:
+            self.data = np.load(imgs_path)
+            self.targets = np.load(targets_path)
+
         self.transform = transform
         
     def __len__(self):
@@ -145,8 +156,10 @@ class load_np_dataset(torch.utils.data.Dataset):
             
         img = PIL.Image.fromarray(img)
         img = self.transform(img)
-
-        return img, target
+        if self.dataset == 'anomaly':
+            return img, target, self.anomaly[idx]
+        else:
+            return img, target
 
 
 def get_subclass_dataset(dataset, classes):
@@ -162,18 +175,26 @@ def get_subclass_dataset(dataset, classes):
     return dataset
 
 
-def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positive=None, tail_negative=None, dataset='cifar10', preprocessing='clip'):
+def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positive=None, tail_negative=None, dataset='cifar10', preprocessing='clip', multi_neg=False):
 
     if dataset == 'cifar10':
         np_train_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Train_AC/labels_train.npy'
         np_test_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC/labels_test.npy'
         np_train_root_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Train_AC/'
         np_test_root_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC/'
+        classes = 10
     elif dataset == 'svhn':
         np_train_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN_Train_AC/labels_train.npy'
         np_test_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN_Test_AC/labels_test.npy'
         np_train_root_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN_Train_AC/'
         np_test_root_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN_Test_AC/'
+        classes = 10
+    elif dataset == 'cifar100':
+        np_train_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR100_Train_AC/labels_train.npy'
+        np_test_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR100_Test_AC/labels_test.npy'
+        np_train_root_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR100_Train_AC/'
+        np_test_root_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR100_Test_AC/'
+        classes = 20
 
 
     mean = [x / 255 for x in [125.3, 123.0, 113.9]]
@@ -185,35 +206,51 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positiv
     test_transform = transforms.Compose([transforms.ToTensor()])
 
     if preprocessing == 'clip':
-        with open(f'./{dataset}_softmaxed.pkl', 'rb') as file:
+        with open(f'./ranks/selected_noises_{dataset}_softmaxed.pkl', 'rb') as file:
             clip_probs = pickle.load(file)
     elif preprocessing == 'cosine':
-        with open(f'./{dataset}_cosine_softmaxed.pkl', 'rb') as file:
+        with open(f'./ranks/{dataset}_cosine_softmaxed.pkl', 'rb') as file:
+            clip_probs = pickle.load(file)
+    elif preprocessing == 'wasser':
+        with open(f'./ranks/{dataset}_wasser.pkl', 'rb') as file:
             clip_probs = pickle.load(file)
 
     print("Creating noises loader")
     train_positives_datasets = []
     train_negetives_datasets = []
+    train_negetives_datasets2 = []
     test_positives_datasets = []
     test_negetives_datasets = []
-    for i in range(10):
+    for i in range(classes):
         # creating positive noise loader
         noise = list(clip_probs[i].keys())[0]
         print(f"Selecting {noise} for positive pair for class {i}")
         np_train_img_path = np_train_root_path + noise + '.npy'
-        train_positives_datasets.append(load_np_dataset(np_train_img_path, np_train_target_path, train_transform, train=True))
+        train_positives_datasets.append(load_np_dataset(np_train_img_path, np_train_target_path, train_transform, dataset, train=True))
 
         np_test_img_path = np_test_root_path + noise + '.npy'
-        test_positives_datasets.append(load_np_dataset(np_test_img_path, np_test_target_path, test_transform, train=False))
+        test_positives_datasets.append(load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset, train=False))
 
         # creating negative noise loader
-        noise = list(clip_probs[i].keys())[-1]
-        print(f"Selecting {noise} for negetive pair for class {i}")
-        np_train_img_path = np_train_root_path + noise + '.npy'
-        train_negetives_datasets.append(load_np_dataset(np_train_img_path, np_train_target_path, train_transform, train=True))
+        if multi_neg:
+            noise = list(clip_probs[i].keys())[-1]
+            print(f"Selecting {noise} for negetive pair for class {i}")
+            np_train_img_path = np_train_root_path + noise + '.npy'
+            train_negetives_datasets.append(load_np_dataset(np_train_img_path, np_train_target_path, train_transform, dataset, train=True))
+            noise = list(clip_probs[i].keys())[-2]
+            print(f"Selecting {noise} for negetive pair2 for class {i}")
+            np_train_img_path = np_train_root_path + noise + '.npy'
+            train_negetives_datasets2.append(load_np_dataset(np_train_img_path, np_train_target_path, train_transform, dataset, train=True))
+            np_test_img_path = np_test_root_path + noise + '.npy'
+            test_negetives_datasets.append(load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset, train=False))
+        else:
+            noise = list(clip_probs[i].keys())[-1]
+            print(f"Selecting {noise} for negetive pair for class {i}")
+            np_train_img_path = np_train_root_path + noise + '.npy'
+            train_negetives_datasets.append(load_np_dataset(np_train_img_path, np_train_target_path, train_transform, dataset, train=True))
 
-        np_test_img_path = np_test_root_path + noise + '.npy'
-        test_negetives_datasets.append(load_np_dataset(np_test_img_path, np_test_target_path, test_transform, train=False))
+            np_test_img_path = np_test_root_path + noise + '.npy'
+            test_negetives_datasets.append(load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset, train=False))
 
     print("Noises loader created!")
 
@@ -222,7 +259,9 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positiv
         train_dataset_negetives_one_class = get_subclass_dataset(train_negetives_datasets[one_class_idx], one_class_idx)
         test_dataset_positives_one_class = get_subclass_dataset(test_positives_datasets[one_class_idx], one_class_idx)
         test_dataset_negetives_one_class = get_subclass_dataset(test_negetives_datasets[one_class_idx], one_class_idx)
-        
+        if multi_neg:
+            train_dataset_negetives2_one_class = get_subclass_dataset(train_negetives_datasets2[one_class_idx], one_class_idx)
+            train_negetives2 = DataLoader(train_dataset_negetives2_one_class, shuffle=False, batch_size=batch_size, num_workers=num_workers)
         if tail_positive:
             print(f"Loading positive with tail {tail_positive}")
             
@@ -230,7 +269,7 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positiv
             if preprocessing == 'clip':
                 target_list = np.load(np_train_target_path)
                 indices = [k for k in range(len(target_list)) if target_list[k]==one_class_idx]
-                with open(f'./clip_vec/tensors/{dataset}_diffs_{list(clip_probs[one_class_idx].keys())[0]}.pkl', 'rb') as file:
+                with open(f'./clip_vec/tensors_selection/{dataset}_diffs_{list(clip_probs[one_class_idx].keys())[0]}.pkl', 'rb') as file:
                     diffs = pickle.load(file)
                 diffs_vals = [diffs[idx] for idx in indices]
 
@@ -239,6 +278,10 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positiv
                     diffs = pickle.load(file)
                     diffs_vals = diffs[one_class_idx][list(clip_probs[one_class_idx].keys())[0]]
 
+            elif preprocessing == 'wasser':
+                with open(f'./ranks/{dataset}_wasser.pkl', 'rb') as file:
+                    diffs = pickle.load(file)
+                    diffs_vals = diffs[one_class_idx][list(clip_probs[one_class_idx].keys())[0]]
             
             class_diff = diffs_vals / np.max(diffs_vals)
             class_diff_normalized = (class_diff - np.mean(class_diff)) / np.std(class_diff)
@@ -246,14 +289,12 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positiv
 
             train_dataset_positives_one_class = Subset(train_dataset_positives_one_class, idices)
 
-
-
         if tail_negative:
             print(f"Loading negatives with tail {tail_negative}")
             if preprocessing == 'clip':
                 target_list = np.load(np_train_target_path)
                 indices = [k for k in range(len(target_list)) if target_list[k]==one_class_idx]
-                with open(f'./clip_vec/tensors/{dataset}_diffs_{list(clip_probs[one_class_idx].keys())[-1]}.pkl', 'rb') as file:
+                with open(f'./clip_vec/tensors_selection/{dataset}_diffs_{list(clip_probs[one_class_idx].keys())[-1]}.pkl', 'rb') as file:
                     diffs = pickle.load(file)
                 diffs_vals = [diffs[idx] for idx in indices]
 
@@ -279,13 +320,15 @@ def noise_loader(batch_size=32, num_workers=32, one_class_idx=None, tail_positiv
         test_positives = []
         train_negetives = []
         test_negetives = []
-        for i in range(10):
+        for i in range(classes):
             train_positives.append(DataLoader(train_positives_datasets[i], shuffle=False, batch_size=batch_size, num_workers=num_workers))
             train_negetives.append(DataLoader(train_negetives_datasets[i], shuffle=False, batch_size=batch_size, num_workers=num_workers))
             test_positives.append(DataLoader(test_positives_datasets[i], shuffle=False, batch_size=batch_size, num_workers=num_workers))
             test_negetives.append(DataLoader(test_negetives_datasets[i], shuffle=False, batch_size=batch_size, num_workers=num_workers))
-            
-    return train_positives, train_negetives, test_positives, test_negetives
+    if multi_neg:
+        return train_positives, train_negetives, train_negetives2, test_positives, test_negetives
+    else:
+        return train_positives, train_negetives, test_positives, test_negetives
 
 
 def load_cifar10(cifar10_path, batch_size=32, num_workers=32, one_class_idx=None, tail_normal=None):
@@ -312,7 +355,7 @@ def load_cifar10(cifar10_path, batch_size=32, num_workers=32, one_class_idx=None
 
     if tail_normal:
         print(f"Loading normal_shuffler with tail {tail_normal}")
-        with open(f'./clip_vec/tensors/cifar10_normal_data.pkl', 'rb') as file:
+        with open(f'./clip_vec/tensors_selection/cifar10_normal_data.pkl', 'rb') as file:
             diffs = pickle.load(file)            
             i = one_class_idx
             class_diff = diffs[i*5000:i*5000 + 5000] / np.max(diffs[i*5000:i*5000 + 5000])
@@ -347,7 +390,7 @@ def load_svhn(svhn_path, batch_size=32, num_workers=32, one_class_idx=None, tail
 
     if tail_normal:
         print(f"Loading normal_shuffler with tail {tail_normal}")
-        with open(f'./clip_vec/tensors/svhn_normal_data.pkl', 'rb') as file:
+        with open(f'./clip_vec/tensors_selection/svhn_normal_data.pkl', 'rb') as file:
             diffs = pickle.load(file)            
             i = one_class_idx
             class_diff = diffs[i*5000:i*5000 + 5000] / np.max(diffs[i*5000:i*5000 + 5000])
@@ -359,3 +402,59 @@ def load_svhn(svhn_path, batch_size=32, num_workers=32, one_class_idx=None, tail
         normal_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, val_loader, normal_loader
+
+
+def load_cifar100(path, batch_size=32, num_workers=32, one_class_idx=None):
+
+    CIFAR100_SUPERCLASS = [
+        [4, 31, 55, 72, 95],
+        [1, 33, 67, 73, 91],
+        [54, 62, 70, 82, 92],
+        [9, 10, 16, 29, 61],
+        [0, 51, 53, 57, 83],
+        [22, 25, 40, 86, 87],
+        [5, 20, 26, 84, 94],
+        [6, 7, 14, 18, 24],
+        [3, 42, 43, 88, 97],
+        [12, 17, 38, 68, 76],
+        [23, 34, 49, 60, 71],
+        [15, 19, 21, 32, 39],
+        [35, 63, 64, 66, 75],
+        [27, 45, 77, 79, 99],
+        [2, 11, 36, 46, 98],
+        [28, 30, 44, 78, 93],
+        [37, 50, 65, 74, 80],
+        [47, 52, 56, 59, 96],
+        [8, 13, 48, 58, 90],
+        [41, 69, 81, 85, 89],
+    ]
+
+    transform = transforms.Compose([transforms.ToTensor()])
+    train_data = torchvision.datasets.CIFAR100(path, train=True, download=True, transform=transform)
+    test_data = torchvision.datasets.CIFAR100(path, train=False, download=True, transform=transform)
+    
+    if one_class_idx != None:
+        train_data = get_subclass_dataset(train_data, CIFAR100_SUPERCLASS[one_class_idx])
+        test_data = get_subclass_dataset(test_data, CIFAR100_SUPERCLASS[one_class_idx])
+
+    train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+    test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+    normal_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+    return train_loader, test_loader, normal_loader
+
+
+def csi_aug():
+    # Align augmentation
+    image_size = (32, 32, 3)
+    resize_scale = (0.54, 1)
+    color_jitter = TL.ColorJitterLayer(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1, p=0.8)
+    color_gray = TL.RandomColorGrayLayer(p=0.2)
+    resize_crop = TL.RandomResizedCropLayer(scale=resize_scale, size=image_size)
+
+    transform = nn.Sequential(
+        color_jitter,
+        color_gray,
+        resize_crop,
+    )
+    return transform
+
