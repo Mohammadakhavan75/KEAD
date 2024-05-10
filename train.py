@@ -356,13 +356,13 @@ if args.dataset == 'cifar10':
     train_loader, test_loader, shuffle_loader = load_cifar10(cifar10_path, 
                                                              batch_size=args.batch_size,
                                                              one_class_idx=args.one_class_idx, 
-                                                             tail_normal=args.tail_normal)
+                                                             tail_normal=None)
 elif args.dataset == 'svhn':
     svhn_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
     train_loader, test_loader, shuffle_loader = load_svhn(svhn_path, 
                                                           batch_size=args.batch_size,
                                                           one_class_idx=args.one_class_idx, 
-                                                          tail_normal=args.tail_normal)
+                                                          tail_normal=None)
 elif args.dataset == 'cifar100':
     cifar100_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
     train_loader, test_loader, shuffle_loader = load_cifar100(cifar100_path, 
@@ -373,12 +373,10 @@ print("Start Loading noises")
 if args.multi_neg:
     train_positives, train_negetives, train_negetives2, test_positives, test_negetives = \
         noise_loader(batch_size=args.batch_size, one_class_idx=args.one_class_idx,
-                    tail_negative=args.tail_negative, tail_positive=args.tail_positive,
                     dataset=args.dataset, preprocessing=args.preprocessing, multi_neg=args.multi_neg)
 else:
     train_positives, train_negetives, test_positives, test_negetives = \
         noise_loader(batch_size=args.batch_size, one_class_idx=args.one_class_idx,
-                    tail_negative=args.tail_negative, tail_positive=args.tail_positive,
                     dataset=args.dataset, preprocessing=args.preprocessing)
 print("Loading noises finished!")
 
