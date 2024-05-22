@@ -438,22 +438,22 @@ os.makedirs("CIFAR-10-R-A", exist_ok=True)
 
 transform = transforms.Compose([transforms.ToTensor()])
 convert_img = T.Compose([T.ToPILImage()])
-test_data = dset.CIFAR10('/storage/users/makhavan/CSI/finals/datasets/data/', download=True, train=False, transform=transform)
+test_data = dset.CIFAR10('/finals/datasets/data/', download=True, train=False, transform=transform)
 test_loader = DataLoader(test_data, shuffle=False)
 
 
-for i in range(1, 6):
-    print(augmentations[i-1])
-    cifar_a, labels_a = [], []
+# for i in range(1, 6):
+#     print(augmentations[i-1])
+#     cifar_a, labels_a = [], []
     
-    for img, label in test_loader:
-        for k in range(len(img)):
-            labels_a.append(label.detach().cpu().numpy())
-            cifar_a.append(np.uint8(augment(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)), i)))
+#     for img, label in test_loader:
+#         for k in range(len(img)):
+#             labels_a.append(label.detach().cpu().numpy())
+#             cifar_a.append(np.uint8(augment(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)), i)))
         
 
-    np.save('CIFAR-10-R-A/' + augmentations[i-1] + '.npy', np.array(cifar_a).astype(np.uint8))
-    np.save('CIFAR-10-R-A/labels-A.npy', np.array(labels_a).astype(np.uint8))
+#     np.save('CIFAR-10-R-A/' + augmentations[i-1] + '.npy', np.array(cifar_a).astype(np.uint8))
+#     np.save('CIFAR-10-R-A/labels-A.npy', np.array(labels_a).astype(np.uint8))
 
 
 d = collections.OrderedDict()
@@ -477,18 +477,39 @@ d['Gaussian Blur'] = gaussian_blur
 d['Spatter'] = spatter
 d['Saturate'] = saturate
 
+# os.makedirs("CIFAR-10-R-C", exist_ok=True)
+# for method_name in d.keys():
+#     print(method_name)
+#     cifar_c, labels_c = [], []
+#     try:
+#         for severity in range(1,6):
+#             corruption = lambda clean_img: d[method_name](clean_img, severity)
+
+#             for img, label in test_loader:
+#                 for k in range(len(img)):
+#                     labels_c.append(label.detach().cpu().numpy())
+#                     cifar_c.append(np.uint8(corruption(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)))))
+                
+
+
+#         np.save('CIFAR-10-R-C/' + d[method_name].__name__ + '.npy', np.array(cifar_c).astype(np.uint8))
+#         np.save('CIFAR-10-R-C/labels-C.npy', np.array(labels_c).astype(np.uint8))
+
+#     except:
+#         print(f"Error occured in: {method_name}")
 os.makedirs("CIFAR-10-R-C", exist_ok=True)
 for method_name in d.keys():
     print(method_name)
     cifar_c, labels_c = [], []
     try:
-        for severity in range(1,6):
-            corruption = lambda clean_img: d[method_name](clean_img, severity)
 
-            for img, label in test_loader:
-                for k in range(len(img)):
-                    labels_c.append(label.detach().cpu().numpy())
-                    cifar_c.append(np.uint8(corruption(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)))))
+        severity = 5
+        corruption = lambda clean_img: d[method_name](clean_img, severity)
+
+        for img, label in test_loader:
+            for k in range(len(img)):
+                labels_c.append(label.detach().cpu().numpy())
+                cifar_c.append(np.uint8(corruption(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)))))
                 
 
 

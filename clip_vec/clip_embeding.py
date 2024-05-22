@@ -16,8 +16,9 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from scipy.stats import wasserstein_distance
 from torchvision.datasets import CIFAR10, CIFAR100
+import torchvision
 
-sys.path.append('/storage/users/makhavan/CSI/exp10/new_contrastive/')
+sys.path.append('/exp10/new_contrastive/')
 from contrastive import cosine_similarity
 
 
@@ -201,7 +202,7 @@ def parsing():
                         help='cifar10-cifar100-svhn')
     parser.add_argument('--save_rep_aug', action='store_true',
                         help='cifar10-cifar100-svhn')
-
+    parser.add_argument('--gpu', default='0', type=str, help='gpu number')
     args = parser.parse_args()
     return args
 
@@ -213,37 +214,50 @@ random.seed(args.seed)
 np.random.seed(args.seed)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
+# os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model, transform = clip.load("ViT-B/32", device=device)
+# device = "cuda" if torch.cuda.is_available() else "cpu"
+device = f'cuda:{args.gpu}'
+model, transform = clip.load("ViT-L/14", device=device)
 if args.save_rep_norm:
     os.makedirs(f'./representations/{args.dataset}/', exist_ok=True)
-    if args.save_rep_aug:
-        os.makedirs(f'./representations/{args.dataset}/{args.aug}/', exist_ok=True)
+if args.save_rep_aug:
+    os.makedirs(f'./representations/{args.dataset}/{args.aug}/', exist_ok=True)
 
 if args.dataset == 'cifar10':
-    cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
-    cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Train_AC/{args.aug}.npy'
-    cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Train_AC/labels_train.npy'
+    cifar10_path = '/finals/datasets/data/'
+    cifar_train_cor_img_path = f'/finals/datasets/generalization_repo_dataset/CIFAR10_Train_AC/{args.aug}.npy'
+    cifar_train_cor_target_path = '/finals/datasets/generalization_repo_dataset/CIFAR10_Train_AC/labels_train.npy'
     
     noraml_dataset = CIFAR10(root=cifar10_path, train=True, transform=transform)
     aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
     
 elif args.dataset == 'svhn':
-    svhn_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
-    svhn_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN_Train_AC/{args.aug}.npy'
-    svhn_train_cor_target_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/SVHN_Train_AC/labels_train.npy'
+    svhn_path = '/finals/datasets/data/'
+    svhn_train_cor_img_path = f'/finals/datasets/generalization_repo_dataset/SVHN_Train_AC/{args.aug}.npy'
+    svhn_train_cor_target_path = f'/finals/datasets/generalization_repo_dataset/SVHN_Train_AC/labels_train.npy'
     
     noraml_dataset = SVHN(root=svhn_path, split="train", transform=transform)
     aug_dataset = load_np_dataset_SVHN(svhn_train_cor_img_path, svhn_train_cor_target_path, transform=transform, len_data=len(noraml_dataset))
 
 elif args.dataset == 'cifar100':
-    cifar100_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
-    cifar_train_cor_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR100_Train_AC/{args.aug}.npy'
-    cifar_train_cor_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR100_Train_AC/labels_train.npy'
+    cifar100_path = '/finals/datasets/data/'
+    cifar_train_cor_img_path = f'/finals/datasets/generalization_repo_dataset/CIFAR100_Train_AC/{args.aug}.npy'
+    cifar_train_cor_target_path = '/finals/datasets/generalization_repo_dataset/CIFAR100_Train_AC/labels_train.npy'
     
     noraml_dataset = CIFAR100(root=cifar100_path, train=True, transform=transform)
+    aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
+
+elif args.dataset == 'imagenet30':
+    imagenet_path = '/finals/datasets/data/ImageNet-30/train/'
+    cifar_train_cor_img_path = f'/finals/datasets/generalization_repo_dataset/Imagenet_Train_AC/{args.aug}.npy'
+    cifar_train_cor_target_path = '/finals/datasets/generalization_repo_dataset/Imagenet_Train_AC/labels_train.npy'
+    
+    train_transforms = torchvision.transforms.Compose([
+    torchvision.transforms.Resize(224),
+    torchvision.transforms.ToTensor()])
+
+    noraml_dataset = torchvision.datasets.ImageFolder(root=imagenet_path, transform=transform)
     aug_dataset = load_np_dataset(cifar_train_cor_img_path, cifar_train_cor_target_path, transform=transform)
     
 else:

@@ -8,7 +8,7 @@ def conv3x3(in_planes, out_planes, stride=1):
 class BaseModel(nn.Module):
     def __init__(self, last_dim, num_classes=10):
         super(BaseModel, self).__init__()
-        self.linear = nn.Linear(last_dim, num_classes)
+        # self.linear = nn.Linear(last_dim, num_classes)
 
     def penultimate(self, inputs, all_features=False):
         pass
@@ -19,8 +19,8 @@ class BaseModel(nn.Module):
 
         features, features_list = self.penultimate(inputs, all_features=penultimate)
 
-        output = self.linear(features)
-        
+        # output = self.linear(features)
+        output = None
         if penultimate:
             return output, features_list
         else:
@@ -28,20 +28,24 @@ class BaseModel(nn.Module):
             
 
 class ResNet(BaseModel):
-    def __init__(self, block, num_blocks, num_classes=10):
+    def __init__(self, block, num_blocks, num_classes=10, linear=False):
         last_dim = 512 * block.expansion
         super(ResNet, self).__init__(last_dim, num_classes)
 
         self.in_planes = 64
         self.last_dim = last_dim
+        self.linear = linear
 
         self.conv1 = conv3x3(3, 64)
         self.bn1 = nn.BatchNorm2d(64)
-
+        
         self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
         self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        
+        if linear:
+            self.representor = nn.Linear(last_dim, 128)
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -74,6 +78,9 @@ class ResNet(BaseModel):
         out_list.append(out)
         out = out.view(out.size(0), -1)
         out_list.append(out)
+        if self.linear:
+            out = self.representor(out)
+            out_list.append(out)
 
         if all_features:
             return out, out_list
@@ -131,8 +138,8 @@ class Bottleneck(nn.Module):
         out = F.relu(out)
         return out
 
-def ResNet18(num_classes):
-    return ResNet(BasicBlock, [2,2,2,2], num_classes=num_classes)
+def ResNet18(num_classes, linear=False):
+    return ResNet(BasicBlock, [2,2,2,2], num_classes=num_classes, linear=linear)
 
 def ResNet34(num_classes):
     return ResNet(BasicBlock, [3,4,6,3], num_classes=num_classes)

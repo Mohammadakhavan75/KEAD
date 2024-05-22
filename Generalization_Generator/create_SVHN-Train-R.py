@@ -559,7 +559,7 @@ augmentations = ["rot90", "rot270", "flip", "random_crop", "color_jitter"]
 os.makedirs("SVHN-Train-R-A", exist_ok=True)
 
 transform = transforms.Compose([transforms.ToTensor()])
-test_data = SVHN("/storage/users/makhavan/CSI/finals/datasets/data/", split='train', transform=transform)
+test_data = SVHN("/finals/datasets/data/", split='train', transform=transform)
 convert_img = T.Compose([T.ToPILImage()])
 test_loader = DataLoader(test_data, shuffle=False)
 

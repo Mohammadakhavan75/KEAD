@@ -5,3 +5,6 @@ jpeg_compression
 random_crop
 rot90
 snow
+color_jitter
+rot270
+gaussian_blur

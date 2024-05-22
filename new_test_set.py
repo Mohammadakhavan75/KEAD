@@ -12,7 +12,8 @@ from skimage.filters import gaussian
 from wand.image import Image as WandImage
 from scipy.ndimage import zoom as scizoom
 from wand.api import library as wandlibrary
-from dataset_loader import load_cifar10, load_svhn
+from dataset_loader import load_cifar10, load_svhn, load_cifar100
+from torchvision import transforms as T
 
 
 IMG_SIZE=32
@@ -115,7 +116,24 @@ def snow(x, severity=5):
     return np.clip(x + snow_layer + np.rot90(snow_layer, k=2), 0, 1) * 255
 
 
-noises_list = ['rot90', 'flip', 'random_crop', 'gaussian_noise', 'glass_blur', 'jpeg_compression', 'snow']
+def gaussian_blur(x, severity=5):
+    c = [.4, .6, 0.7, .8, 1][severity - 1]
+
+    x = gaussian(np.array(x) / 255., sigma=c, multichannel=True)
+    return np.clip(x, 0, 1) * 255
+
+
+def color_jitter(x):
+    jitter = T.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.5)
+    return jitter(x)
+
+
+def rot270(x):
+    rotater = T.RandomRotation(degrees=(90, 90))
+    return rotater(x)
+
+
+noises_list = ['rot90', 'flip', 'random_crop', 'gaussian_noise', 'glass_blur', 'jpeg_compression', 'snow', 'rot270', 'color_jitter', 'gaussian_blur']
 
 noise_dict = collections.OrderedDict()
 noise_dict['rot90'] = rot90
@@ -125,11 +143,17 @@ noise_dict['gaussian_noise'] = gaussian_noise
 noise_dict['glass_blur'] = glass_blur
 noise_dict['jpeg_compression'] = jpeg_compression
 noise_dict['snow'] = snow
+noise_dict['rot270'] = rot270
+noise_dict['color_jitter'] = color_jitter
+noise_dict['gaussian_blur'] = gaussian_blur
+
 
 def parsing():
     parser = argparse.ArgumentParser(description='Tunes a CIFAR Classifier with OE',
                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--dataset', type=str, default='cifar10',
+    parser.add_argument('--dataset', default='cifar10', type=str,
+                        help='Number of epochs to train.')
+    parser.add_argument('--seed', default=1, type=str,
                         help='Number of epochs to train.')
 
     args = parser.parse_args()
@@ -138,21 +162,25 @@ def parsing():
 args = parsing()
 
 if args.dataset == 'cifar10':
-    cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
+    cifar10_path = '/finals/datasets/data/'
     train_loader, test_loader, shuffle_loader = load_cifar10(cifar10_path, 
                                                              batch_size=1,
                                                              one_class_idx=None, 
                                                              tail_normal=None)
+if args.dataset == 'cifar100':
+    cifar10_path = '/finals/datasets/data/'
+    train_loader, test_loader, shuffle_loader = load_cifar100(cifar10_path, 
+                                                             batch_size=1,
+                                                             one_class_idx=None)
 elif args.dataset == 'svhn':
-    svhn_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
+    svhn_path = '/finals/datasets/data/'
     train_loader, test_loader, shuffle_loader = load_svhn(svhn_path, 
                                                           batch_size=1,
-                                                          one_class_idx=None,
-                                                          tail_normal=None)
+                                                          one_class_idx=None)
 
-os.makedirs('new_test_set', exist_ok=True)
+os.makedirs(f'new_test_set/{args.dataset}/', exist_ok=True)
 
-
+np.random.seed(args.seed)
 method_names = list(noise_dict.keys())
 cifar_c, labels_c, aug = [], [], []
 for img, label in test_loader:
@@ -164,6 +192,65 @@ for img, label in test_loader:
     except:
         print(f"Error occured in: {method_name}")
 
-np.save(f'new_test_set/{args.dataset}_test_s6.npy', np.array(cifar_c).astype(np.uint8))
-np.save(f'new_test_set/{args.dataset}_test_labels_s6.npy', np.array(labels_c).astype(np.uint8))
-np.save(f'new_test_set/{args.dataset}_test_augs_s6.npy', np.array(aug))
+np.save(f'new_test_set/{args.dataset}/test_s6.npy', np.array(cifar_c).astype(np.uint8))
+np.save(f'new_test_set/{args.dataset}/test_labels_s6.npy', np.array(labels_c).astype(np.uint8))
+np.save(f'new_test_set/{args.dataset}/test_augs_s6.npy', np.array(aug))
+
+if args.dataset == 'shvn':
+    anomaly = {
+        0: ["gaussian_noise", "glass_blur"],
+        1: ["gaussian_noise", "glass_blur"],
+        2: ["gaussian_noise", "glass_blur", "flip", "rot90", "rot270"],
+        3: ["gaussian_noise", "glass_blur", "flip", "rot90", "rot270"],
+        4: ["gaussian_noise", "color_jitter", "flip", "rot90", "rot270"], # random_crop,
+        5: ["gaussian_noise", "glass_blur", "flip", "rot90", "rot270"], # random_crop,
+        6: ["gaussian_noise", "glass_blur", "flip"] ,
+        7: ["gaussian_noise", "glass_blur", "flip", "rot90", "rot270"] ,
+        8: ["gaussian_noise", "glass_blur", "rot90", "rot270"] ,
+        9: ["gaussian_noise", "glass_blur", "flip", "rot90", "rot270"] ,
+    }
+elif args.dataset == 'cifar10':
+    anomaly = {
+        0: ['gaussian_noise', 'glass_blur', 'rot90', 'rot270'], # airplain
+        1: ['gaussian_noise', 'glass_blur', 'rot90', 'rot270'], # car
+        2: ['gaussian_noise', 'glass_blur'], # bird
+        3: ['gaussian_noise', 'glass_blur'], # cat
+        4: ['gaussian_noise', 'glass_blur', 'rot90', 'rot270'], # deer
+        5: ['gaussian_noise', 'glass_blur'], # dog
+        6: ['gaussian_noise', 'glass_blur'], # frog
+        7: ['gaussian_noise', 'glass_blur', 'rot90', 'rot270'], # horse
+        8: ['gaussian_noise', 'glass_blur', 'rot90', 'rot270'], # ship
+        9: ['gaussian_noise', 'glass_blur', 'rot90', 'rot270'], # truck
+    }
+elif args.dataset == 'cifar100':
+    anomaly = {
+        0: ["gaussian_noise", "glass_blur"],
+        1: ["gaussian_noise", "glass_blur"],
+        2: ["gaussian_noise", "glass_blur"],
+        3: ["gaussian_noise", "glass_blur"],
+        4: ["gaussian_noise", "color_jitter"], # random_crop
+        5: ["gaussian_noise", "glass_blur"], # random_crop
+        6: ["gaussian_noise", "glass_blur"],
+        7: ["gaussian_noise", "glass_blur"],
+        8: ["gaussian_noise", "glass_blur"],
+        9: ["gaussian_noise", "glass_blur", "rot90", "rot270"],
+        10: ["gaussian_noise", "glass_blur", "color_jitter"],
+        11: ["gaussian_noise", "rot90", "rot270"],
+        12: ["gaussian_noise", "glass_blur"],  # random_crop,
+        13: ["gaussian_noise", "glass_blur"],  # random_crop,
+        14: ["gaussian_noise", "glass_blur", "color_jitter"],  # random_crop,
+        15: ["gaussian_noise", "glass_blur"],
+        16: ["gaussian_noise", "glass_blur"],
+        17: ["gaussian_noise", "glass_blur", "color_jitter"],
+        18: ["gaussian_noise", "glass_blur", "rot90", "rot270"],
+        19: ["gaussian_noise", "glass_blur", "rot90", "rot270"],
+    }
+
+anomaly_label = []
+for i in range(len(aug)):
+    if aug[i] in anomaly[labels_c[i][0]]:
+        anomaly_label.append(1)
+    else:
+        anomaly_label.append(0)
+
+np.save(f'./new_test_set/{args.dataset}/test_anomaly_labels_s6.npy', anomaly_label)

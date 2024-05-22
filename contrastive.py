@@ -47,7 +47,7 @@ def contrastive(input, positive, negative, temperature=0.5, epsilon = 1e-12): # 
     else:
         # sim_p = similarity(input, positive)
         sim_p = cosine_similarity(input, positive)
-    
+
     denom = torch.exp(sim_n/temperature) + torch.exp(sim_p/temperature)
 
     if positive.shape[0] != input.shape[0]:
@@ -55,4 +55,4 @@ def contrastive(input, positive, negative, temperature=0.5, epsilon = 1e-12): # 
     else:
         card = 1
     
-    return (- 1/card) * torch.log(torch.sum(torch.exp(sim_p/temperature), dim=0)/(torch.sum(denom, dim=0) + epsilon)) # epsilon for non getting devided by zero error
+    return (- 1/card) * torch.log(torch.sum(torch.exp(sim_p/temperature), dim=0)/(torch.sum(denom, dim=0) + epsilon)), sim_p, sim_n # epsilon for non getting devided by zero error

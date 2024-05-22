@@ -10,11 +10,12 @@ from datetime import datetime
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
 from cifar10.model import ResNet18, ResNet34, ResNet50
+from cifar10.models.resnet_imagenet import resnet18, resnet50
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, roc_auc_score
 
 
-from dataset_loader import noise_loader, load_cifar10, load_svhn, load_cifar100, csi_aug
+from dataset_loader import noise_loader, load_cifar10, load_svhn, load_cifar100, csi_aug, load_imagenet30
 
 from dataset_loader import load_np_dataset, get_subclass_dataset
 from sklearn.manifold import TSNE
@@ -195,96 +196,181 @@ def train_one_class_multi_pair(train_loader, train_positives_loader, train_neget
 
     
 
-    for normal, p_loader, n_loader in zip(train_loader, train_positives_loader, train_negetives_loader):
-        imgs, labels = normal
-        imgs, labels = imgs.to(args.device), labels.to(args.device)
-
-        if args.k_pairs > 1:
-            p_imgs_list = []
-            n_imgs_list = []
-            for p_data in p_loader:
-                p_img, _ = p_data
-                p_img = p_img.to(args.device)
-                p_imgs_list.append(p_img)
-            for n_data in n_loader:
-                n_img, _ = n_data
-                n_img = n_img.to(args.device)
-                n_imgs_list.append(n_img)
-
-            optimizer.zero_grad()
-            _, normal_features = model(imgs, True)
-            normal_features = normal_features[-1]
-            p_features_list = []
-            n_features_list = []
-            for p_imgs, n_imgs in zip(p_imgs_list, n_imgs_list)
-                _, p_features = model(p_imgs, True)
-                _, n_features = model(n_imgs, True)
-                p_features_list.append(p_features[-1])
-                n_features_list.append(n_features[-1])
-
-            loss_contrastive = torch.tensor(0.0, requires_grad=True)
-            for p_fs, n_fs  in zip(p_features_list, n_features_list):
-                for p_f, n_f  in zip(p_fs, n_fs):
-                    l_c, sim_p, sim_n = contrastive(norm_f, p_f, n_f, temperature=args.temperature)
-                    loss_contrastive = loss_contrastive + l_c
-                    sim_ps.append(sim_p.detach().cpu())
-                    sim_ns.append(sim_n.detach().cpu())
-            
-        else:
-            p_data = p_loader
+    
+    if args.k_pairs == 1: 
+        for normal, p_data, n_data in zip(train_loader, train_positives_loader[0], train_negetives_loader[0]):
+            imgs, labels = normal
             p_imgs, _ = p_data
-            p_imgs = p_imgs.to(args.device)
-
-            n_data = n_loader
-            n_img, _ = n_data
-            n_img = n_img.to(args.device)
+            n_imgs, _ = n_data
             
+            imgs, labels = imgs.to(args.device), labels.to(args.device)
+            p_imgs = p_imgs.to(args.device)
+            n_imgs = n_imgs.to(args.device)
+        
+        
             optimizer.zero_grad()
             _, normal_features = model(imgs, True)
             _, p_features = model(p_imgs, True)
-            _, n_features = model(n_img, True)
-            
+            _, n_features = model(n_imgs, True)
+
             normal_features = normal_features[-1]
             p_features = p_features[-1]
             n_features = n_features[-1]
 
             loss_contrastive = torch.tensor(0.0, requires_grad=True)
 
-            for norm_f, p_f, n_f,  in zip(normal_features, p_features, n_features):
-                    
+            for norm_f, p_f, n_f  in zip(normal_features, p_features, n_features):
                 l_c, sim_p, sim_n = contrastive(norm_f, p_f, n_f, temperature=args.temperature)
                 loss_contrastive = loss_contrastive + l_c
                 sim_ps.append(sim_p.detach().cpu())
                 sim_ns.append(sim_n.detach().cpu())
             
-            
-        loss = loss_contrastive / len(normal_features)
         
-        epoch_loss['loss'].append(loss.item())
-        epoch_loss['contrastive'].append(loss_contrastive.item())
+            loss = loss_contrastive / len(normal_features)
+            
+            epoch_loss['loss'].append(loss.item())
+            epoch_loss['contrastive'].append(loss_contrastive.item())
 
-        train_global_iter += 1
-        writer.add_scalar("Train/loss", loss.item(), train_global_iter)
-        writer.add_scalar("Train/sim_p", torch.mean(sim_p).detach().cpu().numpy(), train_global_iter)
-        writer.add_scalar("Train/sim_n", torch.mean(sim_n).detach().cpu().numpy(), train_global_iter)
+            train_global_iter += 1
+            writer.add_scalar("Train/loss", loss.item(), train_global_iter)
+            writer.add_scalar("Train/sim_p", torch.mean(sim_p).detach().cpu().numpy(), train_global_iter)
+            writer.add_scalar("Train/sim_n", torch.mean(sim_n).detach().cpu().numpy(), train_global_iter)
 
-        loss.backward()
-        optimizer.step()
+            loss.backward()
+            optimizer.step()
+    elif args.k_pairs == 2:
+        for normal, p_data, n_data, p_data1, n_data1 in zip(train_loader, train_positives_loader[0], train_negetives_loader[0], train_positives_loader[1], train_negetives_loader[1]):
+            imgs, labels = normal
+            p_imgs, _ = p_data
+            n_imgs, _ = n_data
+            p_imgs1, _ = p_data1
+            n_imgs1, _ = n_data1
+            
+            imgs, labels = imgs.to(args.device), labels.to(args.device)
+            p_imgs = p_imgs.to(args.device)
+            n_imgs = n_imgs.to(args.device)
+            p_imgs1 = p_imgs1.to(args.device)
+            n_imgs1 = n_imgs1.to(args.device)
+        
+        
+            optimizer.zero_grad()
+            _, normal_features = model(imgs, True)
+            _, p_features = model(p_imgs, True)
+            _, n_features = model(n_imgs, True)
+            _, p_features1 = model(p_imgs1, True)
+            _, n_features1 = model(n_imgs1, True)
+
+            normal_features = normal_features[-1]
+            p_features = p_features[-1]
+            n_features = n_features[-1]
+            p_features1 = p_features1[-1]
+            n_features1 = n_features1[-1]
+
+            loss_contrastive = torch.tensor(0.0, requires_grad=True)
+
+            for norm_f, p_f, n_f, p_f1, n_f1  in zip(normal_features, p_features, n_features, p_features1, n_features1):
+                p_fs = torch.stack([p_f, p_f1], dim=0)
+                n_fs = torch.stack([n_f, n_f1], dim=0)
+                l_c, sim_p, sim_n = contrastive(norm_f, p_fs, n_fs, temperature=args.temperature)
+                loss_contrastive = loss_contrastive + l_c
+                sim_ps.append(sim_p.detach().cpu())
+                sim_ns.append(sim_n.detach().cpu())
+            
+        
+            loss = loss_contrastive / len(normal_features)
+            
+            epoch_loss['loss'].append(loss.item())
+            epoch_loss['contrastive'].append(loss_contrastive.item())
+
+            train_global_iter += 1
+            writer.add_scalar("Train/loss", loss.item(), train_global_iter)
+            writer.add_scalar("Train/sim_p", torch.mean(sim_p).detach().cpu().numpy(), train_global_iter)
+            writer.add_scalar("Train/sim_n", torch.mean(sim_n).detach().cpu().numpy(), train_global_iter)
+
+            loss.backward()
+            optimizer.step()
+
+    elif args.k_pairs == 3:
+        for normal, p_data, n_data, p_data1, n_data1, p_data2, n_data2 in zip(train_loader, train_positives_loader[0], train_negetives_loader[0], train_positives_loader[1], train_negetives_loader[1], train_positives_loader[2], train_negetives_loader[2]):
+            imgs, labels = normal
+            p_imgs, _ = p_data
+            n_imgs, _ = n_data
+            p_imgs1, _ = p_data1
+            n_imgs1, _ = n_data1
+            p_imgs2, _ = p_data2
+            n_imgs2, _ = n_data2
+            
+            imgs, labels = imgs.to(args.device), labels.to(args.device)
+            p_imgs = p_imgs.to(args.device)
+            n_imgs = n_imgs.to(args.device)
+            p_imgs1 = p_imgs1.to(args.device)
+            n_imgs1 = n_imgs1.to(args.device)
+            p_imgs2 = p_imgs2.to(args.device)
+            n_imgs2 = n_imgs2.to(args.device)
+        
+        
+            optimizer.zero_grad()
+            _, normal_features = model(imgs, True)
+            _, p_features = model(p_imgs, True)
+            _, n_features = model(n_imgs, True)
+            _, p_features1 = model(p_imgs1, True)
+            _, n_features1 = model(n_imgs1, True)
+            _, p_features2 = model(p_imgs2, True)
+            _, n_features2 = model(n_imgs2, True)
+
+            normal_features = normal_features[-1]
+            p_features = p_features[-1]
+            n_features = n_features[-1]
+            p_features1 = p_features1[-1]
+            n_features1 = n_features1[-1]
+            p_features2 = p_features2[-1]
+            n_features2 = n_features2[-1]
+
+            loss_contrastive = torch.tensor(0.0, requires_grad=True)
+
+            for norm_f, p_f, n_f, p_f1, n_f1, p_f2, n_f2  in zip(normal_features, p_features, n_features, p_features1, n_features1, p_features2, n_features2):
+                p_fs = torch.stack([p_f, p_f1, p_f2], dim=0)
+                n_fs = torch.stack([n_f, n_f1, n_f2], dim=0)
+                l_c, sim_p, sim_n = contrastive(norm_f, p_fs, n_fs, temperature=args.temperature)
+                loss_contrastive = loss_contrastive + l_c
+                sim_ps.append(sim_p.detach().cpu())
+                sim_ns.append(sim_n.detach().cpu())
+            
+        
+            loss = loss_contrastive / len(normal_features)
+            
+            epoch_loss['loss'].append(loss.item())
+            epoch_loss['contrastive'].append(loss_contrastive.item())
+
+            train_global_iter += 1
+            writer.add_scalar("Train/loss", loss.item(), train_global_iter)
+            writer.add_scalar("Train/sim_p", torch.mean(sim_p).detach().cpu().numpy(), train_global_iter)
+            writer.add_scalar("Train/sim_n", torch.mean(sim_n).detach().cpu().numpy(), train_global_iter)
+
+            loss.backward()
+            optimizer.step()
     
-    avg_sim_ps = torch.mean(torch.cat(sim_ps, dim=0)).detach().cpu().numpy()
-    avg_sim_ns = torch.mean(torch.cat(sim_ns, dim=0)).detach().cpu().numpy()
-    writer.add_scalar("AVG_Train/sim_p", torch.mean(torch.cat(sim_ps, dim=0)).detach().cpu().numpy(), train_global_iter)
-    writer.add_scalar("AVG_Train/sim_n", torch.mean(torch.cat(sim_ns, dim=0)).detach().cpu().numpy(), train_global_iter)
-    if args.tsne:
-        tsne(net, args)
+    if args.k_pairs == 1:
+        avg_sim_ps = torch.mean(torch.tensor(sim_ps), dim=0).detach().cpu().numpy()
+        avg_sim_ns = torch.mean(torch.tensor(sim_ns), dim=0).detach().cpu().numpy()
+        writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, train_global_iter)
+        writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, train_global_iter)
+    else:
+
+        avg_sim_ps = torch.mean(torch.cat(sim_ps, dim=0), dim=0).detach().cpu().numpy()
+        avg_sim_ns = torch.mean(torch.cat(sim_ns, dim=0), dim=0).detach().cpu().numpy()
+        writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, train_global_iter)
+        writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, train_global_iter)
+    # if args.tsne:
+    #     tsne(net, args)
     return train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns
 
 
 def tsne(model, args):
 
-    np_test_img_path = f'/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC_6/rot90.npy'
-    np_test_target_path = '/storage/users/makhavan/CSI/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC_6/labels_test.npy'
-    cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
+    np_test_img_path = f'/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC_6/rot90.npy'
+    np_test_target_path = '/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC_6/labels_test.npy'
+    cifar10_path = '/finals/datasets/data/'
     test_data = torchvision.datasets.CIFAR10(
         cifar10_path, train=False, transform=torchvision.transforms.ToTensor(), download=True)
 
@@ -361,21 +447,32 @@ def tsne_plot(x, y, name, args):
 def load_model(args):
 
     # model = torchvision.models.resnet34()
-    if args.linear:
-        model = ResNet18(10, args.linear)
+    if args.dataset == 'imagenet30':
+        model = resnet18(num_classes=30)
+        if args.optimizer == 'sgd':
+            optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, 
+                                    momentum=args.momentum,weight_decay=args.decay)
+        elif args.optimizer == 'adam':
+            optimizer = torch.optim.Adam(model.parameters(), args.learning_rate,
+                                        weight_decay=args.decay)
+        else:
+            raise NotImplemented("Not implemented optimizer!")
     else:
-        model = ResNet18(10)
-    if args.optimizer == 'sgd':
-        optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, 
-                                momentum=args.momentum,weight_decay=args.decay)
-    elif args.optimizer == 'adam':
-        optimizer = torch.optim.Adam(model.parameters(), args.learning_rate,
-                                      weight_decay=args.decay)
-    else:
-        raise NotImplemented("Not implemented optimizer!")
+        if args.linear:
+            model = ResNet18(10, args.linear)
+        else:
+            model = ResNet18(10)
+        if args.optimizer == 'sgd':
+            optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, 
+                                    momentum=args.momentum,weight_decay=args.decay)
+        elif args.optimizer == 'adam':
+            optimizer = torch.optim.Adam(model.parameters(), args.learning_rate,
+                                        weight_decay=args.decay)
+        else:
+            raise NotImplemented("Not implemented optimizer!")
 
-    if args.model_path:
-        model.load_state_dict(torch.load(args.model_path))
+        if args.model_path:
+            model.load_state_dict(torch.load(args.model_path))
 
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_update_rate, gamma=args.lr_gamma)
     
@@ -424,20 +521,25 @@ os.environ['CUDA_VISIBLE_DEVICES']= args.device_num
 model, criterion, optimizer, scheduler = load_model(args)
 
 if args.dataset == 'cifar10':
-    cifar10_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
+    cifar10_path = '/finals/datasets/data/'
     train_loader, test_loader, shuffle_loader = load_cifar10(cifar10_path, 
                                                              batch_size=args.batch_size,
                                                              one_class_idx=args.one_class_idx, 
                                                              tail_normal=None)
 elif args.dataset == 'svhn':
-    svhn_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
+    svhn_path = '/finals/datasets/data/'
     train_loader, test_loader, shuffle_loader = load_svhn(svhn_path, 
                                                           batch_size=args.batch_size,
                                                           one_class_idx=args.one_class_idx, 
                                                           tail_normal=None)
 elif args.dataset == 'cifar100':
-    cifar100_path = '/storage/users/makhavan/CSI/finals/datasets/data/'
+    cifar100_path = '/finals/datasets/data/'
     train_loader, test_loader, shuffle_loader = load_cifar100(cifar100_path, 
+                                                          batch_size=args.batch_size,
+                                                          one_class_idx=args.one_class_idx)
+elif args.dataset == 'imagenet30':
+    cifar100_path = '/finals/datasets/data/ImageNet-30/train/'
+    train_loader, test_loader = load_imagenet30(cifar100_path, 
                                                           batch_size=args.batch_size,
                                                           one_class_idx=args.one_class_idx)
 
