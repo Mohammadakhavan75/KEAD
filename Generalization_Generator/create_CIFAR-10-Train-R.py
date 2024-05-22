@@ -438,7 +438,7 @@ os.makedirs("CIFAR-10-Train-R-A", exist_ok=True)
 
 transform = transforms.Compose([transforms.ToTensor()])
 convert_img = T.Compose([T.ToPILImage()])
-test_data = dset.CIFAR10('/storage/users/makhavan/CSI/finals/datasets/data/', download=True, train=True, transform=transform)
+test_data = dset.CIFAR10('/finals/datasets/data/', download=True, train=True, transform=transform)
 test_loader = DataLoader(test_data, shuffle=False)
 
 

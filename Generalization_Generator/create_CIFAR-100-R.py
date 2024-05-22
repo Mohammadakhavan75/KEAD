@@ -431,57 +431,58 @@ def augment(image, select):
 
 print('CIFAR-100-R:')
 
-augmentations = ["rot90", "rot270", "flip", "random_crop", "color_jitter"]
+# augmentations = ["rot90", "rot270", "flip", "random_crop", "color_jitter"]
 
 os.makedirs("CIFAR-100-R", exist_ok=True)
-test_data = dset.CIFAR100("./", download=True, train=False)
+test_data = dset.CIFAR100("/finals/datasets/data/", download=True, train=False)
 convert_img = T.Compose([T.ToPILImage()])
 
-for i in range(1, 6):
-    print(augmentations[i-1])
-    cifar_a, labels_a = [], []
+# for i in range(1, 6):
+#     print(augmentations[i-1])
+#     cifar_a, labels_a = [], []
     
-    for img, label in zip(test_data.data, test_data.targets):
-        labels_a.append(label)
-        cifar_a.append(np.uint8(augment(convert_img(img), i)))
+#     for img, label in zip(test_data.data, test_data.targets):
+#         labels_a.append(label)
+#         cifar_a.append(np.uint8(augment(convert_img(img), i)))
         
 
-    np.save('CIFAR-100-R/' + augmentations[i-1] + '.npy', np.array(cifar_a).astype(np.uint8))
-    np.save('CIFAR-100-R/labels-A.npy', np.array(labels_a).astype(np.uint8))
+#     np.save('CIFAR-100-R/' + augmentations[i-1] + '.npy', np.array(cifar_a).astype(np.uint8))
+#     np.save('CIFAR-100-R/labels-A.npy', np.array(labels_a).astype(np.uint8))
 
 
 d = collections.OrderedDict()
-d['Gaussian Noise'] = gaussian_noise
-d['Shot Noise'] = shot_noise
-d['Impulse Noise'] = impulse_noise
-d['Defocus Blur'] = defocus_blur
-d['Glass Blur'] = glass_blur
-d['Motion Blur'] = motion_blur
-d['Zoom Blur'] = zoom_blur
-d['Snow'] = snow
-d['Frost'] = frost
-d['Fog'] = fog
-d['Brightness'] = brightness
-d['Contrast'] = contrast
-d['Elastic'] = elastic_transform
-d['Pixelate'] = pixelate
+# d['Gaussian Noise'] = gaussian_noise
+# d['Shot Noise'] = shot_noise
+# d['Impulse Noise'] = impulse_noise
+# d['Defocus Blur'] = defocus_blur
+# d['Glass Blur'] = glass_blur
+# d['Motion Blur'] = motion_blur
+# d['Zoom Blur'] = zoom_blur
+# d['Snow'] = snow
+# d['Frost'] = frost
+# d['Fog'] = fog
+# d['Brightness'] = brightness
+# d['Contrast'] = contrast
+# d['Elastic'] = elastic_transform
+# d['Pixelate'] = pixelate
 d['JPEG'] = jpeg_compression
-d['Speckle Noise'] = speckle_noise
-d['Gaussian Blur'] = gaussian_blur
-d['Spatter'] = spatter
-d['Saturate'] = saturate
+# d['Speckle Noise'] = speckle_noise
+# d['Gaussian Blur'] = gaussian_blur
+# d['Spatter'] = spatter
+# d['Saturate'] = saturate
 
 
 for method_name in d.keys():
     print(method_name)
     cifar_c, labels_c = [], []
 
-    for severity in range(1,6):
-        corruption = lambda clean_img: d[method_name](clean_img, severity)
+    # for severity in range(1,6):
+    severity=5
+    corruption = lambda clean_img: d[method_name](clean_img, severity)
 
-        for img, label in zip(test_data.data, test_data.targets):
-            labels_c.append(label)
-            cifar_c.append(np.uint8(corruption(convert_img(img))))
+    for img, label in zip(test_data.data, test_data.targets):
+        labels_c.append(label)
+        cifar_c.append(np.uint8(corruption(convert_img(img))))
 
     np.save('CIFAR-100-R/' + d[method_name].__name__ + '.npy', np.array(cifar_c).astype(np.uint8))
 

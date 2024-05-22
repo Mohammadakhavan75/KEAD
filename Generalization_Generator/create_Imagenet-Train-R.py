@@ -60,7 +60,7 @@ class MotionImage(WandImage):
         wandlibrary.MagickMotionBlurImage(self.wand, radius, sigma, angle)
 
 
-def plasma_fractal(mapsize=32, wibbledecay=3):
+def plasma_fractal(mapsize=224, wibbledecay=3):
     """
     Generate a heightmap using diamond-square algorithm.
     Return square 2d array, side length 'mapsize', of floats in range 0-255.
@@ -167,8 +167,8 @@ def glass_blur(x, severity=1):
 
     # locally shuffle pixels
     for i in range(c[2]):
-        for h in range(32 - c[1], c[1], -1):
-            for w in range(32 - c[1], c[1], -1):
+        for h in range(224 - c[1], c[1], -1):
+            for w in range(224 - c[1], c[1], -1):
                 dx, dy = np.random.randint(-c[1], c[1], size=(2,))
                 h_prime, w_prime = h + dy, w + dx
                 # swap
@@ -203,7 +203,7 @@ def motion_blur(x, severity=1):
     x = cv2.imdecode(np.fromstring(x.make_blob(), np.uint8),
                      cv2.IMREAD_UNCHANGED)
 
-    if x.shape != (32, 32):
+    if x.shape != (224, 224):
         return np.clip(x[..., [2, 1, 0]], 0, 255)  # BGR to RGB
     else:  # greyscale to RGB
         return np.clip(np.array([x, x, x]).transpose((1, 2, 0)), 0, 255)
@@ -227,21 +227,21 @@ def fog(x, severity=1):
 
     x = np.array(x) / 255.
     max_val = x.max()
-    x += c[0] * plasma_fractal(wibbledecay=c[1])[:32, :32][..., np.newaxis]
+    x += c[0] * plasma_fractal(wibbledecay=c[1])[:224, :224][..., np.newaxis]
     return np.clip(x * max_val / (max_val + c[0]), 0, 1) * 255
 
 
-def frost(x, severity=1):
-    c = [(1, 0.2), (1, 0.3), (0.9, 0.4), (0.85, 0.4), (0.75, 0.45)][severity - 1]
-    idx = np.random.randint(5)
-    filename = ['frosts/frost1.png', 'frosts/frost2.png', 'frosts/frost3.png', 'frosts/frost4.jpg', 'frosts/frost5.jpg', 'frosts/frost6.jpg'][idx]
-    frost = cv2.imread(filename)
-    frost = cv2.resize(frost, (0, 0), fx=0.2, fy=0.2)
-    # randomly crop and convert to rgb
-    x_start, y_start = np.random.randint(0, frost.shape[0] - 32), np.random.randint(0, frost.shape[1] - 32)
-    frost = frost[x_start:x_start + 32, y_start:y_start + 32][..., [2, 1, 0]]
+# def frost(x, severity=1):
+#     c = [(1, 0.2), (1, 0.3), (0.9, 0.4), (0.85, 0.4), (0.75, 0.45)][severity - 1]
+#     idx = np.random.randint(5)
+#     filename = ['frosts/frost1.png', 'frosts/frost2.png', 'frosts/frost3.png', 'frosts/frost4.jpg', 'frosts/frost5.jpg', 'frosts/frost6.jpg'][idx]
+#     frost = cv2.imread(filename)
+#     frost = cv2.resize(frost, (0, 0), fx=0.2, fy=0.2)
+#     # randomly crop and convert to rgb
+#     x_start, y_start = np.random.randint(0, frost.shape[0] - 32), np.random.randint(0, frost.shape[1] - 32)
+#     frost = frost[x_start:x_start + 32, y_start:y_start + 32][..., [2, 1, 0]]
 
-    return np.clip(c[0] * np.array(x) + c[1] * frost, 0, 255)
+#     return np.clip(c[0] * np.array(x) + c[1] * frost, 0, 255)
 
 
 def snow(x, severity=1):
@@ -268,7 +268,7 @@ def snow(x, severity=1):
                               cv2.IMREAD_UNCHANGED) / 255.
     snow_layer = snow_layer[..., np.newaxis]
 
-    x = c[6] * x + (1 - c[6]) * np.maximum(x, cv2.cvtColor(x, cv2.COLOR_RGB2GRAY).reshape(32, 32, 1) * 1.5 + 0.5)
+    x = c[6] * x + (1 - c[6]) * np.maximum(x, cv2.cvtColor(x, cv2.COLOR_RGB2GRAY).reshape(224, 224, 1) * 1.5 + 0.5)
     return np.clip(x + snow_layer + np.rot90(snow_layer, k=2), 0, 1) * 255
 
 
@@ -367,13 +367,13 @@ def jpeg_compression(x, severity=1):
 def pixelate(x, severity=1):
     c = [0.95, 0.9, 0.85, 0.75, 0.65][severity - 1]
 
-    x = x.resize((int(32 * c), int(32 * c)), Image.BOX)
-    x = x.resize((32, 32), Image.BOX)
+    x = x.resize((int(224 * c), int(224 * c)), Image.BOX)
+    x = x.resize((224, 224), Image.BOX)
 
     return x
 
 def elastic_transform(image, severity=1):
-    IMSIZE = 32
+    IMSIZE = 224
     c = [(IMSIZE*0, IMSIZE*0, IMSIZE*0.08),
          (IMSIZE*0.05, IMSIZE*0.2, IMSIZE*0.07),
          (IMSIZE*0.08, IMSIZE*0.06, IMSIZE*0.06),
@@ -419,8 +419,8 @@ def augment(image, select):
         return hflipper(image)
 
     elif select == 4:
-        resize_cropper = T.RandomCrop(size=(24, 24))
-        resized = T.Resize(size=32)(resize_cropper(image))
+        resize_cropper = T.RandomCrop(size=(192, 192))
+        resized = T.Resize(size=224)(resize_cropper(image))
         return resized
 
     elif select == 5:
@@ -428,194 +428,82 @@ def augment(image, select):
         return jitter(image)
 
 
-from torch.utils.data import Dataset
 
-class SVHN(Dataset):
-    url = ""
-    filename = ""
-    file_md5 = ""
-
-    split_list = {
-        'train': ["http://ufldl.stanford.edu/housenumbers/train_32x32.mat",
-                  "train_32x32.mat", "e26dedcc434d2e4c54c9b2d4a06d8373"],
-        'test': ["http://ufldl.stanford.edu/housenumbers/test_32x32.mat",
-                 "test_32x32.mat", "eb5a983be6a315427106f1b164d9cef3"],
-        'extra': ["http://ufldl.stanford.edu/housenumbers/extra_32x32.mat",
-                  "extra_32x32.mat", "a93ce644f1a588dc4d68dda5feec44a7"],
-        'train_and_extra': [
-                ["http://ufldl.stanford.edu/housenumbers/train_32x32.mat",
-                 "train_32x32.mat", "e26dedcc434d2e4c54c9b2d4a06d8373"],
-                ["http://ufldl.stanford.edu/housenumbers/extra_32x32.mat",
-                 "extra_32x32.mat", "a93ce644f1a588dc4d68dda5feec44a7"]]}
-
-    def __init__(self, root, split='train',
-                 transform=None, target_transform=None, download=False):
-        self.root = root
-        self.transform = transform
-        self.target_transform = target_transform
-        self.split = split  # training set or test set or extra set
-
-        if self.split not in self.split_list:
-            raise ValueError('Wrong split entered! Please use split="train" '
-                             'or split="extra" or split="test" '
-                             'or split="train_and_extra" ')
-
-        if self.split == "train_and_extra":
-            self.url = self.split_list[split][0][0]
-            self.filename = self.split_list[split][0][1]
-            self.file_md5 = self.split_list[split][0][2]
-        else:
-            self.url = self.split_list[split][0]
-            self.filename = self.split_list[split][1]
-            self.file_md5 = self.split_list[split][2]
-
-        # import here rather than at top of file because this is
-        # an optional dependency for torchvision
-        import scipy.io as sio
-
-        # reading(loading) mat file as array
-        loaded_mat = sio.loadmat(os.path.join(root, self.filename))
-
-        if self.split == "test":
-            self.data = loaded_mat['X']
-            self.targets = loaded_mat['y']
-            # Note label 10 == 0 so modulo operator required
-            self.targets = (self.targets % 10).squeeze()    # convert to zero-based indexing
-            self.data = np.transpose(self.data, (3, 2, 0, 1))
-        else:
-            self.data = loaded_mat['X']
-            self.targets = loaded_mat['y']
-
-            if self.split == "train_and_extra":
-                extra_filename = self.split_list[split][1][1]
-                loaded_mat = sio.loadmat(os.path.join(root, extra_filename))
-                self.data = np.concatenate([self.data,
-                                                  loaded_mat['X']], axis=3)
-                self.targets = np.vstack((self.targets,
-                                               loaded_mat['y']))
-            # Note label 10 == 0 so modulo operator required
-            self.targets = (self.targets % 10).squeeze()    # convert to zero-based indexing
-            self.data = np.transpose(self.data, (3, 2, 0, 1))
-
-    def __getitem__(self, index):
-        if self.split == "test":
-            img, target = self.data[index], self.targets[index]
-        else:
-            img, target = self.data[index], self.targets[index]
-
-        # doing this so that it is consistent with all other datasets
-        # to return a PIL Image
-        img = Image.fromarray(np.transpose(img, (1, 2, 0)))
-
-        if self.transform is not None:
-            img = self.transform(img)
-
-        if self.target_transform is not None:
-            target = self.target_transform(target)
-
-        return img, target
-
-    def __len__(self):
-        if self.split == "test":
-            return len(self.data)
-        else:
-            return len(self.data)
-
-    def _check_integrity(self):
-        root = self.root
-        if self.split == "train_and_extra":
-            md5 = self.split_list[self.split][0][2]
-            fpath = os.path.join(root, self.filename)
-            train_integrity = check_integrity(fpath, md5)
-            extra_filename = self.split_list[self.split][1][1]
-            md5 = self.split_list[self.split][1][2]
-            fpath = os.path.join(root, extra_filename)
-            return check_integrity(fpath, md5) and train_integrity
-        else:
-            md5 = self.split_list[self.split][2]
-            fpath = os.path.join(root, self.filename)
-            return check_integrity(fpath, md5)
-
-    def download(self):
-        if self.split == "train_and_extra":
-            md5 = self.split_list[self.split][0][2]
-            download_url(self.url, self.root, self.filename, md5)
-            extra_filename = self.split_list[self.split][1][1]
-            md5 = self.split_list[self.split][1][2]
-            download_url(self.url, self.root, extra_filename, md5)
-        else:
-            md5 = self.split_list[self.split][2]
-            download_url(self.url, self.root, self.filename, md5)
-
-
-from torch.utils.data import DataLoader
-from torchvision.transforms import transforms
-import PIL
-
-print('SVHN-R:')
+print('CIFAR-100-Train-R:')
 
 augmentations = ["rot90", "rot270", "flip", "random_crop", "color_jitter"]
 
-os.makedirs("SVHN-R-A", exist_ok=True)
+os.makedirs("Imagenet-Train-R", exist_ok=True)
 
-transform = transforms.Compose([transforms.ToTensor()])
-test_data = SVHN("/finals/datasets/data/", split='test', transform=transform)
+
+# test_data = dset.CIFAR100("/finals/datasets/data/", download=True, train=True)
+# Specify the directories for training and validation data
+# train_dir = '/path/to/imagenet/train'
+# val_dir = '/path/to/imagenet/val'
+
+from torchvision.transforms import transforms
+# Create datasets
+train_transforms = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor()])
+
+test_data = dset.ImageFolder(root='/finals/datasets/data/ImageNet-30/train/', transform=train_transforms)
+
+def random_crop(image):
+    resize_cropper = T.RandomCrop(size=(192, 192))
+    return T.Resize(size=224)(resize_cropper(image))
+
+
 convert_img = T.Compose([T.ToPILImage()])
-test_loader = DataLoader(test_data, shuffle=False)
 
-
-
-for i in range(1, 6):
-    print(augmentations[i-1])
-    cifar_a, labels_a = [], []
-    
-    for img, label in test_loader:
-        for k in range(len(img)):
-            labels_a.append(label.detach().cpu().numpy())
-            cifar_a.append(np.uint8(augment(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)), i)))
+# for i in range(1, 6):
+#     print(augmentations[i-1])
+# cifar_a, labels_a = [], []
+# i=0
+# for img, label in list(test_data):
+#     labels_a.append(label)
+#     cifar_a.append(np.uint8(random_crop(convert_img(img))))
         
 
-    np.save('SVHN-R-A/' + augmentations[i-1] + '.npy', np.array(cifar_a).astype(np.uint8))
-    np.save('SVHN-R-A/labels-A.npy', np.array(labels_a).astype(np.uint8))
+# np.save('Imagenet-Train-R/' + 'random_crop' + '.npy', np.array(cifar_a).astype(np.uint8))
+# np.save('Imagenet-Train-R/labels-A.npy', np.array(labels_a).astype(np.uint8))
 
 
 d = collections.OrderedDict()
-d['Gaussian Noise'] = gaussian_noise
-d['Shot Noise'] = shot_noise
-d['Impulse Noise'] = impulse_noise
-d['Defocus Blur'] = defocus_blur
-d['Glass Blur'] = glass_blur
-d['Motion Blur'] = motion_blur
-d['Zoom Blur'] = zoom_blur
-d['Snow'] = snow
-d['Frost'] = frost
-d['Fog'] = fog
-d['Brightness'] = brightness
-d['Contrast'] = contrast
-d['Elastic'] = elastic_transform
-d['Pixelate'] = pixelate
-d['JPEG'] = jpeg_compression
-d['Speckle Noise'] = speckle_noise
+# d['Gaussian Noise'] = gaussian_noise
+# d['Shot Noise'] = shot_noise
+# d['Impulse Noise'] = impulse_noise
+# d['Defocus Blur'] = defocus_blur
+# d['Glass Blur'] = glass_blur
+# d['Motion Blur'] = motion_blur
+# d['Zoom Blur'] = zoom_blur
+# d['Snow'] = snow
+# d['Frost'] = frost
+# d['Fog'] = fog
+# d['Brightness'] = brightness
+# d['Contrast'] = contrast
+# d['Elastic'] = elastic_transform
+# d['Pixelate'] = pixelate
+# d['JPEG'] = jpeg_compression
+# d['Speckle Noise'] = speckle_noise
 d['Gaussian Blur'] = gaussian_blur
-d['Spatter'] = spatter
-d['Saturate'] = saturate
+# d['Spatter'] = spatter
+# d['Saturate'] = saturate
 
-# os.makedirs("SVHN-R-C", exist_ok=True)
-# for method_name in d.keys():
-#     print(method_name)
-#     cifar_c, labels_c = [], []
-#     try:
-#         severity = 5
-#         corruption = lambda clean_img: d[method_name](clean_img, severity)
 
-#         for img, label in test_loader:
-#             for k in range(len(img)):
-#                 labels_c.append(label.detach().cpu().numpy())
-#                 cifar_c.append(np.uint8(corruption(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)))))
-            
+for method_name in d.keys():
+    print(method_name)
+    cifar_c, labels_c = [], []
 
-#         np.save('SVHN-R-C/' + d[method_name].__name__ + '.npy', np.array(cifar_c).astype(np.uint8))
+    severity = 1
+    # for severity in range(1,6):
+    corruption = lambda clean_img: d[method_name](clean_img, severity)
 
-#         np.save('SVHN-R-C/labels-C.npy', np.array(labels_c).astype(np.uint8))
-#     except:
-#         print(f"Error occured in: {method_name}")
+    for img, label in list(test_data):
+        labels_c.append(label)
+        cifar_c.append(np.uint8(corruption(convert_img(img))))
+
+    np.save('Imagenet-Train-R/' + d[method_name].__name__ + '.npy', np.array(cifar_c).astype(np.uint8))
+
+    np.save('Imagenet-Train-R/labels-C.npy', np.array(labels_c).astype(np.uint8))

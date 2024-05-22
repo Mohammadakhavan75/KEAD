@@ -428,194 +428,61 @@ def augment(image, select):
         return jitter(image)
 
 
-from torch.utils.data import Dataset
 
-class SVHN(Dataset):
-    url = ""
-    filename = ""
-    file_md5 = ""
-
-    split_list = {
-        'train': ["http://ufldl.stanford.edu/housenumbers/train_32x32.mat",
-                  "train_32x32.mat", "e26dedcc434d2e4c54c9b2d4a06d8373"],
-        'test': ["http://ufldl.stanford.edu/housenumbers/test_32x32.mat",
-                 "test_32x32.mat", "eb5a983be6a315427106f1b164d9cef3"],
-        'extra': ["http://ufldl.stanford.edu/housenumbers/extra_32x32.mat",
-                  "extra_32x32.mat", "a93ce644f1a588dc4d68dda5feec44a7"],
-        'train_and_extra': [
-                ["http://ufldl.stanford.edu/housenumbers/train_32x32.mat",
-                 "train_32x32.mat", "e26dedcc434d2e4c54c9b2d4a06d8373"],
-                ["http://ufldl.stanford.edu/housenumbers/extra_32x32.mat",
-                 "extra_32x32.mat", "a93ce644f1a588dc4d68dda5feec44a7"]]}
-
-    def __init__(self, root, split='train',
-                 transform=None, target_transform=None, download=False):
-        self.root = root
-        self.transform = transform
-        self.target_transform = target_transform
-        self.split = split  # training set or test set or extra set
-
-        if self.split not in self.split_list:
-            raise ValueError('Wrong split entered! Please use split="train" '
-                             'or split="extra" or split="test" '
-                             'or split="train_and_extra" ')
-
-        if self.split == "train_and_extra":
-            self.url = self.split_list[split][0][0]
-            self.filename = self.split_list[split][0][1]
-            self.file_md5 = self.split_list[split][0][2]
-        else:
-            self.url = self.split_list[split][0]
-            self.filename = self.split_list[split][1]
-            self.file_md5 = self.split_list[split][2]
-
-        # import here rather than at top of file because this is
-        # an optional dependency for torchvision
-        import scipy.io as sio
-
-        # reading(loading) mat file as array
-        loaded_mat = sio.loadmat(os.path.join(root, self.filename))
-
-        if self.split == "test":
-            self.data = loaded_mat['X']
-            self.targets = loaded_mat['y']
-            # Note label 10 == 0 so modulo operator required
-            self.targets = (self.targets % 10).squeeze()    # convert to zero-based indexing
-            self.data = np.transpose(self.data, (3, 2, 0, 1))
-        else:
-            self.data = loaded_mat['X']
-            self.targets = loaded_mat['y']
-
-            if self.split == "train_and_extra":
-                extra_filename = self.split_list[split][1][1]
-                loaded_mat = sio.loadmat(os.path.join(root, extra_filename))
-                self.data = np.concatenate([self.data,
-                                                  loaded_mat['X']], axis=3)
-                self.targets = np.vstack((self.targets,
-                                               loaded_mat['y']))
-            # Note label 10 == 0 so modulo operator required
-            self.targets = (self.targets % 10).squeeze()    # convert to zero-based indexing
-            self.data = np.transpose(self.data, (3, 2, 0, 1))
-
-    def __getitem__(self, index):
-        if self.split == "test":
-            img, target = self.data[index], self.targets[index]
-        else:
-            img, target = self.data[index], self.targets[index]
-
-        # doing this so that it is consistent with all other datasets
-        # to return a PIL Image
-        img = Image.fromarray(np.transpose(img, (1, 2, 0)))
-
-        if self.transform is not None:
-            img = self.transform(img)
-
-        if self.target_transform is not None:
-            target = self.target_transform(target)
-
-        return img, target
-
-    def __len__(self):
-        if self.split == "test":
-            return len(self.data)
-        else:
-            return len(self.data)
-
-    def _check_integrity(self):
-        root = self.root
-        if self.split == "train_and_extra":
-            md5 = self.split_list[self.split][0][2]
-            fpath = os.path.join(root, self.filename)
-            train_integrity = check_integrity(fpath, md5)
-            extra_filename = self.split_list[self.split][1][1]
-            md5 = self.split_list[self.split][1][2]
-            fpath = os.path.join(root, extra_filename)
-            return check_integrity(fpath, md5) and train_integrity
-        else:
-            md5 = self.split_list[self.split][2]
-            fpath = os.path.join(root, self.filename)
-            return check_integrity(fpath, md5)
-
-    def download(self):
-        if self.split == "train_and_extra":
-            md5 = self.split_list[self.split][0][2]
-            download_url(self.url, self.root, self.filename, md5)
-            extra_filename = self.split_list[self.split][1][1]
-            md5 = self.split_list[self.split][1][2]
-            download_url(self.url, self.root, extra_filename, md5)
-        else:
-            md5 = self.split_list[self.split][2]
-            download_url(self.url, self.root, self.filename, md5)
-
-
-from torch.utils.data import DataLoader
-from torchvision.transforms import transforms
-import PIL
-
-print('SVHN-R:')
+print('CIFAR-100-Train-R:')
 
 augmentations = ["rot90", "rot270", "flip", "random_crop", "color_jitter"]
 
-os.makedirs("SVHN-R-A", exist_ok=True)
-
-transform = transforms.Compose([transforms.ToTensor()])
-test_data = SVHN("/finals/datasets/data/", split='test', transform=transform)
+os.makedirs("CIFAR-100-Train-R", exist_ok=True)
+test_data = dset.CIFAR100("/finals/datasets/data/", download=True, train=True)
 convert_img = T.Compose([T.ToPILImage()])
-test_loader = DataLoader(test_data, shuffle=False)
 
-
-
-for i in range(1, 6):
-    print(augmentations[i-1])
-    cifar_a, labels_a = [], []
+# for i in range(1, 6):
+#     print(augmentations[i-1])
+#     cifar_a, labels_a = [], []
     
-    for img, label in test_loader:
-        for k in range(len(img)):
-            labels_a.append(label.detach().cpu().numpy())
-            cifar_a.append(np.uint8(augment(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)), i)))
+#     for img, label in zip(test_data.data, test_data.targets):
+#         labels_a.append(label)
+#         cifar_a.append(np.uint8(augment(convert_img(img), i)))
         
 
-    np.save('SVHN-R-A/' + augmentations[i-1] + '.npy', np.array(cifar_a).astype(np.uint8))
-    np.save('SVHN-R-A/labels-A.npy', np.array(labels_a).astype(np.uint8))
+#     np.save('CIFAR-100-Train-R/' + augmentations[i-1] + '.npy', np.array(cifar_a).astype(np.uint8))
+#     np.save('CIFAR-100-Train-R/labels-A.npy', np.array(labels_a).astype(np.uint8))
 
 
 d = collections.OrderedDict()
-d['Gaussian Noise'] = gaussian_noise
-d['Shot Noise'] = shot_noise
-d['Impulse Noise'] = impulse_noise
-d['Defocus Blur'] = defocus_blur
-d['Glass Blur'] = glass_blur
-d['Motion Blur'] = motion_blur
-d['Zoom Blur'] = zoom_blur
-d['Snow'] = snow
-d['Frost'] = frost
-d['Fog'] = fog
-d['Brightness'] = brightness
-d['Contrast'] = contrast
-d['Elastic'] = elastic_transform
-d['Pixelate'] = pixelate
-d['JPEG'] = jpeg_compression
-d['Speckle Noise'] = speckle_noise
+# d['Gaussian Noise'] = gaussian_noise
+# d['Shot Noise'] = shot_noise
+# d['Impulse Noise'] = impulse_noise
+# d['Defocus Blur'] = defocus_blur
+# d['Glass Blur'] = glass_blur
+# d['Motion Blur'] = motion_blur
+# d['Zoom Blur'] = zoom_blur
+# d['Snow'] = snow
+# d['Frost'] = frost
+# d['Fog'] = fog
+# d['Brightness'] = brightness
+# d['Contrast'] = contrast
+# d['Elastic'] = elastic_transform
+# d['Pixelate'] = pixelate
+# d['JPEG'] = jpeg_compression
+# d['Speckle Noise'] = speckle_noise
 d['Gaussian Blur'] = gaussian_blur
-d['Spatter'] = spatter
-d['Saturate'] = saturate
+# d['Spatter'] = spatter
+# d['Saturate'] = saturate
 
-# os.makedirs("SVHN-R-C", exist_ok=True)
-# for method_name in d.keys():
-#     print(method_name)
-#     cifar_c, labels_c = [], []
-#     try:
-#         severity = 5
-#         corruption = lambda clean_img: d[method_name](clean_img, severity)
 
-#         for img, label in test_loader:
-#             for k in range(len(img)):
-#                 labels_c.append(label.detach().cpu().numpy())
-#                 cifar_c.append(np.uint8(corruption(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)))))
-            
+for method_name in d.keys():
+    print(method_name)
+    cifar_c, labels_c = [], []
 
-#         np.save('SVHN-R-C/' + d[method_name].__name__ + '.npy', np.array(cifar_c).astype(np.uint8))
+    for severity in range(1,6):
+        corruption = lambda clean_img: d[method_name](clean_img, severity)
 
-#         np.save('SVHN-R-C/labels-C.npy', np.array(labels_c).astype(np.uint8))
-#     except:
-#         print(f"Error occured in: {method_name}")
+        for img, label in zip(test_data.data, test_data.targets):
+            labels_c.append(label)
+            cifar_c.append(np.uint8(corruption(convert_img(img))))
+
+    np.save('CIFAR-100-Train-R/' + d[method_name].__name__ + '.npy', np.array(cifar_c).astype(np.uint8))
+
+    np.save('CIFAR-100-Train-R/labels-C.npy', np.array(labels_c).astype(np.uint8))
