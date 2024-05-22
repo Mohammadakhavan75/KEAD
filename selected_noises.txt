@@ -1,0 +1,7 @@
+flip
+gaussian_noise
+glass_blur
+jpeg_compression
+random_crop
+rot90
+snow

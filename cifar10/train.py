@@ -7,6 +7,7 @@ from tqdm import tqdm
 from datetime import datetime
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
+from model import ResNet18, ResNet34, ResNet50
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, roc_auc_score
 
@@ -128,7 +129,8 @@ def test(loader, net, global_eval_iter, criterion, device, writer):
 
 def load_model(args):
 
-    model = torchvision.models.resnet34()
+    # model = torchvision.models.resnet34()
+    model = ResNet18(10)
     if args.optimizer == 'sgd':
         optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, 
                                 momentum=args.momentum,weight_decay=args.decay)
