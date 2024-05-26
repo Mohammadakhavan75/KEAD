@@ -4,68 +4,11 @@ import torch
 import pickle
 import torchvision
 import numpy as np
-import torch.nn as nn
+from PIL import Image
+from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
 from torch.utils.data.dataset import Subset
-from torch.utils.data import Dataset
-import transform_layers as TL
-from PIL import Image
-
-def sparse2coarse(targets):
-    coarse_labels = np.array([ 4,  1, 14,  8,  0,  6,  7,  7, 18,  3,  
-                               3, 14,  9, 18,  7, 11,  3,  9,  7, 11,
-                               6, 11,  5, 10,  7,  6, 13, 15,  3, 15,  
-                               0, 11,  1, 10, 12, 14, 16,  9, 11,  5, 
-                               5, 19,  8,  8, 15, 13, 14, 17, 18, 10, 
-                               16, 4, 17,  4,  2,  0, 17,  4, 18, 17, 
-                               10, 3,  2, 12, 12, 16, 12,  1,  9, 19,  
-                               2, 10,  0,  1, 16, 12,  9, 13, 15, 13, 
-                              16, 19,  2,  4,  6, 19,  5,  5,  8, 19, 
-                              18,  1,  2, 15,  6,  0, 17,  8, 14, 13])
-    return coarse_labels[targets]
-
-
-class GaussianBlur(object):
-    """blur a single image on CPU"""
-    def __init__(self, kernel_size):
-        radias = kernel_size // 2
-        kernel_size = radias * 2 + 1
-        self.blur_h = nn.Conv2d(3, 3, kernel_size=(kernel_size, 1),
-                                stride=1, padding=0, bias=False, groups=3)
-        self.blur_v = nn.Conv2d(3, 3, kernel_size=(1, kernel_size),
-                                stride=1, padding=0, bias=False, groups=3)
-        self.k = kernel_size
-        self.r = radias
-
-        self.blur = nn.Sequential(
-            nn.ReflectionPad2d(radias),
-            self.blur_h,
-            self.blur_v
-        )
-
-        self.pil_to_tensor = transforms.ToTensor()
-        self.tensor_to_pil = transforms.ToPILImage()
-
-    def __call__(self, img):
-        img = self.pil_to_tensor(img).unsqueeze(0)
-
-        sigma = np.random.uniform(0.1, 2.0)
-        x = np.arange(-self.r, self.r + 1)
-        x = np.exp(-np.power(x, 2) / (2 * sigma * sigma))
-        x = x / x.sum()
-        x = torch.from_numpy(x).view(1, -1).repeat(3, 1)
-
-        self.blur_h.weight.data.copy_(x.view(3, 1, self.k, 1))
-        self.blur_v.weight.data.copy_(x.view(3, 1, 1, self.k))
-
-        with torch.no_grad():
-            img = self.blur(img)
-            img = img.squeeze()
-
-        img = self.tensor_to_pil(img)
-
-        return img
 
 
 class SVHN(Dataset):
@@ -232,34 +175,47 @@ def get_subclass_dataset(dataset, classes):
     return dataset
 
 
-def noise_loader(batch_size=64, num_workers=0, one_class_idx=None, tail_positive=None, tail_negative=None, dataset='cifar10', preprocessing='clip', k_pairs=1):
+def sparse2coarse(targets):
+    coarse_labels = np.array([ 4,  1, 14,  8,  0,  6,  7,  7, 18,  3,  
+                               3, 14,  9, 18,  7, 11,  3,  9,  7, 11,
+                               6, 11,  5, 10,  7,  6, 13, 15,  3, 15,  
+                               0, 11,  1, 10, 12, 14, 16,  9, 11,  5, 
+                               5, 19,  8,  8, 15, 13, 14, 17, 18, 10, 
+                               16, 4, 17,  4,  2,  0, 17,  4, 18, 17, 
+                               10, 3,  2, 12, 12, 16, 12,  1,  9, 19,  
+                               2, 10,  0,  1, 16, 12,  9, 13, 15, 13, 
+                              16, 19,  2,  4,  6, 19,  5,  5,  8, 19, 
+                              18,  1,  2, 15,  6,  0, 17,  8, 14, 13])
+    return coarse_labels[targets]
 
+
+def noise_loader(batch_size=64, num_workers=0, one_class_idx=None, tail_positive=None, tail_negative=None, dataset='cifar10', preprocessing='clip', k_pairs=1, args):
+    # Filling paths
     if dataset == 'cifar10':
-        np_train_target_path = '/finals/datasets/generalization_repo_dataset/CIFAR10_Train_AC/labels_train.npy'
-        np_test_target_path = '/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC/labels_test.npy'
-        np_train_root_path = '/finals/datasets/generalization_repo_dataset/CIFAR10_Train_AC/'
-        np_test_root_path = '/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC/'
+        np_train_target_path = os.path.join(args.config['generalization_path'], 'CIFAR10_Train_AC/labels_train.npy')
+        np_test_target_path = os.path.join(args.config['generalization_path'], 'CIFAR10_Test_AC/labels_test.npy')
+        np_train_root_path = os.path.join(args.config['generalization_path'], 'CIFAR10_Train_AC')
+        np_test_root_path = os.path.join(args.config['generalization_path'], 'CIFAR10_Test_AC')
         classes = 10
     elif dataset == 'svhn':
-        np_train_target_path = '/finals/datasets/generalization_repo_dataset/SVHN_Train_AC/labels_train.npy'
-        np_test_target_path = '/finals/datasets/generalization_repo_dataset/SVHN_Test_AC/labels_test.npy'
-        np_train_root_path = '/finals/datasets/generalization_repo_dataset/SVHN_Train_AC/'
-        np_test_root_path = '/finals/datasets/generalization_repo_dataset/SVHN_Test_AC/'
+        np_train_target_path = os.path.join(args.config['generalization_path'], 'SVHN_Train_AC/labels_train.npy')
+        np_test_target_path = os.path.join(args.config['generalization_path'], 'SVHN_Test_AC/labels_test.npy')
+        np_train_root_path = os.path.join(args.config['generalization_path'], 'SVHN_Train_AC')
+        np_test_root_path = os.path.join(args.config['generalization_path'], 'SVHN_Test_AC')
         classes = 10
     elif dataset == 'cifar100':
-        np_train_target_path = '/finals/datasets/generalization_repo_dataset/CIFAR100_Train_AC/labels_train.npy'
-        np_test_target_path = '/finals/datasets/generalization_repo_dataset/CIFAR100_Test_AC/labels_test.npy'
-        np_train_root_path = '/finals/datasets/generalization_repo_dataset/CIFAR100_Train_AC/'
-        np_test_root_path = '/finals/datasets/generalization_repo_dataset/CIFAR100_Test_AC/'
+        np_train_target_path = os.path.join(args.config['generalization_path'], 'CIFAR100_Train_AC/labels_train.npy')
+        np_test_target_path = os.path.join(args.config['generalization_path'], 'CIFAR100_Test_AC/labels_test.npy')
+        np_train_root_path = os.path.join(args.config['generalization_path'], 'CIFAR100_Train_AC')
+        np_test_root_path = os.path.join(args.config['generalization_path'], 'CIFAR100_Test_AC')
         classes = 20
     elif dataset == 'imagenet30':
-        np_train_target_path = '/finals/datasets/generalization_repo_dataset/Imagenet_Train_AC/labels_train.npy'
-        # np_test_target_path = '/finals/datasets/generalization_repo_dataset/Imagenet_Test_AC/labels_test.npy'
-        np_train_root_path = '/finals/datasets/generalization_repo_dataset/Imagenet_Train_AC/'
-        # np_test_root_path = '/finals/datasets/generalization_repo_dataset/Imagenet_Test_AC/'
+        np_train_target_path = os.path.join(args.config['generalization_path'], 'Imagenet_Train_AC/labels_train.npy')
+        np_train_root_path = os.path.join(args.config['generalization_path'], 'Imagenet_Train_AC')
         np_test_root_path, np_test_target_path = np_train_root_path, np_train_target_path
         classes = 30
         
+    # Creating transformation
     if dataset == 'imagenet30':
         train_transform = torchvision.transforms.Compose([
                             torchvision.transforms.Resize((224,224)),
@@ -269,16 +225,16 @@ def noise_loader(batch_size=64, num_workers=0, one_class_idx=None, tail_positive
         train_transform = transforms.Compose([transforms.ToTensor()])
         test_transform = transforms.Compose([transforms.ToTensor()])
 
-    
+    # Loading probs of augmentations
     if preprocessing == 'clip':
         with open(f'./ranks/selected_noises_{dataset}_softmaxed.pkl', 'rb') as file:
-            clip_probs = pickle.load(file)
+            probs = pickle.load(file)
     elif preprocessing == 'cosine':
         with open(f'./ranks/{dataset}_cosine_softmaxed.pkl', 'rb') as file:
-            clip_probs = pickle.load(file)
+            probs = pickle.load(file)
     elif preprocessing == 'wasser':
         with open(f'./ranks/selected_noises_{dataset}_wasser_dist_softmaxed.pkl', 'rb') as file:
-            clip_probs = pickle.load(file)
+            probs = pickle.load(file)
 
     print("Creating noises loader")
 
@@ -294,9 +250,10 @@ def noise_loader(batch_size=64, num_workers=0, one_class_idx=None, tail_positive
     all_train_dataset_negetives_one_class = []
     all_test_dataset_positives_one_class = []
     all_test_dataset_negetives_one_class = []
+    
     # Loading positive
     for k in range(1, k_pairs + 1):
-        noise = list(clip_probs[one_class_idx].keys())[k]
+        noise = list(probs[one_class_idx].keys())[k]
         print(f"Selecting {noise} as positive pair for class {one_class_idx}")
         np_train_img_path = np_train_root_path + noise + '.npy'
         train_positives_datasets = load_np_dataset(np_train_img_path, np_train_target_path, train_transform, dataset, train=True)
@@ -310,7 +267,6 @@ def noise_loader(batch_size=64, num_workers=0, one_class_idx=None, tail_positive
 
         all_train_positives_datasets.append(train_positives_datasets)
         all_test_positives_datasets.append(test_positives_datasets)
-
         all_train_dataset_positives_one_class.append(get_subclass_dataset(train_positives_datasets, one_class_idx))
         all_test_dataset_positives_one_class.append(get_subclass_dataset(test_positives_datasets, one_class_idx))
         train_positives_loader.append(DataLoader(all_train_dataset_positives_one_class[k-1], shuffle=False, batch_size=batch_size, num_workers=num_workers))
@@ -318,7 +274,7 @@ def noise_loader(batch_size=64, num_workers=0, one_class_idx=None, tail_positive
 
     # Loading negative 
     for k in range(1, k_pairs + 1):
-        noise = list(clip_probs[one_class_idx].keys())[-k]
+        noise = list(probs[one_class_idx].keys())[-k]
         print(f"Selecting {noise} as negetive pair for class {one_class_idx}")
         np_train_img_path = np_train_root_path + noise + '.npy'
         train_negetives_datasets = load_np_dataset(np_train_img_path, np_train_target_path, train_transform, dataset, train=True)
@@ -341,14 +297,14 @@ def noise_loader(batch_size=64, num_workers=0, one_class_idx=None, tail_positive
     return train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader
 
 
-def load_imagenet30(root_path, batch_size=64, num_workers=0, one_class_idx=None, tail_normal=None):
-
+def load_imagenet30(path, batch_size=64, num_workers=0, one_class_idx=None):
+    print('loading Imagenet-30')
     transforms = torchvision.transforms.Compose([
     torchvision.transforms.Resize((224,224)),
     torchvision.transforms.ToTensor()])
 
-    train_data = torchvision.datasets.ImageFolder(root=root_path, transform=transforms)
-    test_data = torchvision.datasets.ImageFolder(root=root_path, transform=transforms)
+    train_data = torchvision.datasets.ImageFolder(root=path, transform=transforms)
+    test_data = torchvision.datasets.ImageFolder(root=path, transform=transforms)
 
     if one_class_idx != None:
         train_data = get_subclass_dataset(train_data, one_class_idx)
@@ -360,13 +316,13 @@ def load_imagenet30(root_path, batch_size=64, num_workers=0, one_class_idx=None,
     return train_loader, val_loader
 
 
-def load_cifar10(cifar10_path, batch_size=64, num_workers=0, one_class_idx=None, tail_normal=None):
-
+def load_cifar10(path, batch_size=64, num_workers=0, one_class_idx=None):
+    print('loading cifar10')
     data_transforms = transforms.Compose([transforms.ToTensor()])
     train_data = torchvision.datasets.CIFAR10(
-        cifar10_path, train=True, transform=data_transforms, download=True)
+        path, train=True, transform=data_transforms, download=True)
     test_data = torchvision.datasets.CIFAR10(
-        cifar10_path, train=False, transform=data_transforms, download=True)
+        path, train=False, transform=data_transforms, download=True)
 
     if one_class_idx != None:
         train_data = get_subclass_dataset(train_data, one_class_idx)
@@ -378,43 +334,24 @@ def load_cifar10(cifar10_path, batch_size=64, num_workers=0, one_class_idx=None,
     return train_loader, val_loader, None
 
 
-def load_svhn(svhn_path, batch_size=64, num_workers=0, one_class_idx=None, tail_normal=None):
-
-    mean = [x / 255 for x in [125.3, 123.0, 113.9]]
-    std = [x / 255 for x in [63.0, 62.1, 66.7]]
-    # transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
-    transform = transforms.Compose([transforms.ToTensor()])
+def load_svhn(path, batch_size=64, num_workers=0, one_class_idx=None):
     print('loading SVHN')
-    train_data = SVHN(root=svhn_path, split="train", transform=transform)
+    transform = transforms.Compose([transforms.ToTensor()])
+    train_data = SVHN(root=path, split="train", transform=transform)
+    test_data = SVHN(root=path, split="test", transform=transform)
 
-    test_data = SVHN(root=svhn_path, split="test", transform=transform)
-
-    
     if one_class_idx != None:
         train_data = get_subclass_dataset(train_data, one_class_idx)
         test_data = get_subclass_dataset(test_data, one_class_idx)
 
     train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
     val_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
-
-    if tail_normal:
-        print(f"Loading normal_shuffler with tail {tail_normal}")
-        with open(f'./clip_vec/tensors_selection/svhn_normal_data.pkl', 'rb') as file:
-            diffs = pickle.load(file)            
-            i = one_class_idx
-            class_diff = diffs[i*5000:i*5000 + 5000] / np.max(diffs[i*5000:i*5000 + 5000])
-            class_diff_normalized = (class_diff - np.mean(class_diff)) / np.std(class_diff)
-            idices = [i for i, element in enumerate(class_diff_normalized) if element  < np.percentile(class_diff_normalized, tail_normal)]
-            normal_data = Subset(train_data, idices)
-            normal_loader = DataLoader(normal_data, shuffle=True, batch_size=batch_size, num_workers=num_workers)
-    else:
-        normal_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+    normal_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, val_loader, normal_loader
 
 
 def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None):
-
     transform = transforms.Compose([transforms.ToTensor()])
     train_data = torchvision.datasets.CIFAR100(path, train=True, download=True, transform=transform)
     test_data = torchvision.datasets.CIFAR100(path, train=False, download=True, transform=transform)
@@ -429,20 +366,3 @@ def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None):
     test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
     normal_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=num_workers)
     return train_loader, test_loader, normal_loader
-
-
-def csi_aug():
-    # Align augmentation
-    image_size = (32, 32, 3)
-    resize_scale = (0.54, 1)
-    color_jitter = TL.ColorJitterLayer(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1, p=0.8)
-    color_gray = TL.RandomColorGrayLayer(p=0.2)
-    resize_crop = TL.RandomResizedCropLayer(scale=resize_scale, size=image_size)
-
-    transform = nn.Sequential(
-        color_jitter,
-        color_gray,
-        resize_crop,
-    )
-    return transform
-
