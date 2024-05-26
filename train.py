@@ -1,12 +1,14 @@
 import os
+import json
 import torch
 import random
 import argparse
 import torchvision
 import numpy as np
 from tqdm import tqdm
-from contrastive import contrastive
+from utils import tsne_plot
 from datetime import datetime
+from contrastive import contrastive
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
 from cifar10.model import ResNet18, ResNet34, ResNet50
@@ -14,13 +16,13 @@ from cifar10.models.resnet_imagenet import resnet18, resnet50
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, roc_auc_score
 
-
-from dataset_loader import noise_loader, load_cifar10, load_svhn, load_cifar100, csi_aug, load_imagenet30
+from dataset_loader import noise_loader, load_cifar10, load_svhn, load_cifar100, load_imagenet30
 
 from dataset_loader import load_np_dataset, get_subclass_dataset
 from sklearn.manifold import TSNE
 import pandas as pd
 import plotly.express as px 
+
 
 def to_np(x):
     return x.data.cpu().numpy()
@@ -78,109 +80,20 @@ def parsing():
     parser.add_argument('--e_holder', default=0, type=str, help='A list of milestones')
     parser.add_argument('--tsne', action="store_true", help='A list of milestones')
     parser.add_argument('--linear', action="store_true", help='A list of milestones')
+    parser.add_argument('--config', default=None, help='config file')
     args = parser.parse_args()
 
     return args
 
 
-def train_one_class(train_loader, positives, negetives, shuffle_loader,
+def train_one_class(train_loader, train_positives_loader, train_negetives_loader,
                      net, train_global_iter, optimizer, device, writer):
 
-    print("Traning...")
+    # Enter model into train mode
     net = net.to(device)
-    net.train()  # enter train mode
-
-    # track train classification accuracy
-    epoch_accuracies = {
-        'normal': [],
-        'positive': [],
-        'negative': []
-    }
-    epoch_loss = {
-        'loss': [],
-        'ce': [],
-        'contrastive': []
-    }
+    net.train()
     
-    if args.shift_normal:
-        a_ = list(shuffle_loader)
-        b_ = []
-        for aa_ in a_:
-            b_.append(aa_[0])
-        shuffle_imgs_list = torch.concatenate(b_)
-
-    # for normal, ps, ns, sl in zip(train_loader, positives, negetives, shuffle_loader):
-    for normal, ps, ns in zip(train_loader, positives, negetives):
-    # for normal in train_loader:
-
-        imgs, labels = normal
-        positive_imgs, _ = ps
-        negative_imgs, _ = ns
-
-        if args.shift_normal:
-            positive_noraml_img = shuffle_imgs_list[torch.randint(0, len(shuffle_imgs_list), size=(1,))]
-            positive_noraml_img =  positive_noraml_img.to(args.device)
-
-        if args.csi_aug:
-            csi_transform = csi_aug()
-            imgs = csi_transform(imgs)
-
-
-        imgs, labels = imgs.to(args.device), labels.to(args.device)
-        positive_imgs, negative_imgs = positive_imgs.to(args.device), negative_imgs.to(args.device)
-
-        optimizer.zero_grad()
-        _, normal_features = model(imgs, True)
-        _, positive_features = model(positive_imgs, True)
-        _, negative_features = model(negative_imgs, True)
-        if args.shift_normal:
-            _, positive_noraml_features = model(positive_noraml_img, True)
-
-        normal_features = normal_features[-1]
-        positive_features = positive_features[-1]
-        negative_features = negative_features[-1]
-        if args.shift_normal:
-            positive_noraml_features = positive_noraml_features[-1]
-        
-        # Calculate loss contrastive for layer
-        loss_contrastive = 0
-        if args.shift_normal:
-            if len(negative_features) == len(normal_features):
-                for norm_f, pos_f, neg_f, pn_f in zip(normal_features, positive_features, negative_features, positive_noraml_features):
-                    pos_sl_f = torch.stack([pos_f, pn_f])
-                    loss_contrastive = loss_contrastive + contrastive(
-                        norm_f, pos_sl_f, neg_f, temperature=args.temperature)
-
-        else:
-            if len(negative_features) == len(normal_features):
-                for norm_f, pos_f, neg_f in zip(normal_features, positive_features, negative_features):
-
-                    pos_sl_f = pos_f
-                    loss_contrastive = loss_contrastive + contrastive(
-                        norm_f, pos_sl_f, neg_f, temperature=args.temperature)
-
-
-        loss = loss_contrastive / len(normal_features)
-        
-        epoch_loss['loss'].append(loss.item())
-        epoch_loss['contrastive'].append(loss_contrastive.item())
-
-        train_global_iter += 1
-        writer.add_scalar("Train/loss", loss.item(), train_global_iter)
-
-        loss.backward()
-        optimizer.step()
-
-    return train_global_iter, epoch_loss, epoch_accuracies 
-
-
-def train_one_class_multi_pair(train_loader, train_positives_loader, train_negetives_loader,
-                     net, train_global_iter, optimizer, device, writer):
-
-    print("Traning...")
-    net = net.to(device)
-    net.train()  # enter train mode
-    # track train classification accuracy
+    # Tracking metrics
     epoch_accuracies = {
         'normal': [],
         'positive': [],
@@ -193,9 +106,6 @@ def train_one_class_multi_pair(train_loader, train_positives_loader, train_neget
     }
     
     sim_ps, sim_ns = [], []
-
-    
-
     
     if args.k_pairs == 1: 
         for normal, p_data, n_data in zip(train_loader, train_positives_loader[0], train_negetives_loader[0]):
@@ -238,6 +148,7 @@ def train_one_class_multi_pair(train_loader, train_positives_loader, train_neget
 
             loss.backward()
             optimizer.step()
+
     elif args.k_pairs == 2:
         for normal, p_data, n_data, p_data1, n_data1 in zip(train_loader, train_positives_loader[0], train_negetives_loader[0], train_positives_loader[1], train_negetives_loader[1]):
             imgs, labels = normal
@@ -366,121 +277,26 @@ def train_one_class_multi_pair(train_loader, train_positives_loader, train_neget
     return train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns
 
 
-def tsne(model, args):
-
-    np_test_img_path = f'/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC_6/rot90.npy'
-    np_test_target_path = '/finals/datasets/generalization_repo_dataset/CIFAR10_Test_AC_6/labels_test.npy'
-    cifar10_path = '/finals/datasets/data/'
-    test_data = torchvision.datasets.CIFAR10(
-        cifar10_path, train=False, transform=torchvision.transforms.ToTensor(), download=True)
-
-    test_data2 = load_np_dataset(np_test_img_path, np_test_target_path, torchvision.transforms.ToTensor(), dataset='cifar10', train=False)
-
-    eval_in_data = get_subclass_dataset(test_data, args.one_class_idx)
-    eval_out_data = get_subclass_dataset(test_data, 6)
-    eval_out_data2 = get_subclass_dataset(test_data2, args.one_class_idx)
-    eval_in = DataLoader(eval_in_data, shuffle=False, batch_size=16)
-    eval_out = DataLoader(eval_out_data, shuffle=False, batch_size=16)
-    eval_out2 = DataLoader(eval_out_data2, shuffle=False, batch_size=16)
-    f_in = []
-    f_out = []
-    f_out2 = []
-    model.eval()
-    with torch.no_grad():
-        for d1, d2, d3 in zip(eval_in, eval_out, eval_out2):
-            im1, _ = d1
-            im2, _ = d2
-            im3, _ = d3
-            im1, im2, im3 = im1.to(args.device), im2.to(args.device), im3.to(args.device)
-            _, out1 = model(im1, True)
-            _, out2 = model(im2, True)
-            _, out3 = model(im3, True)
-            f_in.append(out1[-1].detach().cpu().numpy())
-            f_out.append(out2[-1].detach().cpu().numpy())
-            f_out2.append(out3[-1].detach().cpu().numpy())
-    
-    f_in = np.concatenate(f_in, axis=0)
-    f_out = np.concatenate(f_out, axis=0)
-    y = [0 for i in range(len(f_in))]
-    y.extend([1 for i in range(len(f_out))])
-    x = np.concatenate([f_in, f_out])
-    tsne_plot(x, y, 'frog', args)
-
-    f_out2 = np.concatenate(f_out2, axis=0)
-    y = [0 for i in range(len(f_in))]
-    y.extend([1 for i in range(len(f_out2))])
-    x = np.concatenate([f_in, f_out2])
-    tsne_plot(x, y, 'rot90', args)
-
-
-def tsne_plot(x, y, name, args):
-    tsne = TSNE(n_components=2, verbose=1, random_state=123, learning_rate='auto', init='pca')
-    z = tsne.fit_transform(x) 
-    df = pd.DataFrame()
-    df["y"] = y
-    df["component_1"] = z[:,0]
-    df["component_2"] = z[:,1]
-    label_str = [str(yy) for yy in y]
-    # for l in df.y.tolist():
-    #     if l == 1:
-    #         label_str.append(class1)
-    #     else:
-    #         label_str.append(class2)
-
-    fig = px.scatter(data_frame=df, x="component_1", y="component_2", color=label_str,
-            labels={
-                        "component_1": "Component 1",
-                        "component_2": "Component 2",
-                    },
-                title=f"CLIP encoding normal vs {name}",
-                width=1024, height=1024)
-
-    fig.update_layout(
-        font=dict(
-            size=22,  # Set the font size here
-        )
-    )
-    # fig.show()
-    fig.write_image(args.save_path + "{}_normal_vs_{}_tsne.png".format(args.e_holder, name))
-
-
 def load_model(args):
 
-    # model = torchvision.models.resnet34()
-    if args.dataset == 'imagenet30':
-        model = resnet18(num_classes=30)
-        if args.optimizer == 'sgd':
-            optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, 
-                                    momentum=args.momentum,weight_decay=args.decay)
-        elif args.optimizer == 'adam':
-            optimizer = torch.optim.Adam(model.parameters(), args.learning_rate,
-                                        weight_decay=args.decay)
-        else:
-            raise NotImplemented("Not implemented optimizer!")
+    if args.linear:
+        model = ResNet18(args.num_classes, args.linear)
     else:
-        if args.linear:
-            model = ResNet18(10, args.linear)
-        else:
-            model = ResNet18(10)
-        if args.optimizer == 'sgd':
-            optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, 
-                                    momentum=args.momentum,weight_decay=args.decay)
-        elif args.optimizer == 'adam':
-            optimizer = torch.optim.Adam(model.parameters(), args.learning_rate,
-                                        weight_decay=args.decay)
-        else:
-            raise NotImplemented("Not implemented optimizer!")
+        model = ResNet18(args.num_classes)
 
-        if args.model_path:
-            model.load_state_dict(torch.load(args.model_path))
+    if args.optimizer == 'sgd':
+        optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, 
+                                momentum=args.momentum,weight_decay=args.decay)
+    elif args.optimizer == 'adam':
+        optimizer = torch.optim.Adam(model.parameters(), args.learning_rate,
+                                    weight_decay=args.decay)
+    else:
+        raise NotImplemented("Not implemented optimizer!")
+
+    if args.model_path:
+        model.load_state_dict(torch.load(args.model_path))
 
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_update_rate, gamma=args.lr_gamma)
-    
-    milestones = args.milestones  # Epochs at which to decrease learning rate
-    gamma = 0.1  # Factor by which to decrease learning rate at milestones
-    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
-
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
     criterion = torch.nn.CrossEntropyLoss().to(args.device)
 
     return model, criterion, optimizer, scheduler
@@ -506,64 +322,78 @@ def create_path(args):
                       f'_preprocessing_{args.preprocessing}' + f'_seed_{args.seed}' + f'_linear_layer_{args.linear}' + f'_k_pairs_{args.k_pairs}' + '/'
             model_save_path = save_path + 'models/'
             os.makedirs(model_save_path, exist_ok=True)
+    
     return model_save_path, save_path
 
+
+def loading_datasets(args):
+    if args.dataset == 'cifar10':
+        args.num_classes = 10
+        train_loader, test_loader = load_cifar10(data_path, 
+                                            batch_size=args.batch_size,
+                                            one_class_idx=args.one_class_idx)
+    elif args.dataset == 'svhn':
+        args.num_classes = 10
+        train_loader, test_loader = load_svhn(data_path, 
+                                            batch_size=args.batch_size,
+                                            one_class_idx=args.one_class_idx)
+    elif args.dataset == 'cifar100':
+        args.num_classes = 20
+        train_loader, test_loader = load_cifar100(data_path, 
+                                                batch_size=args.batch_size,
+                                                one_class_idx=args.one_class_idx)
+    elif args.dataset == 'imagenet30':
+        args.num_classes = 30
+        train_loader, test_loader = load_imagenet30(imagenet30_path, 
+                                                batch_size=args.batch_size,
+                                                one_class_idx=args.one_class_idx)
+
+    print("Start Loading noises")
+    train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader = \
+        noise_loader(args, batch_size=args.batch_size, one_class_idx=args.one_class_idx,
+                    dataset=args.dataset, preprocessing=args.preprocessing, k_pairs=args.k_pairs)
+    print("Loading noises finished!")
+
+    return train_loader, test_loader, train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader
+
+
+with open('config.json') as config_file:
+    config = json.load(config_file)
+
+root_path = config['root_path']
+data_path = config['data_path']
+imagenet30_path = config['imagenet30_path']
 args = parsing()
-# args.device=f'cuda:{args.gpu}'
+args.config = config
+
 os.environ['CUDA_VISIBLE_DEVICES']=str(args.gpu)
 args.device=f'cuda:{args.gpu}'
+
+# Setting seeds for reproducibility
 torch.manual_seed(args.seed)
 random.seed(args.seed)
 np.random.seed(args.seed)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
-os.environ['CUDA_VISIBLE_DEVICES']= args.device_num
+
+train_loader, test_loader, train_positives_loader, train_negetives_loader,\
+      test_positives_loader, test_negetives_loader = loading_datasets(args)
+
 model, criterion, optimizer, scheduler = load_model(args)
-
-if args.dataset == 'cifar10':
-    cifar10_path = '/finals/datasets/data/'
-    train_loader, test_loader, shuffle_loader = load_cifar10(cifar10_path, 
-                                                             batch_size=args.batch_size,
-                                                             one_class_idx=args.one_class_idx, 
-                                                             tail_normal=None)
-elif args.dataset == 'svhn':
-    svhn_path = '/finals/datasets/data/'
-    train_loader, test_loader, shuffle_loader = load_svhn(svhn_path, 
-                                                          batch_size=args.batch_size,
-                                                          one_class_idx=args.one_class_idx, 
-                                                          tail_normal=None)
-elif args.dataset == 'cifar100':
-    cifar100_path = '/finals/datasets/data/'
-    train_loader, test_loader, shuffle_loader = load_cifar100(cifar100_path, 
-                                                          batch_size=args.batch_size,
-                                                          one_class_idx=args.one_class_idx)
-elif args.dataset == 'imagenet30':
-    cifar100_path = '/finals/datasets/data/ImageNet-30/train/'
-    train_loader, test_loader = load_imagenet30(cifar100_path, 
-                                                          batch_size=args.batch_size,
-                                                          one_class_idx=args.one_class_idx)
-
-print("Start Loading noises")
-train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader = \
-    noise_loader(batch_size=args.batch_size, one_class_idx=args.one_class_idx,
-                dataset=args.dataset, preprocessing=args.preprocessing, k_pairs=args.k_pairs)
-print("Loading noises finished!")
 
 model_save_path, save_path = create_path(args)
 writer = SummaryWriter(save_path)
 args.save_path = save_path
-
 train_global_iter = 0
+
 args.last_lr = args.learning_rate
-last_sim_ps = -1
-last_sim_ns = -1
 for epoch in range(0, args.epochs):
     print('epoch', epoch + 1, '/', args.epochs)
     args.e_holder = str(epoch)
-    if args.one_class_idx != None:
-        train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns = train_one_class_multi_pair(train_loader, train_positives_loader, train_negetives_loader, model, train_global_iter, optimizer, args.device, writer)
-
-        
+    train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns =\
+          train_one_class(train_loader, train_positives_loader, train_negetives_loader, \
+                          model, train_global_iter, optimizer, args.device, writer)
+    
     writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
     writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
     writer.add_scalar("Train/lr", args.last_lr, epoch)
@@ -573,11 +403,6 @@ for epoch in range(0, args.epochs):
         torch.save(model.state_dict(), os.path.join(model_save_path,f'model_params_epoch_{epoch}.pt'))
 
     args.last_lr = scheduler.get_last_lr()[0]
-
-    
-    # if last_sim_ps > avg_sim_ps or last_sim_ns < avg_sim_ns:
-    #     scheduler.step()
-    
     last_sim_ps = avg_sim_ps
     last_sim_ns = avg_sim_ns
 
