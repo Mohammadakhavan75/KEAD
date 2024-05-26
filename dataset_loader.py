@@ -189,7 +189,7 @@ def sparse2coarse(targets):
     return coarse_labels[targets]
 
 
-def noise_loader(batch_size=64, num_workers=0, one_class_idx=None, tail_positive=None, tail_negative=None, dataset='cifar10', preprocessing='clip', k_pairs=1, args):
+def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, dataset='cifar10', preprocessing='clip', k_pairs=1):
     # Filling paths
     if dataset == 'cifar10':
         np_train_target_path = os.path.join(args.config['generalization_path'], 'CIFAR10_Train_AC/labels_train.npy')
@@ -331,7 +331,7 @@ def load_cifar10(path, batch_size=64, num_workers=0, one_class_idx=None):
     train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
     val_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
 
-    return train_loader, val_loader, None
+    return train_loader, val_loader
 
 
 def load_svhn(path, batch_size=64, num_workers=0, one_class_idx=None):
@@ -346,9 +346,8 @@ def load_svhn(path, batch_size=64, num_workers=0, one_class_idx=None):
 
     train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
     val_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
-    normal_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=num_workers)
 
-    return train_loader, val_loader, normal_loader
+    return train_loader, val_loader
 
 
 def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None):
@@ -364,5 +363,5 @@ def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None):
 
     train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
     test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
-    normal_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=num_workers)
-    return train_loader, test_loader, normal_loader
+
+    return train_loader, test_loader
