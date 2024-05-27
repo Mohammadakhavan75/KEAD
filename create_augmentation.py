@@ -6,7 +6,7 @@ sudo apt-get install libmagickwand-dev
 
 Mainly this code adopted from the below repo:
 
-https://github.com/vahid0001/Generalization-in-OOD-Detection/
+<https://github.com/vahid0001/Generalization-in-OOD-Detection/>
 
 @article{khazaie2022out,
   title={Towards Realistic Out-of-Distribution Detection: A Novel Evaluation Framework for Improving Generalization in OOD Detection},
