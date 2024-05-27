@@ -29,7 +29,7 @@ def to_np(x):
 
 
 def parsing():
-    parser = argparse.ArgumentParser(description='Tunes a CIFAR Classifier with OE',
+    parser = argparse.ArgumentParser(description='',
                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--epochs', '-e', type=int, default=50,
                         help='Number of epochs to train.')

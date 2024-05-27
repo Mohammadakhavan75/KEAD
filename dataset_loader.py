@@ -300,11 +300,12 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, dataset
 def load_imagenet30(path, batch_size=64, num_workers=0, one_class_idx=None):
     print('loading Imagenet-30')
     transforms = torchvision.transforms.Compose([
-    torchvision.transforms.Resize((224,224)),
+    torchvision.transforms.Resize(256),
+    torchvision.transforms.CenterCrop(224),
     torchvision.transforms.ToTensor()])
 
-    train_data = torchvision.datasets.ImageFolder(root=path, transform=transforms)
-    test_data = torchvision.datasets.ImageFolder(root=path, transform=transforms)
+    train_data = torchvision.datasets.ImageFolder(root=os.path.join(path, 'train'), transform=transforms)
+    test_data = torchvision.datasets.ImageFolder(root=os.path.join(path, 'test'), transform=transforms)
 
     if one_class_idx != None:
         train_data = get_subclass_dataset(train_data, one_class_idx)
