@@ -11,8 +11,8 @@ from datetime import datetime
 from contrastive import contrastive
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
-from cifar10.model import ResNet18, ResNet34, ResNet50
-from cifar10.models.resnet_imagenet import resnet18, resnet50
+from models.resnet_imagenet import resnet18, resnet50
+from models.resnet import ResNet18, ResNet34, ResNet50
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, roc_auc_score
 
