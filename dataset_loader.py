@@ -299,20 +299,20 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, dataset
 
 def load_imagenet30(path, batch_size=64, num_workers=0, one_class_idx=None):
     print('loading Imagenet-30')
-    transforms = torchvision.transforms.Compose([
+    transform = torchvision.transforms.Compose([
     torchvision.transforms.Resize(256),
     torchvision.transforms.CenterCrop(224),
     torchvision.transforms.ToTensor()])
 
-    train_data = torchvision.datasets.ImageFolder(root=os.path.join(path, 'train'), transform=transforms)
-    test_data = torchvision.datasets.ImageFolder(root=os.path.join(path, 'test'), transform=transforms)
+    train_data = torchvision.datasets.ImageNet(root=os.path.join(path, 'ImageNet'), split='train', transform=transform)
+    val_data = torchvision.datasets.ImageNet(root=os.path.join(path, 'ImageNet'), split='val', transform=transform)
 
     if one_class_idx != None:
         train_data = get_subclass_dataset(train_data, one_class_idx)
-        test_data = get_subclass_dataset(test_data, one_class_idx)
+        val_data = get_subclass_dataset(val_data, one_class_idx)
 
     train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
-    val_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+    val_loader = DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, val_loader
 
