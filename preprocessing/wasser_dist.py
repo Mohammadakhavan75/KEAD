@@ -54,7 +54,7 @@ np.random.seed(args.seed)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
-with open('config.json') as config_file:
+with open(args.config, 'r') as config_file:
     config = json.load(config_file)
 
 imgs_n_features = []

@@ -9,13 +9,10 @@ import numpy as np
 def parsing():
     parser = argparse.ArgumentParser(description='Tunes a CIFAR Classifier with OE',
                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--aug', type=str, default='gaussian_noise',
-                        help='select noise.')
     parser.add_argument('--seed', type=int, default=1,
                         help='seed')
     parser.add_argument('--dataset', type=str, 
                         default='cifar10', help='cifar10-cifar100-svhn')
-    parser.add_argument('--super_class', action="store_true", help='superclass')
     parser.add_argument('--backbone', type=str, 
                         default='clip', help='clip or dinov2')
     parser.add_argument('--config', type=str, 
@@ -68,7 +65,7 @@ def get_target_labels(args, generalization_path):
 
 args = parsing()
 
-with open('config.json') as config_file:
+with open(args.config, 'r') as config_file:
     config = json.load(config_file)
 
 target_labels, classes = get_target_labels(args, config['generalization_path'])

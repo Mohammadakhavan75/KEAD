@@ -39,6 +39,8 @@ def parsing():
     parser.add_argument('--save_rep_aug', action='store_true',
                         help='saving representation for normal data')
     parser.add_argument('--gpu', default='0', type=str, help='gpu number')
+    parser.add_argument('--config', type=str, 
+                        help='config')
     args = parser.parse_args()
     return args
 
@@ -58,7 +60,7 @@ elif args.backbone == 'dinov2':
     model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitg14_reg')
     transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor(),
                                         torchvision.transforms.Resize(224, 224)])
-with open('config.json') as config_file:
+with open(args.config, 'r') as config_file:
     config = json.load(config_file)
 
 root_path = config['root_path']
