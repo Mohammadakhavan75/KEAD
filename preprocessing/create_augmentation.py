@@ -41,6 +41,9 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
 import PIL
 import argparse
+import sys
+
+sys.path.append("../")
 from dataset_loader import load_cifar10, load_svhn, load_cifar100, load_imagenet30
 
 warnings.simplefilter("ignore", UserWarning)
@@ -438,8 +441,8 @@ def augment(image, select):
         return hflipper(image)
 
     elif select == 4:
-        resize_cropper = T.RandomCrop(size=(image.shape[0] * 0.75, image.shape[0] * 0.75))
-        resized = T.Resize(size=image.shape[0])(resize_cropper(image))
+        resize_cropper = T.RandomCrop(size=(int(image.size[0] * 0.75), int(image.size[0] * 0.75)))
+        resized = T.Resize(size=image.size[0])(resize_cropper(image))
         return resized
 
     elif select == 5:
@@ -451,16 +454,16 @@ def loading_datasets(args):
     
     if args.dataset == 'cifar10':
         train_loader, test_loader = load_cifar10(args.config['data_path'], 
-                                            batch_size=args.batch_size)
+                                            batch_size=1)
     elif args.dataset == 'svhn':
         train_loader, test_loader = load_svhn(args.config['data_path'], 
-                                            batch_size=args.batch_size)
+                                            batch_size=1)
     elif args.dataset == 'cifar100':
         train_loader, test_loader = load_cifar100(args.config['data_path'], 
-                                                batch_size=args.batch_size)
+                                                batch_size=1)
     elif args.dataset == 'imagenet30':
         train_loader, test_loader = load_imagenet30(args.config['imagenet30_path'], 
-                                                batch_size=args.batch_size)
+                                                batch_size=1)
 
 
     return train_loader, test_loader
@@ -476,7 +479,7 @@ parser.add_argument('--severity', default=1, type=int, help='config file')
 
 args = parser.parse_args()
 
-with open('config.json') as config_file:
+with open(args.config, 'r') as config_file:
     config = json.load(config_file)
 
 root_path = config['root_path']
@@ -537,7 +540,7 @@ d['Gaussian Blur'] = gaussian_blur
 d['Spatter'] = spatter
 d['Saturate'] = saturate
 
-os.makedirs("CIFAR-10-Train-R-C", exist_ok=True)
+
 for method_name in d.keys():
     print(method_name)
     cifar_c, labels_c = [], []
