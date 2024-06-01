@@ -43,9 +43,6 @@ import PIL
 import argparse
 import sys
 
-sys.path.append("../")
-from dataset_loader import load_cifar10, load_svhn, load_cifar100, load_imagenet30
-
 warnings.simplefilter("ignore", UserWarning)
 
 SEED = 123
@@ -488,16 +485,21 @@ imagenet30_path = config['imagenet30_path']
 augmentations = ["rot90", "rot270", "flip", "random_crop", "color_jitter"]
 args.config = config
 
+sys.path.append(args.config["library_path"])
+from dataset_loader import load_cifar10, load_svhn, load_cifar100, load_imagenet30
+
+
+
 print(f'Working on {args.dataset}:')
 
 train_loader, test_loader = loading_datasets(args)
 if args.train:
     saving_path = os.path.join(args.config['generalization_path'], f'{args.dataset}_Train_s{args.severity}')
-    os.makedirs(os.path.join(args.config['generalization_path'], f'{args.dataset}_Train_s{args.severity}'), exist_ok=True)
+    os.makedirs(saving_path, exist_ok=True)
     loader = train_loader
 else:
     saving_path = os.path.join(args.config['generalization_path'], f'{args.dataset}_Test_s{args.severity}')
-    os.makedirs(os.path.join(args.config['generalization_path'], f'{args.dataset}_Test_s{args.severity}'), exist_ok=True)
+    os.makedirs(saving_path, exist_ok=True)
     loader = test_loader
 
 
@@ -515,8 +517,8 @@ for i in range(1, 6):
             labels_a.append(label.detach().cpu().numpy())
             cifar_a.append(np.uint8(augment(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)), i)))
         
-    np.save(saving_path + augmentations[i-1] + '.npy', np.array(cifar_a).astype(np.uint8))
-    np.save(saving_path + 'labels.npy', np.array(labels_a).astype(np.uint8))
+    np.save(os.path.join(saving_path, augmentations[i-1] + '.npy'), np.array(cifar_a).astype(np.uint8))
+    np.save(os.path.join(saving_path, 'labels.npy'), np.array(labels_a).astype(np.uint8))
 
 
 d = collections.OrderedDict()
@@ -552,7 +554,7 @@ for method_name in d.keys():
                 labels_c.append(label.detach().cpu().numpy())
                 cifar_c.append(np.uint8(corruption(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)))))
             
-        np.save(saving_path + d[method_name].__name__ + '.npy', np.array(cifar_c).astype(np.uint8))
+        np.save(os.path.join(saving_path, d[method_name].__name__ + '.npy'), np.array(cifar_c).astype(np.uint8))
 
     except:
         print(f"Error occured in: {method_name}")
