@@ -15,8 +15,8 @@ from clip import clip
 from torch.utils.data import DataLoader
 from scipy.stats import wasserstein_distance
 from torchvision.datasets import CIFAR10, CIFAR100
-from contrastive import cosine_similarity
-from dataset_loader import SVHN, load_np_dataset
+import sys
+
 
 
 def parsing():
@@ -54,6 +54,7 @@ torch.backends.cudnn.deterministic = True
 os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
 device = f'cuda:{args.gpu}'
 
+
 if args.backbone == 'clip':
     model, transform = clip.load("ViT-L/14", device=device)
 elif args.backbone == 'dinov2':
@@ -67,6 +68,11 @@ root_path = config['root_path']
 data_path = config['data_path']
 imagenet30_path = config['imagenet30_path']
 generalization_path = config['generalization_path']
+args.config = config
+
+sys.path.append(args.config["library_path"])
+from contrastive import cosine_similarity
+from dataset_loader import SVHN, load_np_dataset
 
 
 if args.save_rep_norm:
@@ -75,30 +81,30 @@ if args.save_rep_aug:
     os.makedirs(f'./representations/{args.backbone}/{args.dataset}/{args.aug}/', exist_ok=True)
 
 if args.dataset == 'cifar10':
-    train_aug_imgs_path = os.path.join(generalization_path, f'CIFAR10_Train_AC/{args.aug}.npy')
-    train_aug_targets_path = os.path.join(generalization_path, 'CIFAR10_Train_AC/labels_train.npy')
+    train_aug_imgs_path = os.path.join(generalization_path, f'cifar10_Train_s1/{args.aug}.npy')
+    train_aug_targets_path = os.path.join(generalization_path, 'cifar10_Train_s1/labels.npy')
     
     noraml_dataset = CIFAR10(root=data_path, train=True, transform=transform)
-    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform)
+    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
     
 elif args.dataset == 'svhn':
-    train_aug_imgs_path = os.path.join(generalization_path, f'SVHN_Train_AC/{args.aug}.npy')
-    train_aug_targets_path = os.path.join(generalization_path, f'SVHN_Train_AC/labels_train.npy')
+    train_aug_imgs_path = os.path.join(generalization_path, f'svhn_Train_s1/{args.aug}.npy')
+    train_aug_targets_path = os.path.join(generalization_path, f'svhn_Train_s1/labels.npy')
     
     noraml_dataset = SVHN(root=data_path, split="train", transform=transform)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset='svhn')
 
 elif args.dataset == 'cifar100':
-    train_aug_imgs_path = os.path.join(generalization_path, f'CIFAR100_Train_AC/{args.aug}.npy')
-    train_aug_targets_path = os.path.join(generalization_path, 'CIFAR100_Train_AC/labels_train.npy')
+    train_aug_imgs_path = os.path.join(generalization_path, f'cifar100_Train_s1/{args.aug}.npy')
+    train_aug_targets_path = os.path.join(generalization_path, 'cifar100_Train_s1/labels.npy')
     
     noraml_dataset = CIFAR100(root=data_path, train=True, transform=transform)
-    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform)
+    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
 
 elif args.dataset == 'imagenet30':
     imagenet_path = os.path.join(data_path,'ImageNet')
-    train_aug_imgs_path = os.path.join(generalization_path, f'Imagenet_Train_AC/{args.aug}.npy')
-    train_aug_targets_path = os.path.join(generalization_path, 'Imagenet_Train_AC/labels_train.npy')
+    train_aug_imgs_path = os.path.join(generalization_path, f'imagenet30_Train_s1/{args.aug}.npy')
+    train_aug_targets_path = os.path.join(generalization_path, 'imagenet30_Train_s1/labels.npy')
     
     if args.backbone != 'clip':
         transform = torchvision.transforms.Compose([
