@@ -78,23 +78,23 @@ os.makedirs(f'./wasser_dist/{args.backbone}/{args.dataset}/', exist_ok=True)
 
 if args.dataset == 'svhn':
     classes = 10    
-    targets_list_loaded = np.load(os.path.join(generalization_path, '/SVHN_Train_AC/labels_train.npy'))
+    targets_list_loaded = np.load(os.path.join(generalization_path, '/svhn_Train_s1/labels.npy'))
 
 if args.dataset == 'cifar10':
     classes = 10
-    targets_list_loaded = np.load(os.path.join(generalization_path, '/CIFAR10_Train_AC/labels_train.npy'))
+    targets_list_loaded = np.load(os.path.join(generalization_path, '/cifar10_Train_s1/labels.npy'))
 
 if args.dataset == 'cifar100':
     classes = 100
-    targets_list_loaded = np.load(os.path.join(generalization_path, '/CIFAR100_Train_AC/labels_train.npy'))
+    targets_list_loaded = np.load(os.path.join(generalization_path, '/cifar100_Train_s1/labels.npy'))
     if args.super_class:
         classes = 20
-        targets_list_loaded = np.load(os.path.join(generalization_path, 'CIFAR100_Train_AC/labels_train.npy'))
+        targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar100_Train_s1/labels.npy'))
         targets_list_loaded = sparse2coarse(targets_list_loaded)
        
 if args.dataset == 'imagenet30':
     classes = 30
-    targets_list_loaded = np.load(os.path.join(generalization_path, '/Imagenet_Train_AC/labels_train.npy'))
+    targets_list_loaded = np.load(os.path.join(generalization_path, '/imagenet30_Train_s1/labels.npy'))
 
 
 distances = []
