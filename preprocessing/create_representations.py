@@ -57,10 +57,20 @@ device = f'cuda:{args.gpu}'
 
 if args.backbone == 'clip':
     model, transform = clip.load("ViT-L/14", device=device)
+    model = model.to(device)
 elif args.backbone == 'dinov2':
     model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitg14_reg')
-    transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor(),
-                                        torchvision.transforms.Resize(224, 224)])
+    model = model.to(device)
+    if args.dataset != 'imagenet30':
+        transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor(),
+                                            torchvision.transforms.Resize((224,224))])
+    else:
+        transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor(),
+                                            torchvision.transforms.Resize(256),
+                                            torchvision.transforms.CenterCrop(224)])
+else:
+    raise NotImplemented("Backbone not available !!!")
+
 with open(args.config, 'r') as config_file:
     config = json.load(config_file)
 
@@ -76,9 +86,11 @@ from dataset_loader import SVHN, load_np_dataset
 
 
 if args.save_rep_norm:
-    os.makedirs(f'./representations/{args.backbone}/{args.dataset}/', exist_ok=True)
+    rep_norm_path = f'./representations/{args.backbone}/{args.dataset}/normal/'
+    os.makedirs(rep_norm_path, exist_ok=True)
 if args.save_rep_aug:
-    os.makedirs(f'./representations/{args.backbone}/{args.dataset}/{args.aug}/', exist_ok=True)
+    rep_aug_path = f'./representations/{args.backbone}/{args.dataset}/{args.aug}/'
+    os.makedirs(rep_aug_path, exist_ok=True)
 
 if args.dataset == 'cifar10':
     train_aug_imgs_path = os.path.join(generalization_path, f'cifar10_Train_s1/{args.aug}.npy')
@@ -140,10 +152,10 @@ for i, data in enumerate(loader):
         imgs_aug_features = model.encode_image(imgs_aug)
         # Saving the representations
         if args.save_rep_norm:
-            with open(f'./representations/{args.backbone}/{args.dataset}/batch_{i}.pkl', 'wb') as f:
+            with open(os.path.join(rep_norm_path, f'batch_{i}.pkl'), 'wb') as f:
                 pickle.dump(imgs_n_features, f)
         if args.save_rep_aug:
-            with open(f'./representations/{args.backbone}/{args.dataset}/{args.aug}/batch_{i}.pkl', 'wb') as f:
+            with open(os.path.join(rep_aug_path, f'batch_{i}.pkl'), 'wb') as f:
                 pickle.dump(imgs_aug_features, f)
 
         for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
@@ -155,15 +167,20 @@ for i, data in enumerate(loader):
         break
 
     imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
-    imgs_n_features = model.encode_image(imgs_n)
-    imgs_aug_features = model.encode_image(imgs_aug)
+    if args.backbone == 'clip':
+        imgs_n_features = model.encode_image(imgs_n)
+        imgs_aug_features = model.encode_image(imgs_aug)
+    elif args.backbone == 'dinov2':
+        imgs_n_features = model(imgs_n)
+        imgs_aug_features = model(imgs_aug)
+
 
     # Saving the representations
     if args.save_rep_norm:
-        with open(f'./representations/{args.backbone}/{args.dataset}/batch_{i}.pkl', 'wb') as f:
+        with open(os.path.join(rep_norm_path, f'batch_{i}.pkl'), 'wb') as f:
             pickle.dump(imgs_n_features, f)
     if args.save_rep_aug:
-        with open(f'./representations/{args.backbone}/{args.dataset}/{args.aug}/batch_{i}.pkl', 'wb') as f:
+        with open(os.path.join(rep_aug_path, f'batch_{i}.pkl'), 'wb') as f:
             pickle.dump(imgs_aug_features, f)
 
     for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
