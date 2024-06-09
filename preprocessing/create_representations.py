@@ -61,7 +61,7 @@ if args.backbone == 'clip':
 elif args.backbone == 'dinov2':
     model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitg14_reg')
     model = model.to(device)
-    if args.dataset != 'imagenet30':
+    if args.dataset != 'imagenet':
         transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor(),
                                             torchvision.transforms.Resize((224,224))])
     else:
@@ -76,7 +76,7 @@ with open(args.config, 'r') as config_file:
 
 root_path = config['root_path']
 data_path = config['data_path']
-imagenet30_path = config['imagenet30_path']
+imagenet_path = config['imagenet_path']
 generalization_path = config['generalization_path']
 args.config = config
 
@@ -113,10 +113,10 @@ elif args.dataset == 'cifar100':
     noraml_dataset = CIFAR100(root=data_path, train=True, transform=transform)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
 
-elif args.dataset == 'imagenet30':
+elif args.dataset == 'imagenet':
     imagenet_path = os.path.join(data_path,'ImageNet')
-    train_aug_imgs_path = os.path.join(generalization_path, f'imagenet30_Train_s1/{args.aug}.npy')
-    train_aug_targets_path = os.path.join(generalization_path, 'imagenet30_Train_s1/labels.npy')
+    train_aug_imgs_path = os.path.join(generalization_path, f'imagenet_Train_s1/{args.aug}.npy')
+    train_aug_targets_path = os.path.join(generalization_path, 'imagenet_Train_s1/labels.npy')
     
     if args.backbone != 'clip':
         transform = torchvision.transforms.Compose([
