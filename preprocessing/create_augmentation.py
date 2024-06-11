@@ -385,14 +385,14 @@ def jpeg_compression(x, severity=1):
 def pixelate(x, severity=1):
     c = [0.95, 0.9, 0.85, 0.75, 0.65][severity - 1]
 
-    x = x.resize((int(x.shape[0] * c), int(x.shape[0] * c)), Image.BOX)
-    x = x.resize((x.shape[0], x.shape[0]), Image.BOX)
+    x = x.resize((int(x.size[0] * c), int(x.size[0] * c)), Image.BOX)
+    x = x.resize((x.size[0], x.size[0]), Image.BOX)
 
     return x
 
 
 def elastic_transform(image, severity=1):
-    IMSIZE = image.shape[0]
+    IMSIZE = image.size[0]
     c = [(IMSIZE*0, IMSIZE*0, IMSIZE*0.08),
          (IMSIZE*0.05, IMSIZE*0.2, IMSIZE*0.07),
          (IMSIZE*0.08, IMSIZE*0.06, IMSIZE*0.06),
@@ -423,29 +423,27 @@ def elastic_transform(image, severity=1):
     indices = np.reshape(y + dy, (-1, 1)), np.reshape(x + dx, (-1, 1)), np.reshape(z, (-1, 1))
     return np.clip(map_coordinates(image, indices, order=1, mode='reflect').reshape(shape), 0, 1) * 255
 
+def rot90(image, _):
+    rotater = T.RandomRotation(degrees=(270, 270))
+    return rotater(image)
 
-def augment(image, select):
-    if select == 1:
-        rotater = T.RandomRotation(degrees=(270, 270))
-        return rotater(image)
+def rot270(image, _):
+    rotater = T.RandomRotation(degrees=(90, 90))
+    return rotater(image)
 
-    elif select == 2:
-        rotater = T.RandomRotation(degrees=(90, 90))
-        return rotater(image)
+def flip(image, _):
+    hflipper = T.RandomHorizontalFlip(p=1.0)
+    return hflipper(image)
 
-    elif select == 3:
-        hflipper = T.RandomHorizontalFlip(p=1.0)
-        return hflipper(image)
+def random_crop(image, _):
+    resize_cropper = T.RandomCrop(size=(int(image.size[0] * 0.75), int(image.size[0] * 0.75)))
+    resized = T.Resize(size=image.size[0])(resize_cropper(image))
+    return resized
 
-    elif select == 4:
-        resize_cropper = T.RandomCrop(size=(int(image.size[0] * 0.75), int(image.size[0] * 0.75)))
-        resized = T.Resize(size=image.size[0])(resize_cropper(image))
-        return resized
-
-    elif select == 5:
-        jitter = T.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.5)
-        return jitter(image)
-
+def color_jitter(image, _):
+    jitter = T.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.5)
+    return jitter(image)
+        
 
 def loading_datasets(args):
     
@@ -458,8 +456,8 @@ def loading_datasets(args):
     elif args.dataset == 'cifar100':
         train_loader, test_loader = load_cifar100(args.config['data_path'], 
                                                 batch_size=1)
-    elif args.dataset == 'imagenet30':
-        train_loader, test_loader = load_imagenet30(args.config['imagenet30_path'], 
+    elif args.dataset == 'imagenet':
+        train_loader, test_loader = load_imagenet(args.config['imagenet_path'], 
                                                 batch_size=1)
 
 
@@ -471,6 +469,8 @@ parser = argparse.ArgumentParser(description='',
 parser.add_argument('--dataset', default=None, type=str,
                         help='Number of epochs to train.')
 parser.add_argument('--train', action="store_true", help='Using train data')
+parser.add_argument('--save_img', action="store_true", help='Using train data')
+parser.add_argument('--aug', default=None, type=str, help='config file')
 parser.add_argument('--config', default=None, help='config file')
 parser.add_argument('--severity', default=1, type=int, help='config file')
 
@@ -481,12 +481,11 @@ with open(args.config, 'r') as config_file:
 
 root_path = config['root_path']
 data_path = config['data_path']
-imagenet30_path = config['imagenet30_path']
-augmentations = ["rot90", "rot270", "flip", "random_crop", "color_jitter"]
+imagenet_path = config['imagenet_path']
 args.config = config
 
 sys.path.append(args.config["library_path"])
-from dataset_loader import load_cifar10, load_svhn, load_cifar100, load_imagenet30
+from dataset_loader import load_cifar10, load_svhn, load_cifar100, load_imagenet
 
 
 
@@ -507,54 +506,70 @@ transform = transforms.Compose([transforms.ToTensor()])
 convert_img = T.Compose([T.ToPILImage()])
 
 
-
-for i in range(1, 6):
-    print(augmentations[i-1])
-    cifar_a, labels_a = [], []
-    
-    for img, label in loader:
-        for k in range(len(img)):
-            labels_a.append(label.detach().cpu().numpy())
-            cifar_a.append(np.uint8(augment(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)), i)))
-        
-    np.save(os.path.join(saving_path, augmentations[i-1] + '.npy'), np.array(cifar_a).astype(np.uint8))
-    np.save(os.path.join(saving_path, 'labels.npy'), np.array(labels_a).astype(np.uint8))
-
-
 d = collections.OrderedDict()
-d['Gaussian Noise'] = gaussian_noise
-d['Shot Noise'] = shot_noise
-d['Impulse Noise'] = impulse_noise
-d['Defocus Blur'] = defocus_blur
-d['Glass Blur'] = glass_blur
-d['Motion Blur'] = motion_blur
-d['Zoom Blur'] = zoom_blur
-d['Snow'] = snow
-d['Frost'] = frost
-d['Fog'] = fog
-d['Brightness'] = brightness
-d['Contrast'] = contrast
-d['Elastic'] = elastic_transform
-d['Pixelate'] = pixelate
-d['JPEG'] = jpeg_compression
-d['Speckle Noise'] = speckle_noise
-d['Gaussian Blur'] = gaussian_blur
-d['Spatter'] = spatter
-d['Saturate'] = saturate
+d['rot90']= rot90
+d['rot270']= rot270
+d['random_crop']= random_crop
+d['flip']= flip
+d['random_crop']= random_crop
+d['color_jitter']= color_jitter
+d['gaussian_noise'] = gaussian_noise
+d['shot_noise'] = shot_noise
+d['impulse_noise'] = impulse_noise
+d['defocus_blur'] = defocus_blur
+d['glass_blur'] = glass_blur
+d['motion_blur'] = motion_blur
+d['zoom_blur'] = zoom_blur
+d['snow'] = snow
+d['frost'] = frost
+d['fog'] = fog
+d['brightness'] = brightness
+d['contrast'] = contrast
+d['elastic_transform'] = elastic_transform
+d['pixelate'] = pixelate
+d['jpeg_compression'] = jpeg_compression
+d['speckle_noise'] = speckle_noise
+d['gaussian_blur'] = gaussian_blur
+d['spatter'] = spatter
+d['saturate'] = saturate
 
 
-for method_name in d.keys():
-    print(method_name)
-    cifar_c, labels_c = [], []
+if args.save_img:
+    print(args.aug)
+    labels_c = []
+    counter = 0
+    saving_path = os.path.join(saving_path, args.aug)
+    os.makedirs(saving_path, exist_ok=True)
     try:
-        severity = 1
-        corruption = lambda clean_img: d[method_name](clean_img, severity)
+        severity = args.severity
+        corruption = lambda clean_img: d[args.aug](clean_img, severity)
         for img, label in loader:
             for k in range(len(img)):
+                counter += 1
                 labels_c.append(label.detach().cpu().numpy())
-                cifar_c.append(np.uint8(corruption(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)))))
+                cv2.imwrite(
+                    os.path.join(saving_path, f'{str(counter).zfill(10)}.jpg'),
+                        np.uint8(corruption(
+                            PIL.Image.fromarray((
+                                img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)))))
+                        
             
-        np.save(os.path.join(saving_path, d[method_name].__name__ + '.npy'), np.array(cifar_c).astype(np.uint8))
+        np.save(os.path.join(saving_path, 'labels.npy'), np.array(labels_c).astype(np.uint8))
 
     except:
-        print(f"Error occured in: {method_name}")
+        print(f"Error occured in: {args.aug}")
+else:        
+    print(args.aug)
+    cifar_c, labels_c = [], []
+    # try:
+    severity = args.severity
+    corruption = lambda clean_img: d[args.aug](clean_img, severity)
+    for img, label in loader:
+        for k in range(len(img)):
+            labels_c.append(label.detach().cpu().numpy())
+            cifar_c.append(np.uint8(corruption(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)))))
+        
+    np.save(os.path.join(saving_path, d[args.aug].__name__ + '.npy'), np.array(cifar_c).astype(np.uint8))
+
+    # except:
+        # print(f"Error occured in: {args.aug}")
