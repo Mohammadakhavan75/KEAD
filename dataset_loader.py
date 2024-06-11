@@ -209,16 +209,17 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, dataset
         np_train_root_path = os.path.join(args.config['generalization_path'], 'CIFAR100_Train_AC')
         np_test_root_path = os.path.join(args.config['generalization_path'], 'CIFAR100_Test_AC')
         classes = 20
-    elif dataset == 'imagenet30':
+    elif dataset == 'imagenet':
         np_train_target_path = os.path.join(args.config['generalization_path'], 'Imagenet_Train_AC/labels_train.npy')
         np_train_root_path = os.path.join(args.config['generalization_path'], 'Imagenet_Train_AC')
         np_test_root_path, np_test_target_path = np_train_root_path, np_train_target_path
         classes = 30
         
     # Creating transformation
-    if dataset == 'imagenet30':
+    if dataset == 'imagenet':
         train_transform = torchvision.transforms.Compose([
-                            torchvision.transforms.Resize((224,224)),
+                            torchvision.transforms.Resize(256),
+                            torchvision.transforms.CenterCrop(224),
                             torchvision.transforms.ToTensor()])
         test_transform = train_transform
     else:    
@@ -297,8 +298,8 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, dataset
     return train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader
 
 
-def load_imagenet30(path, batch_size=64, num_workers=0, one_class_idx=None):
-    print('loading Imagenet-30')
+def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None):
+    print('loading Imagenet')
     transform = torchvision.transforms.Compose([
     torchvision.transforms.Resize(256),
     torchvision.transforms.CenterCrop(224),
