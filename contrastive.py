@@ -10,23 +10,23 @@ def similarity(x, x_prime):
 
 
 def cosine_similarity(feature_map1, feature_map2):
-  # Flatten the feature maps to treat them as vectors
-  feature_map1_flat = feature_map1.flatten()
-  feature_map2_flat = feature_map2.flatten()
+    # Flatten the feature maps to treat them as vectors
+    feature_map1_flat = feature_map1.flatten()
+    feature_map2_flat = feature_map2.flatten()
 
-  # Calculate the dot product and norms
-  # dot_product = np.sum(feature_map1_flat * feature_map2_flat)
-  dot_product = torch.dot(feature_map1_flat, feature_map2_flat)
-  norm1 = torch.linalg.norm(feature_map1_flat)
-  norm2 = torch.linalg.norm(feature_map2_flat)
+    # Calculate the dot product and norms
+    # dot_product = np.sum(feature_map1_flat * feature_map2_flat)
+    dot_product = torch.dot(feature_map1_flat, feature_map2_flat)
+    norm1 = torch.linalg.norm(feature_map1_flat)
+    norm2 = torch.linalg.norm(feature_map2_flat)
 
-  # Prevent division by zero
-  if norm1 == 0 or norm2 == 0:
-    return torch.tensor(0).to(feature_map1.device)
+    # Prevent division by zero
+    if norm1 == 0 or norm2 == 0:
+        return torch.tensor(0).to(feature_map1.device)
 
-  # Cosine similarity
-  cosine_similarity_map = dot_product / (norm1 * norm2)
-  return cosine_similarity_map
+    # Cosine similarity
+    cosine_similarity_map = dot_product / (norm1 * norm2)
+    return cosine_similarity_map
 
 
 

@@ -3,26 +3,13 @@ import json
 import torch
 import random
 import argparse
-import torchvision
 import numpy as np
-from tqdm import tqdm
-from utils import tsne_plot
 from datetime import datetime
 from contrastive import contrastive
-from torch.utils.data import DataLoader
-from torchvision.transforms import transforms
 from models.resnet_imagenet import resnet18, resnet50
 from models.resnet import ResNet18, ResNet34, ResNet50
 from torch.utils.tensorboard import SummaryWriter
-from sklearn.metrics import accuracy_score, roc_auc_score
-
 from dataset_loader import noise_loader, load_cifar10, load_svhn, load_cifar100, load_imagenet30
-
-from dataset_loader import load_np_dataset, get_subclass_dataset
-from sklearn.manifold import TSNE
-import pandas as pd
-import plotly.express as px 
-
 
 def to_np(x):
     return x.data.cpu().numpy()
@@ -72,15 +59,12 @@ def parsing():
     parser.add_argument('--one_class_idx', default=None, type=int, help='select one class index')
     parser.add_argument('--temperature', default=0.5, type=float, help='chaning temperature of contrastive loss')
     parser.add_argument('--preprocessing', default='clip', type=str, help='which preprocessing use for noise order')
-    parser.add_argument('--shift_normal', action="store_true", help='A list of milestones')
-    parser.add_argument('--device_num', default='0', type=str, help='A list of milestones')
-    parser.add_argument('--csi_aug', action="store_true", help='A list of milestones')
-    parser.add_argument('--k_pairs', default=1, type=int, help='A list of milestones')
-    parser.add_argument('--gpu', default=0, type=int, help='A list of milestones')
-    parser.add_argument('--e_holder', default=0, type=str, help='A list of milestones')
-    parser.add_argument('--tsne', action="store_true", help='A list of milestones')
-    parser.add_argument('--linear', action="store_true", help='A list of milestones')
-    parser.add_argument('--config', default=None, help='config file')
+    parser.add_argument('--shift_normal', action="store_true", help='Using shifted normal data')
+    parser.add_argument('--k_pairs', default=1, type=int, help='Selecting multiple pairs for contrastive loss')
+    parser.add_argument('--gpu', default=0, type=int, help='Select gpu number')
+    parser.add_argument('--e_holder', default=0, type=str, help='Epoch number holder')
+    parser.add_argument('--linear', action="store_true", help='Initiate linear layer or not!')
+    parser.add_argument('--config', default=None, help='Config file for reading paths')
     args = parser.parse_args()
 
     return args
@@ -272,8 +256,7 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
         avg_sim_ns = torch.mean(torch.cat(sim_ns, dim=0), dim=0).detach().cpu().numpy()
         writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, train_global_iter)
         writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, train_global_iter)
-    # if args.tsne:
-    #     tsne(net, args)
+
     return train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns
 
 
