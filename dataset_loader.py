@@ -189,7 +189,7 @@ def sparse2coarse(targets):
     return coarse_labels[targets]
 
 
-def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, dataset='cifar10', preprocessing='clip', k_pairs=1):
+def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=True, dataset='cifar10', preprocessing='clip', k_pairs=1):
     # Filling paths
     if dataset == 'cifar10':
         np_train_target_path = os.path.join(args.config['generalization_path'], 'CIFAR10_Train_AC/labels_train.npy')
@@ -258,18 +258,24 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, dataset
         print(f"Selecting {noise} as positive pair for class {one_class_idx}")
         np_train_img_path = np_train_root_path + noise + '.npy'
         train_positives_datasets = load_np_dataset(np_train_img_path, np_train_target_path, train_transform, dataset, train=True)
-        if dataset == 'cifar100':
+        if dataset == 'cifar100' and coarse:
             train_positives_datasets.targets = sparse2coarse(train_positives_datasets.targets)
 
         np_test_img_path = np_test_root_path + noise + '.npy'
         test_positives_datasets = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset, train=False)
-        if dataset == 'cifar100':
+        if dataset == 'cifar100' and coarse:
             test_positives_datasets.targets = sparse2coarse(test_positives_datasets.targets)
 
         all_train_positives_datasets.append(train_positives_datasets)
         all_test_positives_datasets.append(test_positives_datasets)
-        all_train_dataset_positives_one_class.append(get_subclass_dataset(train_positives_datasets, one_class_idx))
-        all_test_dataset_positives_one_class.append(get_subclass_dataset(test_positives_datasets, one_class_idx))
+        
+        if one_class_idx:
+            all_train_dataset_positives_one_class.append(get_subclass_dataset(train_positives_datasets, one_class_idx))
+            all_test_dataset_positives_one_class.append(get_subclass_dataset(test_positives_datasets, one_class_idx))
+        else:
+            all_train_dataset_positives_one_class.append(train_positives_datasets)
+            all_test_dataset_positives_one_class.append(test_positives_datasets)
+
         train_positives_loader.append(DataLoader(all_train_dataset_positives_one_class[k-1], shuffle=False, batch_size=batch_size, num_workers=num_workers))
         test_positives_loader.append(DataLoader(all_test_dataset_positives_one_class[k-1], shuffle=False, batch_size=batch_size, num_workers=num_workers))
 
@@ -290,8 +296,13 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, dataset
         all_train_negetives_datasets.append(train_negetives_datasets)
         all_test_negetives_datasets.append(test_negetives_datasets)
         
-        all_train_dataset_negetives_one_class.append(get_subclass_dataset(train_negetives_datasets, one_class_idx))
-        all_test_dataset_negetives_one_class.append(get_subclass_dataset(test_negetives_datasets, one_class_idx))
+        if one_class_idx:
+            all_train_dataset_negetives_one_class.append(get_subclass_dataset(train_negetives_datasets, one_class_idx))
+            all_test_dataset_negetives_one_class.append(get_subclass_dataset(test_negetives_datasets, one_class_idx))
+        else:
+            all_train_dataset_negetives_one_class.append(train_negetives_datasets)
+            all_test_dataset_negetives_one_class.append(test_negetives_datasets)
+        
         train_negetives_loader.append(DataLoader(all_train_dataset_negetives_one_class[k-1], shuffle=False, batch_size=batch_size, num_workers=num_workers))
         test_negetives_loader.append(DataLoader(all_test_dataset_negetives_one_class[k-1], shuffle=False, batch_size=batch_size, num_workers=num_workers))
 
@@ -352,14 +363,16 @@ def load_svhn(path, batch_size=64, num_workers=0, one_class_idx=None):
     return train_loader, val_loader
 
 
-def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None):
+def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None, coarse=True):
     transform = transforms.Compose([transforms.ToTensor()])
     train_data = torchvision.datasets.CIFAR100(path, train=True, download=True, transform=transform)
     test_data = torchvision.datasets.CIFAR100(path, train=False, download=True, transform=transform)
     
-    if one_class_idx != None:
+    if coarse:
         train_data.targets = sparse2coarse(train_data.targets)
         test_data.targets = sparse2coarse(test_data.targets)
+
+    if one_class_idx != None:
         train_data = get_subclass_dataset(train_data, one_class_idx)
         test_data = get_subclass_dataset(test_data, one_class_idx)
 
