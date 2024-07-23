@@ -1,12 +1,15 @@
 import os
+import cv2
+import PIL
 import torch
 import torchvision
 import numpy as np
 import pandas as pd
-import plotly.express as px 
-from torch.utils.data import DataLoader
-from dataset_loader import load_np_dataset, get_subclass_dataset
+import plotly.express as px
 from sklearn.manifold import TSNE
+from torch.utils.data import Dataset, DataLoader
+from dataset_loader import load_np_dataset, get_subclass_dataset
+
 
 
 def tsne(model, args):
@@ -86,3 +89,22 @@ def tsne_plot(x, y, name, args):
     # fig.show()
     fig.write_image(args.save_path + "{}_normal_vs_{}_tsne.png".format(args.e_holder, name))
 
+
+
+class CustomImageDataset(Dataset):
+    def __init__(self, image_dir, target_dir, transform=None):
+        self.image_dir = image_dir
+        self.image_paths = sorted([os.path.join(image_dir, fname) for fname in os.listdir(image_dir) if fname.endswith('.jpg')])
+        self.targets = np.load(target_dir)
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        img_path = self.image_paths[idx]
+        image = cv2.imread(img_path)
+        # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        if self.transform:
+            image = self.transform(PIL.Image.fromarray(image))
+        return image, torch.tensor(self.targets[idx])
