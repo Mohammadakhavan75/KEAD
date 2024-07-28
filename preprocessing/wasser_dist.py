@@ -39,6 +39,8 @@ def parsing():
     parser.add_argument('--super_class', action="store_true", help='superclass')
     parser.add_argument('--backbone', type=str, 
                         default='clip', help='clip or dinov2')
+    parser.add_argument('--one_class', type=str, 
+                        default=None, help='clip or dinov2')
     parser.add_argument('--config', type=str, 
                         help='config')
 
@@ -60,33 +62,32 @@ with open(args.config, 'r') as config_file:
 imgs_n_features = []
 imgs_aug_features = []
 generalization_path = config['generalization_path']
+representations_path = config['representations_path']
 
+for i in range(len(os.listdir(f'{representations_path}{args.backbone}/{args.dataset}/normal/'))):
+    with open(f'{representations_path}{args.backbone}/{args.dataset}/normal/batch_{i}.pkl', 'rb') as f:
+        imgs_n_features.append(torch.tensor(pickle.load(f)).float())
 
-
-for i in range(len(os.listdir(f'./representations/{args.backbone}/{args.dataset}/normal/'))):
-    with open(f'./representations/{args.backbone}/{args.dataset}/normal/batch_{i}.pkl', 'rb') as f:
-        imgs_n_features.append(pickle.load(f).detach().cpu().float())
-
-    with open(f'./representations/{args.backbone}/{args.dataset}/{args.aug}/batch_{i}.pkl', 'rb') as f:
-        imgs_aug_features.append(pickle.load(f).detach().cpu().float())
+    with open(f'{representations_path}{args.backbone}/{args.dataset}/{args.aug}/batch_{i}.pkl', 'rb') as f:
+        imgs_aug_features.append(torch.tensor(pickle.load(f)).float())
 
 imgs_n_features, imgs_aug_features = torch.cat(imgs_n_features, dim=0).numpy(), torch.cat(imgs_aug_features, dim=0).numpy()
 
 print(f'Running on: {args.aug}')
 os.makedirs(f'./wasser_dist/{args.backbone}/{args.dataset}/', exist_ok=True)
-
+os.makedirs(f'./wasser_dist_datasets/{args.backbone}/{args.dataset}/', exist_ok=True)
 
 if args.dataset == 'svhn':
     classes = 10    
-    targets_list_loaded = np.load(os.path.join(generalization_path, '/svhn_Train_s1/labels.npy'))
+    targets_list_loaded = np.load(os.path.join(generalization_path, 'svhn_Train_s1/labels.npy'))
 
 if args.dataset == 'cifar10':
     classes = 10
-    targets_list_loaded = np.load(os.path.join(generalization_path, '/cifar10_Train_s1/labels.npy'))
+    targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar10_Train_s1/labels.npy'))
 
 if args.dataset == 'cifar100':
     classes = 100
-    targets_list_loaded = np.load(os.path.join(generalization_path, '/cifar100_Train_s1/labels.npy'))
+    targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar100_Train_s1/labels.npy'))
     if args.super_class:
         classes = 20
         targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar100_Train_s1/labels.npy'))
@@ -94,21 +95,32 @@ if args.dataset == 'cifar100':
        
 if args.dataset == 'imagenet30':
     classes = 30
-    targets_list_loaded = np.load(os.path.join(generalization_path, '/imagenet30_Train_s1/labels.npy'))
+    targets_list_loaded = np.load(os.path.join(generalization_path, 'imagenet30_Train_s1/labels.npy'))
 
 
 distances = []
-for class_idx in range(classes):
-    indices = [k for k in range(len(targets_list_loaded)) if targets_list_loaded[k]==class_idx]
+if args.one_class:
+    for class_idx in range(classes):
+        indices = [k for k in range(len(targets_list_loaded)) if targets_list_loaded[k]==class_idx]
 
-    imgs_n_features_one_class = np.asarray([imgs_n_features[idx].astype(np.float64) for idx in indices])
-    imgs_aug_features_one_class = np.asarray([imgs_aug_features[idx].astype(np.float64) for idx in indices])
+        imgs_n_features_one_class = np.asarray([imgs_n_features[idx].astype(np.float64) for idx in indices])
+        imgs_aug_features_one_class = np.asarray([imgs_aug_features[idx].astype(np.float64) for idx in indices])
+        cost_matrix = ot.dist(imgs_n_features_one_class, imgs_aug_features_one_class, metric=cosine)
+        # Compute the EMD
+        emd_distance = ot.emd2([], [], cost_matrix, numItermax=200000)
+        distances.append(emd_distance)
+        print(f'{class_idx}: {emd_distance}')
+
+
+    with open(f'./wasser_dist/{args.backbone}/{args.dataset}/dist_{args.aug}.pkl', 'wb') as f:
+        pickle.dump(distances, f)
+else:
+    imgs_n_features_one_class = np.asarray(imgs_n_features.astype(np.float64))
+    imgs_aug_features_one_class = np.asarray(imgs_aug_features.astype(np.float64))
     cost_matrix = ot.dist(imgs_n_features_one_class, imgs_aug_features_one_class, metric=cosine)
     # Compute the EMD
     emd_distance = ot.emd2([], [], cost_matrix, numItermax=200000)
-    distances.append(emd_distance)
-    print(f'{class_idx}: {emd_distance}')
 
-
-with open(f'./wasser_dist/{args.backbone}/{args.dataset}/dist_{args.aug}.pkl', 'wb') as f:
-    pickle.dump(distances, f)
+    
+    with open(f'./wasser_dist_datasets/{args.backbone}/{args.dataset}/dist_{args.aug}.pkl', 'wb') as f:
+        pickle.dump(emd_distance, f)
