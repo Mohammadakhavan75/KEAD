@@ -16,6 +16,8 @@ from torch.utils.data import DataLoader
 from scipy.stats import wasserstein_distance
 from torchvision.datasets import CIFAR10, CIFAR100
 import sys
+from tqdm import tqdm
+from utils import CustomImageDataset
 
 
 
@@ -52,7 +54,11 @@ np.random.seed(args.seed)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
-device = f'cuda:{args.gpu}'
+
+if args.gpu != str(0):
+    device = f'cuda:{args.gpu}'
+else:
+    device = 'cuda'
 
 
 if args.backbone == 'clip':
@@ -78,6 +84,7 @@ root_path = config['root_path']
 data_path = config['data_path']
 imagenet_path = config['imagenet_path']
 generalization_path = config['generalization_path']
+representations_path = config['representations_path']
 args.config = config
 
 sys.path.append(args.config["library_path"])
@@ -86,10 +93,10 @@ from dataset_loader import SVHN, load_np_dataset
 
 
 if args.save_rep_norm:
-    rep_norm_path = f'./representations/{args.backbone}/{args.dataset}/normal/'
+    rep_norm_path = f'{representations_path}/{args.backbone}/{args.dataset}/normal/'
     os.makedirs(rep_norm_path, exist_ok=True)
 if args.save_rep_aug:
-    rep_aug_path = f'./representations/{args.backbone}/{args.dataset}/{args.aug}/'
+    rep_aug_path = f'{representations_path}/{args.backbone}/{args.dataset}/{args.aug}/'
     os.makedirs(rep_aug_path, exist_ok=True)
 
 if args.dataset == 'cifar10':
@@ -114,9 +121,9 @@ elif args.dataset == 'cifar100':
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
 
 elif args.dataset == 'imagenet':
-    imagenet_path = os.path.join(data_path,'ImageNet')
-    train_aug_imgs_path = os.path.join(generalization_path, f'imagenet_Train_s1/{args.aug}.npy')
-    train_aug_targets_path = os.path.join(generalization_path, 'imagenet_Train_s1/labels.npy')
+    # imagenet_path = os.path.join(data_path,'ImageNet')
+    train_aug_imgs_path = os.path.join(generalization_path, f'imagenet_Train_s1/{args.aug}/')
+    train_aug_targets_path = os.path.join(generalization_path, f'imagenet_Train_s1/{args.aug}/labels.npy')
     
     if args.backbone != 'clip':
         transform = torchvision.transforms.Compose([
@@ -125,7 +132,7 @@ elif args.dataset == 'imagenet':
         torchvision.transforms.ToTensor()])
 
     noraml_dataset = torchvision.datasets.ImageNet(root=imagenet_path, split='train', transform=transform)
-    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset='imagenet30')
+    aug_dataset = CustomImageDataset(image_dir=train_aug_imgs_path, target_dir=train_aug_targets_path, transform=transform)
     
 else:
     raise NotImplemented(f"Not Available Dataset {args.dataset}!")
@@ -140,7 +147,7 @@ cosine_diff = []
 wasser_diff = []
 euclidean_diffs = []
 targets_list = []
-for i, data in enumerate(loader):
+for i, data in tqdm(enumerate(loader)):
     data_normal, data_aug = data
     imgs_n, targets = data_normal
     imgs_aug, _ = data_aug
@@ -178,10 +185,10 @@ for i, data in enumerate(loader):
     # Saving the representations
     if args.save_rep_norm:
         with open(os.path.join(rep_norm_path, f'batch_{i}.pkl'), 'wb') as f:
-            pickle.dump(imgs_n_features, f)
+            pickle.dump(imgs_n_features.detach().cpu().numpy(), f)
     if args.save_rep_aug:
         with open(os.path.join(rep_aug_path, f'batch_{i}.pkl'), 'wb') as f:
-            pickle.dump(imgs_aug_features, f)
+            pickle.dump(imgs_aug_features.detach().cpu().numpy(), f)
 
     for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
         cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())

@@ -269,7 +269,7 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=
         all_train_positives_datasets.append(train_positives_datasets)
         all_test_positives_datasets.append(test_positives_datasets)
         
-        if one_class_idx:
+        if one_class_idx != None:
             all_train_dataset_positives_one_class.append(get_subclass_dataset(train_positives_datasets, one_class_idx))
             all_test_dataset_positives_one_class.append(get_subclass_dataset(test_positives_datasets, one_class_idx))
         else:
@@ -296,7 +296,7 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=
         all_train_negetives_datasets.append(train_negetives_datasets)
         all_test_negetives_datasets.append(test_negetives_datasets)
         
-        if one_class_idx:
+        if one_class_idx != None:
             all_train_dataset_negetives_one_class.append(get_subclass_dataset(train_negetives_datasets, one_class_idx))
             all_test_dataset_negetives_one_class.append(get_subclass_dataset(test_negetives_datasets, one_class_idx))
         else:

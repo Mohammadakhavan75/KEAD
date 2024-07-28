@@ -17,8 +17,11 @@ def parsing():
                         default='clip', help='clip or dinov2')
     parser.add_argument('--config', type=str, 
                         help='config')
+    parser.add_argument('--one_class', type=str, 
+                        default=None, help='config')
 
     args = parser.parse_args()
+
     return args
 
 
@@ -46,20 +49,20 @@ def get_target_labels(args, generalization_path):
     
     if args.dataset == 'svhn':
         classes = 10    
-        targets_list_loaded = np.load(os.path.join(generalization_path, '/SVHN_Train_AC/labels_train.npy'))
+        targets_list_loaded = np.load(os.path.join(generalization_path, 'svhn_Train_s1/labels.npy'))
 
     if args.dataset == 'cifar10':
         classes = 10
-        targets_list_loaded = np.load(os.path.join(generalization_path, '/CIFAR10_Train_AC/labels_train.npy'))
+        targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar10_Train_s1/labels.npy'))
 
     if args.dataset == 'cifar100':
         classes = 20
-        targets_list_loaded = np.load(os.path.join(generalization_path, 'CIFAR100_Train_AC/labels_train.npy'))
+        targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar100_Train_s1/labels.npy'))
         targets_list_loaded = sparse2coarse(targets_list_loaded)
         
     if args.dataset == 'imagenet30':
         classes = 30
-        targets_list_loaded = np.load(os.path.join(generalization_path, '/Imagenet_Train_AC/labels_train.npy'))
+        targets_list_loaded = np.load(os.path.join(generalization_path, 'imagenet_Train_s1/labels.npy'))
 
     return targets_list_loaded, classes
 
@@ -71,33 +74,54 @@ with open(args.config, 'r') as config_file:
 target_labels, classes = get_target_labels(args, config['generalization_path'])
 
 root = f'./wasser_dist/{args.backbone}/{args.dataset}/'
-dists = {}
-for file in os.listdir(root):
-    with open(os.path.join(root, file), 'rb') as f:
+loaded_diffs = {}
+for file_name in os.listdir(root):
+    with open(os.path.join(root, file_name), 'rb') as f:
         loaded = pickle.load(f)
-        dists[file.split('.')[0]] = loaded
+        loaded_diffs[file_name.split('.')[0]] = loaded
 
-softmax_sorted = {}
-for class_idx in range(classes):
-    softmax_sorted[class_idx] = {}
+if args.one_class:
+    softmax_sorted = {}
+    for class_idx in range(classes):
+        softmax_sorted[class_idx] = {}
 
-for class_idx in range(classes):
-    indices = [k for k in range(len(target_labels)) if target_labels[k]==class_idx]
-    for file_name in os.listdir(root):
-        with open(os.path.join(root, file_name), 'rb') as f:
-            loaded_diff = pickle.load(f)
+    for class_idx in range(classes):
+        indices = [k for k in range(len(target_labels)) if target_labels[k]==class_idx]
+        for noise_name in loaded_diffs.keys():
+            print(class_idx)
+            softmax_sorted[class_idx][noise_name] = torch.mean(torch.tensor([loaded_diffs[noise_name][class_idx] for idx in indices])).float()
+            
+        # for file_name in os.listdir(root):
+        #     with open(os.path.join(root, file_name), 'rb') as f:
+        #         loaded_diff = pickle.load(f)
+        
+            # print(class_idx)
+            # noise_name = file_name.split('.')[0]
+            # softmax_sorted[class_idx][noise_name] = torch.mean(torch.tensor([loaded_diff[class_idx].astype(np.float32) for idx in indices])).float()
+        
+    for i in range(classes):
+        softmaxes = torch.nn.functional.softmax(torch.tensor(list(softmax_sorted[i].values())), dim=0).numpy()
+        for j, key in enumerate(softmax_sorted[i].keys()):
+            softmax_sorted[i][key] = softmaxes[j]
+
+        sorted_values = sorted(softmax_sorted[i].items(), key=lambda item: item[1])
+        softmax_sorted[i] = dict(sorted_values)
+
+    os.makedirs(f'./ranks/{args.backbone}/{args.dataset}/', exist_ok=True)
+    with open(f'./ranks/{args.backbone}/{args.dataset}/wasser_dist_softmaxed.pkl', 'wb') as f:
+        pickle.dump(softmax_sorted, f)
+else:
+    softmax_sorted = {}
+    for noise_name in loaded_diffs.keys():
+        softmax_sorted[noise_name] = torch.mean(torch.tensor(loaded_diffs[noise_name]))
+
+    softmaxes = torch.nn.functional.softmax(torch.tensor(list(softmax_sorted.values())), dim=0).numpy()
+    for j, key in enumerate(softmax_sorted.keys()):
+        softmax_sorted[key] = softmaxes[j]
     
-        noise_name = file_name.split('.')[0]
-        softmax_sorted[class_idx][noise_name] = torch.mean(torch.tensor([loaded_diff[idx].astype(np.float32) for idx in indices])).float()
+    sorted_values = sorted(softmax_sorted.items(), key=lambda item: item[1])
+    softmax_sorted = dict(sorted_values)
 
-for i in range(classes):
-    softmaxes = torch.nn.functional.softmax(torch.tensor(list(softmax_sorted[i].values())), dim=0).numpy()
-    for j, key in enumerate(softmax_sorted[i].keys()):
-        softmax_sorted[i][key] = softmaxes[j]
-
-    sorted_values = sorted(softmax_sorted[i].items(), key=lambda item: item[1])
-    softmax_sorted[i] = dict(sorted_values)
-
-os.makedirs(f'./ranks/{args.backbone}/{args.dataset}/', exist_ok=True)
-with open(f'./ranks/{args.backbone}/{args.dataset}/wasser_dist_softmaxed.pkl', 'wb') as f:
-    pickle.dump(softmax_sorted, f)
+    os.makedirs(f'./ranks_datasets/{args.backbone}/{args.dataset}/', exist_ok=True)
+    with open(f'./ranks_datasets/{args.backbone}/{args.dataset}/wasser_dist_softmaxed.pkl', 'wb') as f:
+        pickle.dump(softmax_sorted, f)
