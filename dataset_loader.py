@@ -1,5 +1,6 @@
 import os
 import PIL
+import math
 import torch
 import pickle
 import torchvision
@@ -380,3 +381,52 @@ def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None, coarse
     test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, test_loader
+
+
+class MVTecADDataset(Dataset):
+    def __init__(self, root_dir, categories, resize=224, phase='train'):
+        self.root_dir = root_dir
+        self.categories = categories
+        self.phase = phase
+        
+        self.image_paths = []
+        self.labels = []
+
+        self.transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(math.ceil(resize*1.14)),
+            torchvision.transforms.CenterCrop(resize),
+            torchvision.transforms.ToTensor()])
+
+        self._load_dataset()
+
+    def _load_dataset(self):
+        # Set the paths for training and test datasets
+        phase_dir = 'train' if self.phase == 'train' else 'test'
+        # category_path = os.path.join(self.root_dir, self.categories, phase_dir)
+
+        for category in self.categories:
+            category_path = os.path.join(self.root_dir, category, phase_dir)
+
+            for class_name in os.listdir(category_path):
+                class_dir = os.path.join(category_path, class_name)
+                if not os.path.isdir(class_dir):
+                    continue
+
+                for img_name in os.listdir(class_dir):
+                    img_path = os.path.join(class_dir, img_name)
+                    self.image_paths.append(img_path)
+                    # Label: 0 for 'good' images, 1 for 'anomaly' images
+                    self.labels.append(0 if class_name == 'good' else 1)
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        img_path = self.image_paths[idx]
+        image = Image.open(img_path).convert("RGB")
+        label = self.labels[idx]
+
+        if self.transform:
+            image = self.transform(image)
+
+        return image, label

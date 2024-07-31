@@ -459,7 +459,12 @@ def loading_datasets(args):
     elif args.dataset == 'imagenet':
         train_loader, test_loader = load_imagenet(args.config['imagenet_path'], 
                                                 batch_size=1)
-
+    elif args.dataset == 'mvtec_ad':
+        categories = ['bottle', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']  # List all categories
+        mvtec_train = MVTecADDataset(root_dir=args.config['mvtec_ad'], categories=categories, phase='train')
+        mvtec_test = MVTecADDataset(root_dir=args.config['mvtec_ad'], categories=categories, phase='test')
+        train_loader = DataLoader(mvtec_train, batch_size=1, shuffle=False)
+        test_loader = DataLoader(mvtec_test, batch_size=1, shuffle=False)
 
     return train_loader, test_loader
 
@@ -485,7 +490,7 @@ imagenet_path = config['imagenet_path']
 args.config = config
 
 sys.path.append(args.config["library_path"])
-from dataset_loader import load_cifar10, load_svhn, load_cifar100, load_imagenet
+from dataset_loader import load_cifar10, load_svhn, load_cifar100, load_imagenet, MVTecADDataset
 
 
 
