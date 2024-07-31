@@ -17,7 +17,7 @@ from scipy.stats import wasserstein_distance
 from torchvision.datasets import CIFAR10, CIFAR100
 import sys
 from tqdm import tqdm
-from utils import CustomImageDataset
+# from utils import CustomImageDataset
 
 
 
@@ -89,7 +89,7 @@ args.config = config
 
 sys.path.append(args.config["library_path"])
 from contrastive import cosine_similarity
-from dataset_loader import SVHN, load_np_dataset
+from dataset_loader import SVHN, load_np_dataset, MVTecADDataset
 
 
 if args.save_rep_norm:
@@ -118,6 +118,14 @@ elif args.dataset == 'cifar100':
     train_aug_targets_path = os.path.join(generalization_path, 'cifar100_Train_s1/labels.npy')
     
     noraml_dataset = CIFAR100(root=data_path, train=True, transform=transform)
+    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
+
+elif args.dataset == 'mvtec_ad':
+    train_aug_imgs_path = os.path.join(generalization_path, f'mvtec_ad_Train_s1/{args.aug}.npy')
+    train_aug_targets_path = os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy')
+    
+    categories = ['bottle', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
+    noraml_dataset = MVTecADDataset(root_dir=args.config['mvtec_ad'], categories=categories, phase='train')
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
 
 elif args.dataset == 'imagenet':
