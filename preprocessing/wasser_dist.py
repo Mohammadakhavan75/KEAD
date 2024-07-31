@@ -65,11 +65,19 @@ generalization_path = config['generalization_path']
 representations_path = config['representations_path']
 
 for i in range(len(os.listdir(f'{representations_path}{args.backbone}/{args.dataset}/normal/'))):
-    with open(f'{representations_path}{args.backbone}/{args.dataset}/normal/batch_{i}.pkl', 'rb') as f:
-        imgs_n_features.append(torch.tensor(pickle.load(f)).float())
+        try:
+            with open(f'{representations_path}{args.backbone}/{args.dataset}/normal/batch_{i}.pkl', 'rb') as f:
+                imgs_n_features.append(torch.tensor(pickle.load(f)).float())
+        except:
+            print("Error occured in normal data idx:", i)
 
-    with open(f'{representations_path}{args.backbone}/{args.dataset}/{args.aug}/batch_{i}.pkl', 'rb') as f:
-        imgs_aug_features.append(torch.tensor(pickle.load(f)).float())
+for i in range(len(os.listdir(f'{representations_path}{args.backbone}/{args.dataset}/{args.aug}/'))):
+        try:
+            with open(f'{representations_path}{args.backbone}/{args.dataset}/{args.aug}/batch_{i}.pkl', 'rb') as f:
+                imgs_aug_features.append(torch.tensor(pickle.load(f)).float())
+        except:
+            print(f"Error occured in {args.aug} data idx:", i)
+
 
 imgs_n_features, imgs_aug_features = torch.cat(imgs_n_features, dim=0).numpy(), torch.cat(imgs_aug_features, dim=0).numpy()
 
@@ -96,6 +104,10 @@ if args.dataset == 'cifar100':
 if args.dataset == 'imagenet30':
     classes = 30
     targets_list_loaded = np.load(os.path.join(generalization_path, 'imagenet30_Train_s1/labels.npy'))
+
+if args.dataset == 'mvtec_ad':
+    classes = 10
+    targets_list_loaded = np.load(os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy'))
 
 
 distances = []
