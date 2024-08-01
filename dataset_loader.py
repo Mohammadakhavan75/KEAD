@@ -384,7 +384,7 @@ def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None, coarse
 
 
 class MVTecADDataset(Dataset):
-    def __init__(self, root_dir, categories, resize=224, phase='train'):
+    def __init__(self, root_dir, categories, transform, resize=224, phase='train'):
         self.root_dir = root_dir
         self.categories = categories
         self.phase = phase
@@ -392,10 +392,7 @@ class MVTecADDataset(Dataset):
         self.image_paths = []
         self.labels = []
 
-        self.transform = torchvision.transforms.Compose([
-            torchvision.transforms.Resize(math.ceil(resize*1.14)),
-            torchvision.transforms.CenterCrop(resize),
-            torchvision.transforms.ToTensor()])
+        self.transform = transform
 
         self._load_dataset()
 
