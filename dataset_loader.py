@@ -216,16 +216,22 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=
         np_test_root_path, np_test_target_path = np_train_root_path, np_train_target_path
         classes = 30
         
-    # Creating transformation
-    if dataset == 'imagenet':
-        train_transform = torchvision.transforms.Compose([
-                            torchvision.transforms.Resize(256),
-                            torchvision.transforms.CenterCrop(224),
-                            torchvision.transforms.ToTensor()])
-        test_transform = train_transform
-    else:    
-        train_transform = transforms.Compose([transforms.ToTensor()])
-        test_transform = transforms.Compose([transforms.ToTensor()])
+    elif dataset == 'mvtec_ad':
+        np_train_target_path = os.path.join(args.config['generalization_path'], 'mvtec_ad_Train_s1/labels_train.npy')
+        np_train_root_path = os.path.join(args.config['generalization_path'], 'mvtec_ad_Train_s1')
+        np_test_root_path, np_test_target_path = np_train_root_path, np_train_target_path
+        classes = 15
+        
+    # # Creating transformation
+    # if dataset == 'imagenet':
+    #     train_transform = torchvision.transforms.Compose([
+    #                         torchvision.transforms.Resize(256),
+    #                         torchvision.transforms.CenterCrop(224),
+    #                         torchvision.transforms.ToTensor()])
+    #     test_transform = train_transform
+    # else:    
+    train_transform = transforms.Compose([transforms.ToTensor()])
+    test_transform = transforms.Compose([transforms.ToTensor()])
 
     # Loading probs of augmentations
     if preprocessing == 'clip':
@@ -401,7 +407,7 @@ class MVTecADDataset(Dataset):
         phase_dir = 'train' if self.phase == 'train' else 'test'
         # category_path = os.path.join(self.root_dir, self.categories, phase_dir)
 
-        for category in self.categories:
+        for l, category in enumerate(self.categories):
             category_path = os.path.join(self.root_dir, category, phase_dir)
 
             for class_name in os.listdir(category_path):
@@ -413,7 +419,8 @@ class MVTecADDataset(Dataset):
                     img_path = os.path.join(class_dir, img_name)
                     self.image_paths.append(img_path)
                     # Label: 0 for 'good' images, 1 for 'anomaly' images
-                    self.labels.append(0 if class_name == 'good' else 1)
+                    # self.labels.append(0 if class_name == 'good' else 1)
+                    self.labels.append(l)
 
     def __len__(self):
         return len(self.image_paths)
@@ -427,3 +434,17 @@ class MVTecADDataset(Dataset):
             image = self.transform(image)
 
         return image, label
+
+
+class batch_dataset(Dataset):
+    def __init__(self, path):
+        self.path = path
+        self.files = os.listdir(path)
+
+    def __len__(self):
+        return len(self.files)
+
+    def __getitem__(self, idx):
+        with open(f'{self.path}/batch_{idx}.pkl', 'rb') as f:
+            return torch.tensor(pickle.load(f)).float()
+        
