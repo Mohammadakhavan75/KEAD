@@ -17,8 +17,8 @@ def parsing():
                         default='clip', help='clip or dinov2')
     parser.add_argument('--config', type=str, 
                         help='config')
-    parser.add_argument('--one_class', type=str, 
-                        default=None, help='config')
+    parser.add_argument('--one_class', action='store_true', 
+                        help='config')
 
     args = parser.parse_args()
 
@@ -63,6 +63,10 @@ def get_target_labels(args, generalization_path):
     if args.dataset == 'imagenet30':
         classes = 30
         targets_list_loaded = np.load(os.path.join(generalization_path, 'imagenet_Train_s1/labels.npy'))
+    
+    if args.dataset == 'mvtec_ad':
+        classes = 15
+        targets_list_loaded = np.load(os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy'))
 
     return targets_list_loaded, classes
 
