@@ -121,12 +121,18 @@ elif args.dataset == 'cifar100':
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
 
 elif args.dataset == 'mvtec_ad':
+    import math
+    resize=224
+    transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(math.ceil(resize*1.14)),
+            torchvision.transforms.CenterCrop(resize),
+            torchvision.transforms.ToTensor()])
     train_aug_imgs_path = os.path.join(generalization_path, f'mvtec_ad_Train_s1/{args.aug}.npy')
     train_aug_targets_path = os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy')
     
-    categories = ['bottle', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
-    noraml_dataset = MVTecADDataset(root_dir=args.config['mvtec_ad'], categories=categories, phase='train')
-    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
+    categories = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
+    noraml_dataset = MVTecADDataset(root_dir=args.config['mvtec_ad'], transform=transform, categories=categories, phase='train')
+    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
 
 elif args.dataset == 'imagenet':
     # imagenet_path = os.path.join(data_path,'ImageNet')
