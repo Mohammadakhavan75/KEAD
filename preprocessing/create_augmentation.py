@@ -460,9 +460,16 @@ def loading_datasets(args):
         train_loader, test_loader = load_imagenet(args.config['imagenet_path'], 
                                                 batch_size=1)
     elif args.dataset == 'mvtec_ad':
-        categories = ['bottle', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']  # List all categories
-        mvtec_train = MVTecADDataset(root_dir=args.config['mvtec_ad'], categories=categories, phase='train')
-        mvtec_test = MVTecADDataset(root_dir=args.config['mvtec_ad'], categories=categories, phase='test')
+        import math
+        import torchvision
+        resize=224
+        transform = torchvision.transforms.Compose([
+                torchvision.transforms.Resize(math.ceil(resize*1.14)),
+                torchvision.transforms.CenterCrop(resize),
+                torchvision.transforms.ToTensor()])
+        categories = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']  # List all categories
+        mvtec_train = MVTecADDataset(root_dir=args.config['mvtec_ad'], transform=transform, categories=categories, phase='train')
+        mvtec_test = MVTecADDataset(root_dir=args.config['mvtec_ad'], transform=transform, categories=categories, phase='test')
         train_loader = DataLoader(mvtec_train, batch_size=1, shuffle=False)
         test_loader = DataLoader(mvtec_test, batch_size=1, shuffle=False)
 
@@ -549,15 +556,15 @@ if args.save_img:
         severity = args.severity
         corruption = lambda clean_img: d[args.aug](clean_img, severity)
         for img, label in loader:
-            for k in range(len(img)):
-                counter += 1
-                labels_c.append(label.detach().cpu().numpy())
-                cv2.imwrite(
-                    os.path.join(saving_path, f'{str(counter).zfill(10)}.jpg'),
-                        np.uint8(corruption(
-                            PIL.Image.fromarray((
-                                img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)))))
-                        
+            # for k in range(len(img)):
+            counter += 1
+            labels_c.append(label.detach().cpu().numpy())
+            cv2.imwrite(
+                os.path.join(saving_path, f'{str(counter).zfill(10)}.jpg'),
+                    np.uint8(corruption(
+                        PIL.Image.fromarray((
+                            img.permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)))))
+                    
             
         np.save(os.path.join(saving_path, 'labels.npy'), np.array(labels_c).astype(np.uint8))
 
@@ -570,11 +577,11 @@ else:
     severity = args.severity
     corruption = lambda clean_img: d[args.aug](clean_img, severity)
     for img, label in loader:
-        for k in range(len(img)):
-            labels_c.append(label.detach().cpu().numpy())
-            cifar_c.append(np.uint8(corruption(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)))))
+        # for k in range(len(img)):
+        labels_c.append(label.detach().cpu().numpy())
+        cifar_c.append(np.uint8(corruption(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)))))
         
     np.save(os.path.join(saving_path, d[args.aug].__name__ + '.npy'), np.array(cifar_c).astype(np.uint8))
-
+    np.save(os.path.join(saving_path, 'labels.npy'), np.array(labels_c).astype(np.uint8))
     # except:
         # print(f"Error occured in: {args.aug}")
