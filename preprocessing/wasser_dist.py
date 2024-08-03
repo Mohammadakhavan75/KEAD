@@ -39,9 +39,9 @@ def parsing():
     parser.add_argument('--super_class', action="store_true", help='superclass')
     parser.add_argument('--backbone', type=str, 
                         default='clip', help='clip or dinov2')
-    parser.add_argument('--one_class', type=str, 
-                        default=None, help='clip or dinov2')
-    parser.add_argument('--config', type=str, 
+    parser.add_argument('--one_class', action='store_true',
+                        help='clip or dinov2')
+    parser.add_argument('--config', type=str,
                         help='config')
 
     args = parser.parse_args()
@@ -106,10 +106,10 @@ if args.dataset == 'imagenet30':
     targets_list_loaded = np.load(os.path.join(generalization_path, 'imagenet30_Train_s1/labels.npy'))
 
 if args.dataset == 'mvtec_ad':
-    classes = 10
+    classes = 15
     targets_list_loaded = np.load(os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy'))
 
-
+print(np.unique(targets_list_loaded))
 distances = []
 if args.one_class:
     for class_idx in range(classes):
