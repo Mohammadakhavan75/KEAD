@@ -192,57 +192,17 @@ def sparse2coarse(targets):
 
 def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=True, dataset='cifar10', preprocessing='clip', k_pairs=1):
     # Filling paths
-    if dataset == 'cifar10':
-        np_train_target_path = os.path.join(args.config['generalization_path'], 'CIFAR10_Train_AC/labels_train.npy')
-        np_test_target_path = os.path.join(args.config['generalization_path'], 'CIFAR10_Test_AC/labels_test.npy')
-        np_train_root_path = os.path.join(args.config['generalization_path'], 'CIFAR10_Train_AC')
-        np_test_root_path = os.path.join(args.config['generalization_path'], 'CIFAR10_Test_AC')
-        classes = 10
-    elif dataset == 'svhn':
-        np_train_target_path = os.path.join(args.config['generalization_path'], 'SVHN_Train_AC/labels_train.npy')
-        np_test_target_path = os.path.join(args.config['generalization_path'], 'SVHN_Test_AC/labels_test.npy')
-        np_train_root_path = os.path.join(args.config['generalization_path'], 'SVHN_Train_AC')
-        np_test_root_path = os.path.join(args.config['generalization_path'], 'SVHN_Test_AC')
-        classes = 10
-    elif dataset == 'cifar100':
-        np_train_target_path = os.path.join(args.config['generalization_path'], 'CIFAR100_Train_AC/labels_train.npy')
-        np_test_target_path = os.path.join(args.config['generalization_path'], 'CIFAR100_Test_AC/labels_test.npy')
-        np_train_root_path = os.path.join(args.config['generalization_path'], 'CIFAR100_Train_AC')
-        np_test_root_path = os.path.join(args.config['generalization_path'], 'CIFAR100_Test_AC')
-        classes = 20
-    elif dataset == 'imagenet':
-        np_train_target_path = os.path.join(args.config['generalization_path'], 'Imagenet_Train_AC/labels_train.npy')
-        np_train_root_path = os.path.join(args.config['generalization_path'], 'Imagenet_Train_AC')
-        np_test_root_path, np_test_target_path = np_train_root_path, np_train_target_path
-        classes = 30
+    np_train_target_path = os.path.join(args.config['generalization_path'], f'{dataset}_Train_s1/labels.npy')
+    np_test_target_path = os.path.join(args.config['generalization_path'], f'{dataset}_Test_s5/labels.npy')
+    np_train_root_path = os.path.join(args.config['generalization_path'], f'{dataset}_Train_s1')
+    np_test_root_path = os.path.join(args.config['generalization_path'], f'{dataset}_Test_s5')
         
-    elif dataset == 'mvtec_ad':
-        np_train_target_path = os.path.join(args.config['generalization_path'], 'mvtec_ad_Train_s1/labels_train.npy')
-        np_train_root_path = os.path.join(args.config['generalization_path'], 'mvtec_ad_Train_s1')
-        np_test_root_path, np_test_target_path = np_train_root_path, np_train_target_path
-        classes = 15
         
-    # # Creating transformation
-    # if dataset == 'imagenet':
-    #     train_transform = torchvision.transforms.Compose([
-    #                         torchvision.transforms.Resize(256),
-    #                         torchvision.transforms.CenterCrop(224),
-    #                         torchvision.transforms.ToTensor()])
-    #     test_transform = train_transform
-    # else:    
     train_transform = transforms.Compose([transforms.ToTensor()])
     test_transform = transforms.Compose([transforms.ToTensor()])
 
-    # Loading probs of augmentations
-    if preprocessing == 'clip':
-        with open(f'./ranks/selected_noises_{dataset}_softmaxed.pkl', 'rb') as file:
-            probs = pickle.load(file)
-    elif preprocessing == 'cosine':
-        with open(f'./ranks/{dataset}_cosine_softmaxed.pkl', 'rb') as file:
-            probs = pickle.load(file)
-    elif preprocessing == 'wasser':
-        with open(f'./ranks/selected_noises_{dataset}_wasser_dist_softmaxed.pkl', 'rb') as file:
-            probs = pickle.load(file)
+    with open(f'./ranks/{preprocessing}/{dataset}/wasser_dist_softmaxed.pkl', 'rb') as file:
+        probs = pickle.load(file)
 
     print("Creating noises loader")
 
@@ -261,14 +221,14 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=
     
     # Loading positive
     for k in range(1, k_pairs + 1):
-        noise = list(probs[one_class_idx].keys())[k]
+        noise = list(probs[one_class_idx].keys())[k].replace('dist_','')
         print(f"Selecting {noise} as positive pair for class {one_class_idx}")
-        np_train_img_path = np_train_root_path + noise + '.npy'
+        np_train_img_path = os.path.join(np_train_root_path, noise + '.npy')
         train_positives_datasets = load_np_dataset(np_train_img_path, np_train_target_path, train_transform, dataset, train=True)
         if dataset == 'cifar100' and coarse:
             train_positives_datasets.targets = sparse2coarse(train_positives_datasets.targets)
 
-        np_test_img_path = np_test_root_path + noise + '.npy'
+        np_test_img_path = os.path.join(np_test_root_path, noise + '.npy')
         test_positives_datasets = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset, train=False)
         if dataset == 'cifar100' and coarse:
             test_positives_datasets.targets = sparse2coarse(test_positives_datasets.targets)
@@ -288,14 +248,14 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=
 
     # Loading negative 
     for k in range(1, k_pairs + 1):
-        noise = list(probs[one_class_idx].keys())[-k]
+        noise = list(probs[one_class_idx].keys())[-k].replace('dist_', '')
         print(f"Selecting {noise} as negetive pair for class {one_class_idx}")
-        np_train_img_path = np_train_root_path + noise + '.npy'
+        np_train_img_path = os.path.join(np_train_root_path, noise + '.npy')
         train_negetives_datasets = load_np_dataset(np_train_img_path, np_train_target_path, train_transform, dataset, train=True)
         if dataset == 'cifar100':
             train_negetives_datasets.targets = sparse2coarse(train_negetives_datasets.targets)
         
-        np_test_img_path = np_test_root_path + noise + '.npy'
+        np_test_img_path = os.path.join(np_test_root_path, noise + '.npy')
         test_negetives_datasets = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset, train=False)
         if dataset == 'cifar100':
             test_negetives_datasets.targets = sparse2coarse(test_negetives_datasets.targets)
@@ -387,6 +347,27 @@ def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None, coarse
     test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, test_loader
+
+
+def load_mvtec_ad(path, resize=224, batch_size=64, num_workers=0, one_class_idx=None, coarse=True):
+    transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(math.ceil(resize*1.14)),
+            torchvision.transforms.CenterCrop(resize),
+            torchvision.transforms.ToTensor()])
+    
+    categories = ['bottle', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
+    train_data = MVTecADDataset(path, resize=resize, transform=transform, categories=categories, phase='train')
+    test_data = MVTecADDataset(path, resize=resize, transform=transform, categories=categories, phase='test')
+    
+    if one_class_idx != None:
+        train_data = get_subclass_dataset(train_data, one_class_idx)
+        test_data = get_subclass_dataset(test_data, one_class_idx)
+
+    train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+    test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+
+    return train_loader, test_loader
+
 
 
 class MVTecADDataset(Dataset):

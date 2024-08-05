@@ -4,12 +4,13 @@ import torch
 import random
 import argparse
 import numpy as np
+from tqdm import tqdm
 from datetime import datetime
 from contrastive import contrastive
 from models.resnet_imagenet import resnet18, resnet50
 from models.resnet import ResNet18, ResNet34, ResNet50
 from torch.utils.tensorboard import SummaryWriter
-from dataset_loader import noise_loader, load_cifar10, load_svhn, load_cifar100, load_imagenet30
+from dataset_loader import noise_loader, load_cifar10, load_svhn, load_cifar100, load_imagenet, load_mvtec_ad
 
 def to_np(x):
     return x.data.cpu().numpy()
@@ -30,8 +31,6 @@ def parsing():
                         default=None, help='Path to save files.')
     parser.add_argument('--model_path', type=str, 
                         default=None, help='Path to model to resume training.')
-    parser.add_argument('--config', type=str, 
-                        default="normal", help='Config of data on training model.')
     parser.add_argument('--device', type=str, 
                         default="cuda", help='cuda or cpu.')
     # Optimizer Config
@@ -74,7 +73,6 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
                      net, train_global_iter, optimizer, device, writer):
 
     # Enter model into train mode
-    net = net.to(device)
     net.train()
     
     # Tracking metrics
@@ -92,7 +90,7 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
     sim_ps, sim_ns = [], []
     
     if args.k_pairs == 1: 
-        for normal, p_data, n_data in zip(train_loader, train_positives_loader[0], train_negetives_loader[0]):
+        for normal, p_data, n_data in tqdm(zip(train_loader, train_positives_loader[0], train_negetives_loader[0])):
             imgs, labels = normal
             p_imgs, _ = p_data
             n_imgs, _ = n_data
@@ -327,10 +325,16 @@ def loading_datasets(args):
                                                 one_class_idx=args.one_class_idx)
     elif args.dataset == 'imagenet30':
         args.num_classes = 30
-        train_loader, test_loader = load_imagenet30(imagenet30_path, 
+        train_loader, test_loader = load_imagenet(imagenet_path, 
+                                                batch_size=args.batch_size,
+                                                one_class_idx=args.one_class_idx)
+    elif args.dataset == 'mvtec_ad':
+        args.num_classes = 15
+        train_loader, test_loader = load_mvtec_ad(data_path, 
                                                 batch_size=args.batch_size,
                                                 one_class_idx=args.one_class_idx)
 
+    
     print("Start Loading noises")
     train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader = \
         noise_loader(args, batch_size=args.batch_size, one_class_idx=args.one_class_idx,
@@ -340,22 +344,25 @@ def loading_datasets(args):
     return train_loader, test_loader, train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader
 
 
-with open('config.json') as config_file:
+def set_seed(seed_nu):
+    torch.manual_seed(seed_nu)
+    random.seed(seed_nu)
+    np.random.seed(seed_nu)
+
+
+
+with open('config.json', 'r') as config_file:
     config = json.load(config_file)
 
 root_path = config['root_path']
 data_path = config['data_path']
-imagenet30_path = config['imagenet30_path']
+imagenet_path = config['imagenet_path']
 args = parsing()
 args.config = config
 
-os.environ['CUDA_VISIBLE_DEVICES']=str(args.gpu)
-args.device=f'cuda:{args.gpu}'
 
 # Setting seeds for reproducibility
-torch.manual_seed(args.seed)
-random.seed(args.seed)
-np.random.seed(args.seed)
+set_seed(args.seed)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
@@ -364,14 +371,23 @@ train_loader, test_loader, train_positives_loader, train_negetives_loader,\
 
 model, criterion, optimizer, scheduler = load_model(args)
 
+if torch.cuda.device_count() > 1 and args.device == 'cuda':
+    print("Using", torch.cuda.device_count(), "GPUs")
+    model = torch.nn.DataParallel(model)
+
+elif args.device == 'cuda':    
+    os.environ['CUDA_VISIBLE_DEVICES']='0,1'
+    args.device=f'cuda:{args.gpu}'
+
+model = model.to(args.device)
 model_save_path, save_path = create_path(args)
 writer = SummaryWriter(save_path)
 args.save_path = save_path
 train_global_iter = 0
 
 args.last_lr = args.learning_rate
-for epoch in range(0, args.epochs):
-    print('epoch', epoch + 1, '/', args.epochs)
+for epoch in range(1, args.epochs):
+    print('epoch', epoch, '/', args.epochs)
     args.e_holder = str(epoch)
     train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns =\
           train_one_class(train_loader, train_positives_loader, train_negetives_loader, \
@@ -382,11 +398,13 @@ for epoch in range(0, args.epochs):
     writer.add_scalar("Train/lr", args.last_lr, epoch)
     print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}")
     
-    if (epoch+1) % 5 == 0:
+    if (epoch) % 5 == 0:
         torch.save(model.state_dict(), os.path.join(model_save_path,f'model_params_epoch_{epoch}.pt'))
 
     args.last_lr = scheduler.get_last_lr()[0]
     last_sim_ps = avg_sim_ps
     last_sim_ns = avg_sim_ns
+    args.seed += epoch
+    set_seed(args.seed)
 
 torch.save(model.state_dict(), os.path.join(save_path,'last_params.pt'))
