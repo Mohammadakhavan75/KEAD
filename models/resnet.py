@@ -79,6 +79,7 @@ class ResNet(BaseModel):
         super(ResNet, self).__init__(num_classes)
 
         self.in_planes = 64
+
         self.conv1 = conv3x3(3, 64)
         self.bn1 = nn.BatchNorm2d(64)
 
@@ -98,7 +99,7 @@ class ResNet(BaseModel):
     def penultimate(self, x, all_features=False):
         out_list = []
 
-        out = self.conv1(out)
+        out = self.conv1(x)
         out = self.bn1(out)
         out = F.relu(out)
         out_list.append(out)
