@@ -61,6 +61,7 @@ def parsing():
     parser.add_argument('--shift_normal', action="store_true", help='Using shifted normal data')
     parser.add_argument('--k_pairs', default=1, type=int, help='Selecting multiple pairs for contrastive loss')
     parser.add_argument('--gpu', default=0, type=int, help='Select gpu number')
+    parser.add_argument('--multi_gpu', action="store_true", help='Selecting multi-gpu for training')
     parser.add_argument('--e_holder', default=0, type=str, help='Epoch number holder')
     parser.add_argument('--linear', action="store_true", help='Initiate linear layer or not!')
     parser.add_argument('--config', default=None, help='Config file for reading paths')
@@ -371,7 +372,7 @@ train_loader, test_loader, train_positives_loader, train_negetives_loader,\
 
 model, criterion, optimizer, scheduler = load_model(args)
 
-if torch.cuda.device_count() > 1 and args.device == 'cuda':
+if torch.cuda.device_count() > 1 and args.device == 'cuda' and args.multi_gpu:
     print("Using", torch.cuda.device_count(), "GPUs")
     model = torch.nn.DataParallel(model)
 
