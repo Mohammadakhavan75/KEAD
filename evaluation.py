@@ -5,12 +5,11 @@ import argparse
 import torchvision
 import numpy as np
 from torch.utils.data import DataLoader
-from contrastive import cosine_similarity
-from dataset_loader import load_np_dataset
+from dataset_loader import load_np_dataset, load_mvtec_ad, MVTecADDataset
 from torchvision.transforms import transforms
 from dataset_loader import SVHN, get_subclass_dataset, sparse2coarse
-from sklearn.metrics import accuracy_score, roc_auc_score
-from cifar10.model import ResNet18, ResNet34, ResNet50
+from sklearn.metrics import roc_auc_score
+from models.resnet import ResNet18, ResNet34, ResNet50
 
 
 CIFAR100_SUPERCLASS = [
@@ -100,6 +99,25 @@ def knn_score(train_set, test_set, n_neighbours=1):
     return np.sum(D, axis=1)
 
 
+def mahalanobis_parameters(loader_in, net, args):
+    print("Calculating mahalanobis parameters...")
+    features = torch.cat(features, dim=0)
+    mean = torch.mean(features, dim=0)
+
+    # for feature in features:
+    #     feature[feature==0] += 1e-12 # To preventing zero for torch.linalg.inv
+    cov = torch.cov(features.t())
+    cov += 1e-12 * torch.eye(cov.shape[0]).to(args.device)
+    inv_covariance = torch.linalg.inv(cov)
+
+    return mean, inv_covariance, features
+
+
+def mahalanobis_distance(x, mu, inv_cov):
+    centered_x = x - mu
+    mahalanobis_dist = torch.sqrt(torch.clamp(torch.matmul(torch.matmul(centered_x.unsqueeze(0), inv_cov), centered_x), min=0))
+
+    return mahalanobis_dist
 
 
 def load_data(root_path, args):
@@ -176,24 +194,33 @@ def load_data(root_path, args):
             root_path, train=True, transform=test_transform, download=True)
         test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10', train=False)
 
+    elif args.dataset == 'mvtec_ad':
+        import math
+        resize=224
+        transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(math.ceil(resize*1.14)),
+            torchvision.transforms.CenterCrop(resize),
+            torchvision.transforms.ToTensor()])    
+        categories = ['bottle', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
+        train_data = MVTecADDataset(root_path, resize=resize, transform=transform, categories=categories, phase='train')
+        test_data = MVTecADDataset(root_path, resize=resize, transform=transform, categories=categories, phase='test')
+
     # Create sub classes
-    if args.dataset == 'cifar100' or args.dataset == 'aug100' or args.dataset == 'anomaly100':
-        # train_data.targets = [i for t in train_data.targets for i , sub_list in enumerate(CIFAR100_SUPERCLASS) if t in sub_list]
-        # test_data.targets = [i for t in test_data.targets for i , sub_list in enumerate(CIFAR100_SUPERCLASS) if t in sub_list]
-        train_data.targets = sparse2coarse(train_data.targets)
-        test_data.targets = sparse2coarse(test_data.targets)
-        eval_in_train_data = get_subclass_dataset(train_data, args.one_class_idx)
-        eval_in_data = get_subclass_dataset(test_data, args.one_class_idx)
-    # elif not args.dataset == 'anomaly':
-    else:
-        eval_in_train_data = get_subclass_dataset(train_data, args.one_class_idx)
-        eval_in_data = get_subclass_dataset(test_data, args.one_class_idx)
+    if args.one_class_idx != None:
+        if (args.dataset == 'cifar100' or args.dataset == 'aug100' or args.dataset == 'anomaly100'):
+            train_data.targets = sparse2coarse(train_data.targets)
+            test_data.targets = sparse2coarse(test_data.targets)
+            eval_in_train_data = get_subclass_dataset(train_data, args.one_class_idx)
+            eval_in_data = get_subclass_dataset(test_data, args.one_class_idx)
+        else:
+            eval_in_train_data = get_subclass_dataset(train_data, args.one_class_idx)
+            eval_in_data = get_subclass_dataset(test_data, args.one_class_idx)
     
     return eval_in_train_data, eval_in_data, train_data, test_data
 
 
 
-def eval_auc_one_class(eval_in, eval_out, trian_features_in, mahal_thresh, net, args):
+def eval_auc_one_class(eval_in, eval_out, train_features_in, mahal_thresh, net, args):
 
     net = net.to(args.device)
     net.eval()  # enter valid mode
@@ -225,7 +252,7 @@ def eval_auc_one_class(eval_in, eval_out, trian_features_in, mahal_thresh, net, 
         in_features_list = torch.cat(in_features_list, dim=0)
         out_features_list = torch.cat(out_features_list, dim=0)
 
-        if args.score == 'mahal':
+        if args.score == 'mahalanobis':
             for in_feature in in_features_list:
                 pred_in.append(mahalanobis_distance(in_feature, mean, inv_covariance) < mahal_thresh)
             for out_feature in out_features_list:
@@ -260,13 +287,13 @@ def eval_auc_one_class(eval_in, eval_out, trian_features_in, mahal_thresh, net, 
                 auc = roc_auc_score(to_np(targets), to_np(preds))
         elif args.score == 'knn':
             f_list = torch.cat([in_features_list, out_features_list], dim=0)
-            distances = knn_score(to_np(trian_features_in), to_np(f_list))
+            distances = knn_score(to_np(train_features_in), to_np(f_list))
             targets = torch.cat([torch.tensor(targets_in_list), torch.tensor(targets_out_list)], dim=0)
             auc = roc_auc_score(targets, distances)
     return auc
 
 
-def eval_auc_anomaly(loader, trian_features_in, net, args):
+def eval_auc_anomaly(loader, train_features_in, net, args):
     net = net.to(args.device)
     net.eval()  # enter valid mode
 
@@ -290,7 +317,7 @@ def eval_auc_anomaly(loader, trian_features_in, net, args):
             anomaly_list = [1-x for x in anomaly_list]
             auc = roc_auc_score(anomaly_list, preds)      
         elif args.score == 'knn':
-            distances = knn_score(to_np(trian_features_in), to_np(features_list))
+            distances = knn_score(to_np(train_features_in), to_np(features_list))
             auc = roc_auc_score(anomaly_list, distances)
 
     return auc
@@ -360,11 +387,11 @@ def feature_extraction(loader, net):
 
 
 args = parsing()
-os.environ['CUDA_VISIBLE_DEVICES']=args.gpu
+os.environ['CUDA_VISIBLE_DEVICES']="0,1"
 torch.manual_seed(args.seed)
 model, criterion, optimizer, scheduler = load_model(args)
 
-root_path = '/root_to_data_path/'
+root_path = '/warehouse/datasets/KEAD/datasets/data/'
 args.last_lr = args.learning_rate
 in_distance = torch.tensor(0)
 
@@ -376,17 +403,21 @@ eval_in = DataLoader(eval_in_data, shuffle=False, batch_size=args.batch_size, nu
 if args.score == 'svm':
     from sklearn.svm import OneClassSVM
     svm_model = OneClassSVM(kernel='sigmoid', gamma='auto', nu=0.2)
-    trian_features_in = feature_extraction(eval_in_train, model)
-    print(f"Fitting svm model {trian_features_in.shape}")
-    svm_model.fit(trian_features_in.detach().cpu().numpy())
+    train_features_in = feature_extraction(eval_in_train, model)
+    print(f"Fitting svm model {train_features_in.shape}")
+    svm_model.fit(train_features_in.detach().cpu().numpy())
     args.svm_model = svm_model
 if args.score == 'knn':
-    trian_features_in = feature_extraction(eval_in_train, model)
+    train_features_in = feature_extraction(eval_in_train, model)
 
+if args.score == 'mahalanobis':
+    train_features_in = feature_extraction(eval_in_train, model)
+    mean, inv_covariance, features = mahalanobis_parameters(train_features_in, args)
 
 if args.noise:
     test_dataset_noise = noise_loading(args.dataset, args.noise)
-    
+
+
 resutls = {}
 aucs = []
 
@@ -396,28 +427,43 @@ if args.dataset == 'cifar100':
 else:
     classes=10
 if args.dataset == 'anomaly' or args.dataset == 'anomaly100' or args.dataset == 'anomalysvhn':
-
-    auc = eval_auc_anomaly(eval_in, trian_features_in, model, args)
+    auc = eval_auc_anomaly(eval_in, train_features_in, model, args)
     print(f"Anomaly auc is: {auc}")
     exit()
+if args.one_class_idx != None:
+    for id in range(classes):
+        if id == args.one_class_idx:
+            continue
+        
+        if args.noise:
+            eval_out_data = get_subclass_dataset(test_dataset_noise, id)
+        else:
+            eval_out_data = get_subclass_dataset(test_data, id)
+        eval_out = DataLoader(eval_out_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
 
-for id in range(classes):
-    if id == args.one_class_idx:
-        continue
-    
+        if args.dataset == 'anomaly':
+            auc = eval_auc_anomaly(eval_out, train_features_in, model, args)
+        else:
+            auc = eval_auc_one_class(eval_in, eval_out, train_features_in, in_distance + args.thresh, model, args)
+        aucs.append(auc)
+        
+        print(f"Evaluation distance on class {id}: auc: {auc}")
+else:
     if args.noise:
-        eval_out_data = get_subclass_dataset(test_dataset_noise, id)
+        eval_out_data = test_dataset_noise
     else:
-        eval_out_data = get_subclass_dataset(test_data, id)
-    eval_out = DataLoader(eval_out_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+        eval_out_data = test_data
 
+    eval_out = DataLoader(eval_out_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
     if args.dataset == 'anomaly':
-        auc = eval_auc_anomaly(eval_out, trian_features_in, model, args)
+        auc = eval_auc_anomaly(eval_out, train_features_in, model, args)
     else:
-        auc = eval_auc_one_class(eval_in, eval_out, trian_features_in, in_distance + args.thresh, model, args)
+        auc = eval_auc_one_class(eval_in, eval_out, train_features_in, in_distance + args.thresh, model, args)
+
     aucs.append(auc)
     
     print(f"Evaluation distance on class {id}: auc: {auc}")
+
 
 print(f"Average auc is: {np.mean(aucs)}")
 print(f"Results of model: {args.model_path}")
