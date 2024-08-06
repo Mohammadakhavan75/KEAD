@@ -377,7 +377,7 @@ class MVTecADDataset(Dataset):
         self.phase = phase
         
         self.image_paths = []
-        self.labels = []
+        self.targets = []
 
         self.transform = transform
 
@@ -389,7 +389,7 @@ class MVTecADDataset(Dataset):
         # category_path = os.path.join(self.root_dir, self.categories, phase_dir)
 
         for l, category in enumerate(self.categories):
-            category_path = os.path.join(self.root_dir, category, phase_dir)
+            category_path = os.path.join(self.root_dir + 'mvtec_ad/', category, phase_dir)
 
             for class_name in os.listdir(category_path):
                 class_dir = os.path.join(category_path, class_name)
@@ -401,7 +401,7 @@ class MVTecADDataset(Dataset):
                     self.image_paths.append(img_path)
                     # Label: 0 for 'good' images, 1 for 'anomaly' images
                     # self.labels.append(0 if class_name == 'good' else 1)
-                    self.labels.append(l)
+                    self.targets.append(l)
 
     def __len__(self):
         return len(self.image_paths)
@@ -409,7 +409,7 @@ class MVTecADDataset(Dataset):
     def __getitem__(self, idx):
         img_path = self.image_paths[idx]
         image = Image.open(img_path).convert("RGB")
-        label = self.labels[idx]
+        label = self.targets[idx]
 
         if self.transform:
             image = self.transform(image)
