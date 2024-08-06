@@ -124,7 +124,7 @@ if args.one_class:
         print(f'{class_idx}: {emd_distance}')
 
 
-    with open(f'./wasser_dist/{args.backbone}/{args.dataset}/dist_{args.aug}.pkl', 'wb') as f:
+    with open(f'./wasser_dist/{args.backbone}/{args.dataset}/{args.aug}.pkl', 'wb') as f:
         pickle.dump(distances, f)
 else:
     imgs_n_features_one_class = np.asarray(imgs_n_features.astype(np.float64))
@@ -134,5 +134,5 @@ else:
     emd_distance = ot.emd2([], [], cost_matrix, numItermax=200000)
 
     
-    with open(f'./wasser_dist_datasets/{args.backbone}/{args.dataset}/dist_{args.aug}.pkl', 'wb') as f:
+    with open(f'./wasser_dist_datasets/{args.backbone}/{args.dataset}/{args.aug}.pkl', 'wb') as f:
         pickle.dump(emd_distance, f)
