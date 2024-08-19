@@ -15,6 +15,7 @@ from clip import clip
 from torch.utils.data import DataLoader
 from scipy.stats import wasserstein_distance
 from torchvision.datasets import CIFAR10, CIFAR100
+from torchvision.models import wide_resnet50_2
 import sys
 from tqdm import tqdm
 # from utils import CustomImageDataset
@@ -64,6 +65,19 @@ else:
 if args.backbone == 'clip':
     model, transform = clip.load("ViT-L/14", device=device)
     model = model.to(device)
+if args.backbone == 'resnet50':
+    model = wide_resnet50_2("IMAGENET1K_V2")
+    layers = list(model.children())
+    layers = layers[:-1] # Remove the last layer
+    model = torch.nn.Sequential(*layers) # Reconstruct the model without the last layer
+    model = model.to(device)
+    if args.dataset != 'imagenet':
+        transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor(),
+                                            torchvision.transforms.Resize((224,224))])
+    else:
+        transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor(),
+                                            torchvision.transforms.Resize(256),
+                                            torchvision.transforms.CenterCrop(224)])
 elif args.backbone == 'dinov2':
     model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitg14_reg')
     model = model.to(device)
@@ -167,24 +181,24 @@ for i, data in tqdm(enumerate(loader)):
     imgs_aug, _ = data_aug
     # This condition is for when len imgs_aug is larger than imgs_normal
     if len(imgs_n) != len(imgs_aug): 
-        imgs_aug = imgs_aug[:len(imgs_n)]
-        imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
-        imgs_n_features = model.encode_image(imgs_n)
-        imgs_aug_features = model.encode_image(imgs_aug)
-        # Saving the representations
-        if args.save_rep_norm:
-            with open(os.path.join(rep_norm_path, f'batch_{i}.pkl'), 'wb') as f:
-                pickle.dump(imgs_n_features, f)
-        if args.save_rep_aug:
-            with open(os.path.join(rep_aug_path, f'batch_{i}.pkl'), 'wb') as f:
-                pickle.dump(imgs_aug_features, f)
+        # imgs_aug = imgs_aug[:len(imgs_n)]
+        # imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
+        # imgs_n_features = model.encode_image(imgs_n)
+        # imgs_aug_features = model.encode_image(imgs_aug)
+        # # Saving the representations
+        # if args.save_rep_norm:
+        #     with open(os.path.join(rep_norm_path, f'batch_{i}.pkl'), 'wb') as f:
+        #         pickle.dump(imgs_n_features, f)
+        # if args.save_rep_aug:
+        #     with open(os.path.join(rep_aug_path, f'batch_{i}.pkl'), 'wb') as f:
+        #         pickle.dump(imgs_aug_features, f)
 
-        for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
-            cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
-            wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
+        # for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
+        #     cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
+        #     wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
 
-        euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
-        targets_list.extend(targets.detach().cpu().numpy())
+        # euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
+        # targets_list.extend(targets.detach().cpu().numpy())
         break
 
     imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
@@ -192,6 +206,9 @@ for i, data in tqdm(enumerate(loader)):
         imgs_n_features = model.encode_image(imgs_n)
         imgs_aug_features = model.encode_image(imgs_aug)
     elif args.backbone == 'dinov2':
+        imgs_n_features = model(imgs_n)
+        imgs_aug_features = model(imgs_aug)
+    elif args.backbone == 'resnet50':
         imgs_n_features = model(imgs_n)
         imgs_aug_features = model(imgs_aug)
 
@@ -204,14 +221,14 @@ for i, data in tqdm(enumerate(loader)):
         with open(os.path.join(rep_aug_path, f'batch_{i}.pkl'), 'wb') as f:
             pickle.dump(imgs_aug_features.detach().cpu().numpy(), f)
 
-    for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
-        cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
-        wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
+    # for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
+    #     cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
+    #     wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
 
-    euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
+    # euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
     targets_list.extend(targets.detach().cpu().numpy())
 
-euclidean_diffs = np.asarray(euclidean_diffs)
+# euclidean_diffs = np.asarray(euclidean_diffs)
 targets_list = np.asarray(targets_list)
 
 
@@ -225,9 +242,9 @@ os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/wasser/', exist_ok=
 
 with open(f'./saved_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl', 'wb') as f:
     pickle.dump(targets_list, f)
-with open(f'./saved_pickles/{args.backbone}/{args.dataset}/diffs/{args.aug}.pkl', 'wb') as f:
-    pickle.dump(euclidean_diffs, f)
-with open(f'./saved_pickles/{args.backbone}/{args.dataset}/cosine/{args.aug}.pkl', 'wb') as f:
-    pickle.dump(cosine_diff, f)
-with open(f'./saved_pickles/{args.backbone}/{args.dataset}/wasser/{args.aug}.pkl', 'wb') as f:
-    pickle.dump(wasser_diff, f)
+# with open(f'./saved_pickles/{args.backbone}/{args.dataset}/diffs/{args.aug}.pkl', 'wb') as f:
+#     pickle.dump(euclidean_diffs, f)
+# with open(f'./saved_pickles/{args.backbone}/{args.dataset}/cosine/{args.aug}.pkl', 'wb') as f:
+#     pickle.dump(cosine_diff, f)
+# with open(f'./saved_pickles/{args.backbone}/{args.dataset}/wasser/{args.aug}.pkl', 'wb') as f:
+#     pickle.dump(wasser_diff, f)
