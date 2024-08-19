@@ -190,16 +190,25 @@ def sparse2coarse(targets):
     return coarse_labels[targets]
 
 
-def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=True, dataset='cifar10', preprocessing='clip', k_pairs=1):
+def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=True, dataset='cifar10', preprocessing='clip', k_pairs=1, resize=224):
     # Filling paths
     np_train_target_path = os.path.join(args.config['generalization_path'], f'{dataset}_Train_s1/labels.npy')
     np_test_target_path = os.path.join(args.config['generalization_path'], f'{dataset}_Test_s5/labels.npy')
     np_train_root_path = os.path.join(args.config['generalization_path'], f'{dataset}_Train_s1')
     np_test_root_path = os.path.join(args.config['generalization_path'], f'{dataset}_Test_s5')
         
-        
-    train_transform = transforms.Compose([transforms.ToTensor()])
-    test_transform = transforms.Compose([transforms.ToTensor()])
+    if args.dataset == 'mvtec_ad' and resize==32:
+        train_transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(math.ceil(resize*1.14)),
+            torchvision.transforms.CenterCrop(resize),
+            torchvision.transforms.ToTensor()])
+        test_transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(math.ceil(resize*1.14)),
+            torchvision.transforms.CenterCrop(resize),
+            torchvision.transforms.ToTensor()])
+    else:
+        train_transform = transforms.Compose([transforms.ToTensor()])
+        test_transform = transforms.Compose([transforms.ToTensor()])
 
     with open(f'./ranks/{preprocessing}/{dataset}/wasser_dist_softmaxed.pkl', 'rb') as file:
         probs = pickle.load(file)
@@ -355,14 +364,17 @@ def load_mvtec_ad(path, resize=224, batch_size=64, num_workers=0, one_class_idx=
             torchvision.transforms.CenterCrop(resize),
             torchvision.transforms.ToTensor()])
     
-    categories = ['bottle', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
-    train_data = MVTecADDataset(path, resize=resize, transform=transform, categories=categories, phase='train')
-    test_data = MVTecADDataset(path, resize=resize, transform=transform, categories=categories, phase='test')
-    
+    cc = ['bottle', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
     if one_class_idx != None:
-        train_data = get_subclass_dataset(train_data, one_class_idx)
-        test_data = get_subclass_dataset(test_data, one_class_idx)
-
+        print(cc[one_class_idx])
+        categories = [cc[one_class_idx]]
+        
+    else:
+        categories = ['bottle', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
+    
+    train_data = MVTecADDataset(path, transform=transform, categories=categories, phase='train')
+    test_data = MVTecADDataset(path, transform=transform, categories=categories, phase='test')
+    
     train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
     test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
 
@@ -371,7 +383,7 @@ def load_mvtec_ad(path, resize=224, batch_size=64, num_workers=0, one_class_idx=
 
 
 class MVTecADDataset(Dataset):
-    def __init__(self, root_dir, categories, transform, resize=224, phase='train'):
+    def __init__(self, root_dir, categories, transform, phase='train'):
         self.root_dir = root_dir
         self.categories = categories
         self.phase = phase
@@ -400,8 +412,8 @@ class MVTecADDataset(Dataset):
                     img_path = os.path.join(class_dir, img_name)
                     self.image_paths.append(img_path)
                     # Label: 0 for 'good' images, 1 for 'anomaly' images
-                    # self.labels.append(0 if class_name == 'good' else 1)
-                    self.targets.append(l)
+                    self.targets.append(0 if class_name == 'good' else 1)
+                    # self.targets.append(l)
 
     def __len__(self):
         return len(self.image_paths)
