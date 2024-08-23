@@ -109,14 +109,13 @@ if args.dataset == 'mvtec_ad':
     classes = 15
     targets_list_loaded = np.load(os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy'))
 
-print(np.unique(targets_list_loaded))
 distances = []
 if args.one_class:
     for class_idx in range(classes):
         indices = [k for k in range(len(targets_list_loaded)) if targets_list_loaded[k]==class_idx]
 
-        imgs_n_features_one_class = np.asarray([imgs_n_features[idx].astype(np.float64) for idx in indices])
-        imgs_aug_features_one_class = np.asarray([imgs_aug_features[idx].astype(np.float64) for idx in indices])
+        imgs_n_features_one_class = np.squeeze(np.asarray([imgs_n_features[idx].astype(np.float64) for idx in indices]))
+        imgs_aug_features_one_class = np.squeeze(np.asarray([imgs_aug_features[idx].astype(np.float64) for idx in indices]))
         cost_matrix = ot.dist(imgs_n_features_one_class, imgs_aug_features_one_class, metric=cosine)
         # Compute the EMD
         emd_distance = ot.emd2([], [], cost_matrix, numItermax=200000)
