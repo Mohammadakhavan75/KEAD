@@ -107,28 +107,28 @@ from dataset_loader import SVHN, load_np_dataset, MVTecADDataset
 
 
 if args.save_rep_norm:
-    rep_norm_path = f'{representations_path}/{args.backbone}/{args.dataset}/normal/'
+    rep_norm_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/normal/')
     os.makedirs(rep_norm_path, exist_ok=True)
 if args.save_rep_aug:
-    rep_aug_path = f'{representations_path}/{args.backbone}/{args.dataset}/{args.aug}/'
+    rep_aug_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/{args.aug}/')
     os.makedirs(rep_aug_path, exist_ok=True)
 
 if args.dataset == 'cifar10':
-    train_aug_imgs_path = os.path.join(generalization_path, f'cifar10_Train_s1/{args.aug}.npy')
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar10_Train_s1/{args.aug}.npy'))
     train_aug_targets_path = os.path.join(generalization_path, 'cifar10_Train_s1/labels.npy')
     
     noraml_dataset = CIFAR10(root=data_path, train=True, transform=transform)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
     
 elif args.dataset == 'svhn':
-    train_aug_imgs_path = os.path.join(generalization_path, f'svhn_Train_s1/{args.aug}.npy')
-    train_aug_targets_path = os.path.join(generalization_path, f'svhn_Train_s1/labels.npy')
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'svhn_Train_s1/{args.aug}.npy'))
+    train_aug_targets_path = os.path.join(generalization_path, 'svhn_Train_s1/labels.npy')
     
     noraml_dataset = SVHN(root=data_path, split="train", transform=transform)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset='svhn')
 
 elif args.dataset == 'cifar100':
-    train_aug_imgs_path = os.path.join(generalization_path, f'cifar100_Train_s1/{args.aug}.npy')
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar100_Train_s1/{args.aug}.npy'))
     train_aug_targets_path = os.path.join(generalization_path, 'cifar100_Train_s1/labels.npy')
     
     noraml_dataset = CIFAR100(root=data_path, train=True, transform=transform)
@@ -141,7 +141,7 @@ elif args.dataset == 'mvtec_ad':
             torchvision.transforms.Resize(math.ceil(resize*1.14)),
             torchvision.transforms.CenterCrop(resize),
             torchvision.transforms.ToTensor()])
-    train_aug_imgs_path = os.path.join(generalization_path, f'mvtec_ad_Train_s1/{args.aug}.npy')
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'mvtec_ad_Train_s1/{args.aug}.npy'))
     train_aug_targets_path = os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy')
     
     categories = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
@@ -150,8 +150,8 @@ elif args.dataset == 'mvtec_ad':
 
 elif args.dataset == 'imagenet':
     # imagenet_path = os.path.join(data_path,'ImageNet')
-    train_aug_imgs_path = os.path.join(generalization_path, f'imagenet_Train_s1/{args.aug}/')
-    train_aug_targets_path = os.path.join(generalization_path, f'imagenet_Train_s1/{args.aug}/labels.npy')
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_Train_s1/{args.aug}/'))
+    train_aug_targets_path = os.path.join(generalization_path, os.path.normpath( f'imagenet_Train_s1/{args.aug}/labels.npy'))
     
     if args.backbone != 'clip':
         transform = torchvision.transforms.Compose([
@@ -181,24 +181,24 @@ for i, data in tqdm(enumerate(loader)):
     imgs_aug, _ = data_aug
     # This condition is for when len imgs_aug is larger than imgs_normal
     if len(imgs_n) != len(imgs_aug): 
-        # imgs_aug = imgs_aug[:len(imgs_n)]
-        # imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
-        # imgs_n_features = model.encode_image(imgs_n)
-        # imgs_aug_features = model.encode_image(imgs_aug)
-        # # Saving the representations
-        # if args.save_rep_norm:
-        #     with open(os.path.join(rep_norm_path, f'batch_{i}.pkl'), 'wb') as f:
-        #         pickle.dump(imgs_n_features, f)
-        # if args.save_rep_aug:
-        #     with open(os.path.join(rep_aug_path, f'batch_{i}.pkl'), 'wb') as f:
-        #         pickle.dump(imgs_aug_features, f)
+        imgs_aug = imgs_aug[:len(imgs_n)]
+        imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
+        imgs_n_features = model.encode_image(imgs_n)
+        imgs_aug_features = model.encode_image(imgs_aug)
+        # Saving the representations
+        if args.save_rep_norm:
+            with open(os.path.join(rep_norm_path, f'batch_{i}.pkl'), 'wb') as f:
+                pickle.dump(imgs_n_features, f)
+        if args.save_rep_aug:
+            with open(os.path.join(rep_aug_path, f'batch_{i}.pkl'), 'wb') as f:
+                pickle.dump(imgs_aug_features, f)
 
-        # for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
-        #     cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
-        #     wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
+        for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
+            cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
+            wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
 
-        # euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
-        # targets_list.extend(targets.detach().cpu().numpy())
+        euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
+        targets_list.extend(targets.detach().cpu().numpy())
         break
 
     imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
