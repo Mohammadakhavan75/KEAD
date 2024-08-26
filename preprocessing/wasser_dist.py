@@ -61,19 +61,23 @@ with open(args.config, 'r') as config_file:
 
 imgs_n_features = []
 imgs_aug_features = []
-generalization_path = config['generalization_path']
-representations_path = config['representations_path']
+generalization_path = os.path.normpath(config['generalization_path'])
+representations_path = os.path.normpath(config['representations_path'])
 
-for i in range(len(os.listdir(f'{representations_path}{args.backbone}/{args.dataset}/normal/'))):
+rep_norm_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/normal/').replace("\r", "")
+rep_aug_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/{args.aug}/').replace("\r", "")
+
+
+for i in range(len(os.listdir(rep_norm_path))):
         try:
-            with open(f'{representations_path}{args.backbone}/{args.dataset}/normal/batch_{i}.pkl', 'rb') as f:
+            with open(os.path.normpath(os.path.join(rep_norm_path, f'batch_{i}.pkl')), 'rb') as f:
                 imgs_n_features.append(torch.tensor(pickle.load(f)).float())
         except:
             print("Error occured in normal data idx:", i)
 
-for i in range(len(os.listdir(f'{representations_path}{args.backbone}/{args.dataset}/{args.aug}/'))):
+for i in range(len(os.listdir(rep_aug_path))):
         try:
-            with open(f'{representations_path}{args.backbone}/{args.dataset}/{args.aug}/batch_{i}.pkl', 'rb') as f:
+            with open(os.path.normpath(os.path.join(rep_aug_path, f'batch_{i}.pkl')), 'rb') as f:
                 imgs_aug_features.append(torch.tensor(pickle.load(f)).float())
         except:
             print(f"Error occured in {args.aug} data idx:", i)
@@ -82,8 +86,12 @@ for i in range(len(os.listdir(f'{representations_path}{args.backbone}/{args.data
 imgs_n_features, imgs_aug_features = torch.cat(imgs_n_features, dim=0).numpy(), torch.cat(imgs_aug_features, dim=0).numpy()
 
 print(f'Running on: {args.aug}')
-os.makedirs(f'./wasser_dist/{args.backbone}/{args.dataset}/', exist_ok=True)
-os.makedirs(f'./wasser_dist_datasets/{args.backbone}/{args.dataset}/', exist_ok=True)
+wasser_dist_path = os.path.normpath(f'./wasser_dist/{args.backbone}/{args.dataset}/').replace("\r", "")
+wasser_dist_datasets_path = os.path.normpath(f'./wasser_dist_datasets/{args.backbone}/{args.dataset}/').replace("\r", "")
+wasser_pickle_path = os.path.normpath(os.path.join(wasser_dist_path, f'{args.aug}.pkl')).replace("\r", "")
+wasser_dataset_pickle_path = os.path.normpath(os.path.join(wasser_dist_datasets_path, f'{args.aug}.pkl')).replace("\r", "")
+os.makedirs(wasser_dist_path, exist_ok=True)
+os.makedirs(wasser_dist_datasets_path, exist_ok=True)
 
 if args.dataset == 'svhn':
     classes = 10    
@@ -123,7 +131,7 @@ if args.one_class:
         print(f'{class_idx}: {emd_distance}')
 
 
-    with open(f'./wasser_dist/{args.backbone}/{args.dataset}/{args.aug}.pkl', 'wb') as f:
+    with open(wasser_pickle_path, 'wb') as f:
         pickle.dump(distances, f)
 else:
     imgs_n_features_one_class = np.asarray(imgs_n_features.astype(np.float64))
@@ -133,5 +141,5 @@ else:
     emd_distance = ot.emd2([], [], cost_matrix, numItermax=200000)
 
     
-    with open(f'./wasser_dist_datasets/{args.backbone}/{args.dataset}/{args.aug}.pkl', 'wb') as f:
+    with open(wasser_dataset_pickle_path, 'wb') as f:
         pickle.dump(emd_distance, f)

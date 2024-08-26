@@ -65,7 +65,7 @@ else:
 if args.backbone == 'clip':
     model, transform = clip.load("ViT-L/14", device=device)
     model = model.to(device)
-if args.backbone == 'resnet50':
+elif args.backbone == 'resnet50':
     model = wide_resnet50_2("IMAGENET1K_V2")
     layers = list(model.children())
     layers = layers[:-1] # Remove the last layer
@@ -107,29 +107,29 @@ from dataset_loader import SVHN, load_np_dataset, MVTecADDataset
 
 
 if args.save_rep_norm:
-    rep_norm_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/normal/')
+    rep_norm_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/normal/').replace("\r", "")
     os.makedirs(rep_norm_path, exist_ok=True)
 if args.save_rep_aug:
-    rep_aug_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/{args.aug}/')
+    rep_aug_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/{args.aug}/').replace("\r", "")
     os.makedirs(rep_aug_path, exist_ok=True)
 
 if args.dataset == 'cifar10':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar10_Train_s1/{args.aug}.npy'))
-    train_aug_targets_path = os.path.join(generalization_path, 'cifar10_Train_s1/labels.npy')
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar10_Train_s1/{args.aug}.npy')).replace("\r", "")
+    train_aug_targets_path = os.path.join(generalization_path, 'cifar10_Train_s1/labels.npy').replace("\r", "")
     
     noraml_dataset = CIFAR10(root=data_path, train=True, transform=transform)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
     
 elif args.dataset == 'svhn':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'svhn_Train_s1/{args.aug}.npy'))
-    train_aug_targets_path = os.path.join(generalization_path, 'svhn_Train_s1/labels.npy')
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'svhn_Train_s1/{args.aug}.npy').replace("\r", ""))
+    train_aug_targets_path = os.path.join(generalization_path, 'svhn_Train_s1/labels.npy').replace("\r", "")
     
     noraml_dataset = SVHN(root=data_path, split="train", transform=transform)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset='svhn')
 
 elif args.dataset == 'cifar100':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar100_Train_s1/{args.aug}.npy'))
-    train_aug_targets_path = os.path.join(generalization_path, 'cifar100_Train_s1/labels.npy')
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar100_Train_s1/{args.aug}.npy').replace("\r", ""))
+    train_aug_targets_path = os.path.join(generalization_path, 'cifar100_Train_s1/labels.npy').replace("\r", "")
     
     noraml_dataset = CIFAR100(root=data_path, train=True, transform=transform)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
@@ -141,8 +141,8 @@ elif args.dataset == 'mvtec_ad':
             torchvision.transforms.Resize(math.ceil(resize*1.14)),
             torchvision.transforms.CenterCrop(resize),
             torchvision.transforms.ToTensor()])
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'mvtec_ad_Train_s1/{args.aug}.npy'))
-    train_aug_targets_path = os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy')
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'mvtec_ad_Train_s1/{args.aug}.npy')).replace("\r", "")
+    train_aug_targets_path = os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy').replace("\r", "")
     
     categories = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
     noraml_dataset = MVTecADDataset(root_dir=args.config['mvtec_ad'], transform=transform, categories=categories, phase='train')
@@ -150,8 +150,8 @@ elif args.dataset == 'mvtec_ad':
 
 elif args.dataset == 'imagenet':
     # imagenet_path = os.path.join(data_path,'ImageNet')
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_Train_s1/{args.aug}/'))
-    train_aug_targets_path = os.path.join(generalization_path, os.path.normpath( f'imagenet_Train_s1/{args.aug}/labels.npy'))
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_Train_s1/{args.aug}/')).replace("\r", "")
+    train_aug_targets_path = os.path.join(generalization_path, os.path.normpath( f'imagenet_Train_s1/{args.aug}/labels.npy')).replace("\r", "")
     
     if args.backbone != 'clip':
         transform = torchvision.transforms.Compose([
@@ -187,10 +187,10 @@ for i, data in tqdm(enumerate(loader)):
         imgs_aug_features = model.encode_image(imgs_aug)
         # Saving the representations
         if args.save_rep_norm:
-            with open(os.path.join(rep_norm_path, f'batch_{i}.pkl'), 'wb') as f:
+            with open(os.path.join(rep_norm_path, f'batch_{i}.pkl').replace("\r", ""), 'wb') as f:
                 pickle.dump(imgs_n_features, f)
         if args.save_rep_aug:
-            with open(os.path.join(rep_aug_path, f'batch_{i}.pkl'), 'wb') as f:
+            with open(os.path.join(rep_aug_path, f'batch_{i}.pkl').replace("\r", ""), 'wb') as f:
                 pickle.dump(imgs_aug_features, f)
 
         for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
@@ -215,10 +215,10 @@ for i, data in tqdm(enumerate(loader)):
 
     # Saving the representations
     if args.save_rep_norm:
-        with open(os.path.join(rep_norm_path, f'batch_{i}.pkl'), 'wb') as f:
+        with open(os.path.join(rep_norm_path, f'batch_{i}.pkl').replace("\r", ""), 'wb') as f:
             pickle.dump(imgs_n_features.detach().cpu().numpy(), f)
     if args.save_rep_aug:
-        with open(os.path.join(rep_aug_path, f'batch_{i}.pkl'), 'wb') as f:
+        with open(os.path.join(rep_aug_path, f'batch_{i}.pkl').replace("\r", ""), 'wb') as f:
             pickle.dump(imgs_aug_features.detach().cpu().numpy(), f)
 
     # for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
@@ -233,14 +233,14 @@ targets_list = np.asarray(targets_list)
 
 
 
-os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/', exist_ok=True)
-os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/diffs/', exist_ok=True)
-os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/targets/', exist_ok=True)
-os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/cosine/', exist_ok=True)
-os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/wasser/', exist_ok=True)
+os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/diffs/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/targets/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/cosine/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/wasser/'.replace("\r", ""), exist_ok=True)
 
 
-with open(f'./saved_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl', 'wb') as f:
+with open(f'./saved_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(targets_list, f)
 # with open(f'./saved_pickles/{args.backbone}/{args.dataset}/diffs/{args.aug}.pkl', 'wb') as f:
 #     pickle.dump(euclidean_diffs, f)
