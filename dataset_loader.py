@@ -364,13 +364,13 @@ def load_mvtec_ad(path, resize=224, batch_size=64, num_workers=0, one_class_idx=
             torchvision.transforms.CenterCrop(resize),
             torchvision.transforms.ToTensor()])
     
-    cc = ['bottle', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
+    cc = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
     if one_class_idx != None:
         print(cc[one_class_idx])
         categories = [cc[one_class_idx]]
         
     else:
-        categories = ['bottle', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
+        categories = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
     
     train_data = MVTecADDataset(path, transform=transform, categories=categories, phase='train')
     test_data = MVTecADDataset(path, transform=transform, categories=categories, phase='test')
@@ -401,7 +401,7 @@ class MVTecADDataset(Dataset):
         # category_path = os.path.join(self.root_dir, self.categories, phase_dir)
 
         for l, category in enumerate(self.categories):
-            category_path = os.path.join(self.root_dir + 'mvtec_ad/', category, phase_dir)
+            category_path = os.path.normpath(os.path.join(self.root_dir, 'mvtec_ad/', category, phase_dir))
 
             for class_name in os.listdir(category_path):
                 class_dir = os.path.join(category_path, class_name)
