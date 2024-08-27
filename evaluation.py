@@ -196,14 +196,14 @@ def load_data(root_path, args):
 
     elif args.dataset == 'mvtec_ad':
         import math
-        resize=224
+        resize=32
         transform = torchvision.transforms.Compose([
             torchvision.transforms.Resize(math.ceil(resize*1.14)),
             torchvision.transforms.CenterCrop(resize),
             torchvision.transforms.ToTensor()])    
-        categories = ['bottle', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
-        train_data = MVTecADDataset(root_path, resize=resize, transform=transform, categories=categories, phase='train')
-        test_data = MVTecADDataset(root_path, resize=resize, transform=transform, categories=categories, phase='test')
+        categories = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
+        train_data = MVTecADDataset(root_path, transform=transform, categories=categories, phase='train')
+        test_data = MVTecADDataset(root_path, transform=transform, categories=categories, phase='test')
 
     # Create sub classes
     if args.one_class_idx != None:
@@ -391,7 +391,7 @@ os.environ['CUDA_VISIBLE_DEVICES']="0,1"
 torch.manual_seed(args.seed)
 model, criterion, optimizer, scheduler = load_model(args)
 
-root_path = '/warehouse/datasets/KEAD/datasets/data/'
+root_path = 'D:/Datasets/data/'
 args.last_lr = args.learning_rate
 in_distance = torch.tensor(0)
 
