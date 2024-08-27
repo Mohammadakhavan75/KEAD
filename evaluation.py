@@ -9,7 +9,8 @@ from dataset_loader import load_np_dataset, load_mvtec_ad, MVTecADDataset
 from torchvision.transforms import transforms
 from dataset_loader import SVHN, get_subclass_dataset, sparse2coarse
 from sklearn.metrics import roc_auc_score
-from models.resnet import ResNet18, ResNet34, ResNet50
+from models.resnet import ResNet18, ResNet50
+from models.resnet_imagenet import resnet18, resnet50
 
 
 CIFAR100_SUPERCLASS = [
@@ -87,6 +88,8 @@ def parsing():
     parser.add_argument('--aug', default=None, type=str, help='noise')
     parser.add_argument('--gpu', default='1', type=str, help='noise')
     parser.add_argument('--linear', action="store_true", help='noise')
+    parser.add_argument('--model', default='resnet18', type=str, help='noise')
+    parser.add_argument('--img_size', default=32, type=int, help='noise')
     
     args = parser.parse_args()
 
@@ -196,7 +199,7 @@ def load_data(root_path, args):
 
     elif args.dataset == 'mvtec_ad':
         import math
-        resize=32
+        resize=args.img_size
         transform = torchvision.transforms.Compose([
             torchvision.transforms.Resize(math.ceil(resize*1.14)),
             torchvision.transforms.CenterCrop(resize),
@@ -325,10 +328,24 @@ def eval_auc_anomaly(loader, train_features_in, net, args):
 
 def load_model(args):
 
-    if args.linear or 'linear_layer_True' in args.model_path:
-        model = ResNet18(10, True)
+    if args.img_size == 224:
+        if args.model == 'resnet18':
+            model = resnet18(num_classes=args.num_classes)
+        elif args.model == 'resnet50':
+            model = resnet50(num_classes=args.num_classes)
+        else:
+            raise NotImplementedError("Not implemented model!")
+        
+    elif args.img_size == 32:
+        if args.model == 'resnet18':
+            model = ResNet18(num_classes=args.num_classes)
+        elif args.model == 'resnet50':
+            model = ResNet50(num_classes=args.num_classes)
+        else:
+            raise NotImplementedError("Not implemented model!")
     else:
-        model = ResNet18(10)
+        raise NotImplementedError("Not implemented image size!")                
+    
     if args.optimizer == 'sgd':
         optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, 
                                 momentum=args.momentum,weight_decay=args.decay)
@@ -336,7 +353,7 @@ def load_model(args):
         optimizer = torch.optim.Adam(model.parameters(), args.learning_rate,
                                       weight_decay=args.decay)
     else:
-        raise NotImplemented("Not implemented optimizer!")
+        raise NotImplementedError("Not implemented optimizer!")
 
     if args.model_path:
         m = torch.load(args.model_path)
