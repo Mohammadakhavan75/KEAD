@@ -8,7 +8,7 @@ from tqdm import tqdm
 from datetime import datetime
 from contrastive import contrastive
 from models.resnet_imagenet import resnet18, resnet50
-from models.resnet import ResNet18, ResNet34, ResNet50
+from models.resnet import ResNet18, ResNet50
 from torch.utils.tensorboard import SummaryWriter
 from dataset_loader import noise_loader, load_cifar10, load_svhn, load_cifar100, load_imagenet, load_mvtec_ad
 
@@ -65,6 +65,8 @@ def parsing():
     parser.add_argument('--e_holder', default=0, type=str, help='Epoch number holder')
     parser.add_argument('--linear', action="store_true", help='Initiate linear layer or not!')
     parser.add_argument('--config', default=None, help='Config file for reading paths')
+    parser.add_argument('--img_size', default=32, type=int, help='image size selection')
+    parser.add_argument('--model', default='resnet18', type=str, help='resnet model selection')
     args = parser.parse_args()
 
     return args
@@ -261,15 +263,27 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
 
 def load_model(args):
 
-    # if args.dataset == 'mvtec_ad':
-    #     model = resnet18(args.num_classes)
-    
-    # else:
-    if args.linear:
-        model = ResNet18(args.num_classes, args.linear)
+    if args.img_size == 224:
+        if args.model == 'resnet18':
+            model = resnet18(num_classes=args.num_classes)
+        elif args.model == 'resnet50':
+            model = resnet50(num_classes=args.num_classes)
+        else:
+            raise NotImplementedError("Not implemented model!")
+        
+    elif args.img_size == 32:
+        if args.linear:
+            model = ResNet18(args.num_classes, args.linear)
+        else:
+            if args.model == 'resnet18':
+                model = ResNet18(num_classes=args.num_classes)
+            elif args.model == 'resnet50':
+                model = ResNet50(num_classes=args.num_classes)
+            else:
+                raise NotImplementedError("Not implemented model!")
     else:
-        model = ResNet18(args.num_classes)
-
+        raise NotImplementedError("Not implemented image size!")
+    
     if args.optimizer == 'sgd':
         optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, 
                                 momentum=args.momentum,weight_decay=args.decay)
@@ -277,7 +291,7 @@ def load_model(args):
         optimizer = torch.optim.Adam(model.parameters(), args.learning_rate,
                                     weight_decay=args.decay)
     else:
-        raise NotImplemented("Not implemented optimizer!")
+        raise NotImplementedError("Not implemented optimizer!")
 
     if args.model_path:
         model.load_state_dict(torch.load(args.model_path))
@@ -294,7 +308,7 @@ def create_path(args):
         model_save_path = save_path + 'models/'
     else:
         addr = datetime.today().strftime('%Y-%m-%d-%H-%M-%S-%f')
-        save_path = f'./run/exp' + f'_{args.dataset}' + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + \
+        save_path = f'./run/exp' + f'_{args.dataset}' + f'_{args.model}' + f'_{args.img_size}' + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + \
         f'_{args.optimizer}' + f'_epochs_{args.epochs}' + f'_one_class_idx_{args.one_class_idx}' + \
             f'_temprature_{args.temperature}' + f'_shift_normal_{str(args.shift_normal)}' + \
             f'_preprocessing_{args.preprocessing}' + f'_seed_{args.seed}' + f'_linear_layer_{args.linear}' + f'_k_pairs_{args.k_pairs}' + '/'
@@ -336,7 +350,7 @@ def loading_datasets(args):
     elif args.dataset == 'mvtec_ad':
         args.num_classes = 15
         train_loader, test_loader = load_mvtec_ad(data_path, 
-                                                resize=32,
+                                                resize=args.img_size,
                                                 batch_size=args.batch_size,
                                                 one_class_idx=args.one_class_idx)
 
@@ -344,7 +358,7 @@ def loading_datasets(args):
     print("Start Loading noises")
     train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader = \
         noise_loader(args, batch_size=args.batch_size, one_class_idx=args.one_class_idx,
-                     resize=32,
+                     resize=args.img_size,
                     dataset=args.dataset, preprocessing=args.preprocessing, k_pairs=args.k_pairs)
     print("Loading noises finished!")
 
