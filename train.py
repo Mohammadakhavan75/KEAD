@@ -261,6 +261,10 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
 
 def load_model(args):
 
+    # if args.dataset == 'mvtec_ad':
+    #     model = resnet18(args.num_classes)
+    
+    # else:
     if args.linear:
         model = ResNet18(args.num_classes, args.linear)
     else:
@@ -332,6 +336,7 @@ def loading_datasets(args):
     elif args.dataset == 'mvtec_ad':
         args.num_classes = 15
         train_loader, test_loader = load_mvtec_ad(data_path, 
+                                                resize=32,
                                                 batch_size=args.batch_size,
                                                 one_class_idx=args.one_class_idx)
 
@@ -339,6 +344,7 @@ def loading_datasets(args):
     print("Start Loading noises")
     train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader = \
         noise_loader(args, batch_size=args.batch_size, one_class_idx=args.one_class_idx,
+                     resize=32,
                     dataset=args.dataset, preprocessing=args.preprocessing, k_pairs=args.k_pairs)
     print("Loading noises finished!")
 
