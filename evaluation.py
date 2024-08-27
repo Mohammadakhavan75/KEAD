@@ -90,6 +90,7 @@ def parsing():
     parser.add_argument('--linear', action="store_true", help='noise')
     parser.add_argument('--model', default='resnet18', type=str, help='noise')
     parser.add_argument('--img_size', default=32, type=int, help='noise')
+    parser.add_argument('--num_classes', default=10, type=int, help='noise')
     
     args = parser.parse_args()
 
@@ -440,15 +441,18 @@ aucs = []
 
 # resutls['OD']=in_distance.detach().cpu().numpy()
 if args.dataset == 'cifar100':
-    classes=20
+    args.classes = 20
+elif args.dataset == 'mvtec_ad':
+    args.classes = 15
 else:
-    classes=10
+    args.classes = 10
+    
 if args.dataset == 'anomaly' or args.dataset == 'anomaly100' or args.dataset == 'anomalysvhn':
     auc = eval_auc_anomaly(eval_in, train_features_in, model, args)
     print(f"Anomaly auc is: {auc}")
     exit()
 if args.one_class_idx != None:
-    for id in range(classes):
+    for id in range(args.classes):
         if id == args.one_class_idx:
             continue
         
