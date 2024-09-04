@@ -347,7 +347,7 @@ def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None, coarse
     if coarse:
         train_data.targets = sparse2coarse(train_data.targets)
         test_data.targets = sparse2coarse(test_data.targets)
-
+ 
     if one_class_idx != None:
         train_data = get_subclass_dataset(train_data, one_class_idx)
         test_data = get_subclass_dataset(test_data, one_class_idx)
@@ -400,8 +400,8 @@ class MVTecADDataset(Dataset):
         phase_dir = 'train' if self.phase == 'train' else 'test'
         # category_path = os.path.join(self.root_dir, self.categories, phase_dir)
 
-        for l, category in enumerate(self.categories):
-            category_path = os.path.normpath(os.path.join(self.root_dir, 'mvtec_ad/', category, phase_dir))
+        for idx, category in enumerate(self.categories):
+            category_path = os.path.normpath(os.path.join(self.root_dir, 'mvtec_ad', category, phase_dir))
 
             for class_name in os.listdir(category_path):
                 class_dir = os.path.join(category_path, class_name)
@@ -412,8 +412,8 @@ class MVTecADDataset(Dataset):
                     img_path = os.path.join(class_dir, img_name)
                     self.image_paths.append(img_path)
                     # Label: 0 for 'good' images, 1 for 'anomaly' images
-                    self.targets.append(0 if class_name == 'good' else 1)
-                    # self.targets.append(l)
+                    # self.targets.append(0 if class_name == 'good' else 1)
+                    self.targets.append(idx)
 
     def __len__(self):
         return len(self.image_paths)
@@ -427,6 +427,54 @@ class MVTecADDataset(Dataset):
             image = self.transform(image)
 
         return image, label
+
+
+class VisADataset(Dataset):
+    def __init__(self, root_dir, categories, transform=None, target_transform=None, phase='normal'):
+        """
+        Args:
+            root_dir (string): Directory with all the images and labels.
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+            target_transform (callable, optional): Optional transform to be applied
+                on the target.
+        """
+        self.root_dir = root_dir
+        self.transform = transform
+        self.target_transform = target_transform
+        self.categories = categories
+        self.phase = phase
+
+        # Get all image files and corresponding labels
+        self.image_paths = []
+        self.targets = []
+        phase_dir = 'normal' if self.phase == 'normal' else 'anomaly'
+        for idx, category in enumerate(self.categories):
+            # Set the paths for training and test datasets
+            category_path = os.path.normpath(os.path.join(self.root_dir, 'visa', category, 'Data', 'Images', phase_dir))
+            for img_file in os.listdir(category_path):
+                if img_file.endswith(('.png', '.jpg', '.jpeg')):
+                    self.image_paths.append(os.path.join(category_path, img_file))
+                    self.targets.append(idx)
+
+
+        # Map labels to indices
+        # self.label_to_idx = {label: idx for idx, label in enumerate(set(self.targets))}
+    
+    def __len__(self):
+        return len(self.image_paths)
+    
+    def __getitem__(self, idx):
+        img_path = self.image_paths[idx]
+        image = Image.open(img_path).convert("RGB")  # Load image
+        label = self.targets[idx]
+        # label = self.label_to_idx[label]
+
+        if self.transform:
+            image = self.transform(image)
+        
+        return image, label
+
 
 
 class batch_dataset(Dataset):
