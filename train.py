@@ -6,7 +6,7 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 from datetime import datetime
-from contrastive import contrastive
+from contrastive import contrastive, contrastive_matrix
 from models.resnet_imagenet import resnet18, resnet50
 from models.resnet import ResNet18, ResNet50
 from torch.utils.tensorboard import SummaryWriter
@@ -52,7 +52,7 @@ def parsing():
     parser.add_argument('--decay', '-d', type=float,
                         default=0.0005, help='Weight decay (L2 penalty).')
 
-    parser.add_argument('--run_index', default=0, type=int, help='run index')
+    parser.add_argument('--exp_idx', default=0, type=int, help='run index')
 
     parser.add_argument('--dataset', default='cifar10', type=str, help='cifar10-cifar100-svhn')
     parser.add_argument('--one_class_idx', default=None, type=int, help='select one class index')
@@ -73,10 +73,10 @@ def parsing():
 
 
 def train_one_class(train_loader, train_positives_loader, train_negetives_loader,
-                     net, train_global_iter, optimizer, device, writer):
+                     model, train_global_iter, optimizer, args, writer):
 
     # Enter model into train mode
-    net.train()
+    model.train()
     
     # Tracking metrics
     epoch_accuracies = {
@@ -113,12 +113,15 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             n_features = n_features[-1]
 
             loss_contrastive = torch.tensor(0.0, requires_grad=True)
-
-            for norm_f, p_f, n_f  in zip(normal_features, p_features, n_features):
-                l_c, sim_p, sim_n = contrastive(norm_f, p_f, n_f, temperature=args.temperature)
+    
+            # for norm_f, p_f, n_f  in zip(normal_features, p_features, n_features): # Single Negative Method
+                # l_c, sim_p, sim_n = contrastive(norm_f, p_f, n_f, temperature=args.temperature)
+            for norm_f, p_f in zip(normal_features, p_features): # SimCLR Method (But using all other negative data in batch as negative not using the original datas)
+                l_c, sim_p, sim_n = contrastive_matrix(norm_f, p_f, n_features, temperature=args.temperature)
                 loss_contrastive = loss_contrastive + l_c
                 sim_ps.append(sim_p.detach().cpu())
-                sim_ns.append(sim_n.detach().cpu())
+                sim_ns.append(torch.mean(sim_n).detach().cpu())
+                # sim_ns.append(sim_n.detach().cpu())
             
         
             loss = loss_contrastive / len(normal_features)
@@ -128,10 +131,19 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
 
             train_global_iter += 1
             writer.add_scalar("Train/loss", loss.item(), train_global_iter)
-            writer.add_scalar("Train/sim_p", torch.mean(sim_p).detach().cpu().numpy(), train_global_iter)
-            writer.add_scalar("Train/sim_n", torch.mean(sim_n).detach().cpu().numpy(), train_global_iter)
+            writer.add_scalar("Train/sim_p", torch.mean(torch.tensor(sim_ps)).detach().cpu().numpy(), train_global_iter)
+            writer.add_scalar("Train/sim_n", torch.mean(torch.tensor(sim_ns)).detach().cpu().numpy(), train_global_iter)
+
+
 
             loss.backward()
+            pp = []
+            for param in model.parameters():
+                if param.grad is not None:
+                    pp.append(torch.mean(param.grad.norm()).detach().cpu())
+            
+            writer.add_scalar("Train/grads", torch.mean(torch.tensor(pp)).detach().cpu().numpy(), train_global_iter)
+
             optimizer.step()
 
     elif args.k_pairs == 2:
@@ -251,8 +263,8 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
         avg_sim_ns = torch.mean(torch.tensor(sim_ns), dim=0).detach().cpu().numpy()
         writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, train_global_iter)
         writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, train_global_iter)
-    else:
 
+    else:
         avg_sim_ps = torch.mean(torch.cat(sim_ps, dim=0), dim=0).detach().cpu().numpy()
         avg_sim_ns = torch.mean(torch.cat(sim_ns, dim=0), dim=0).detach().cpu().numpy()
         writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, train_global_iter)
@@ -273,7 +285,7 @@ def load_model(args):
         
     elif args.img_size == 32:
         if args.linear:
-            model = ResNet18(args.num_classes, args.linear)
+            model = ResNet18(args.num_classes)
         else:
             if args.model == 'resnet18':
                 model = ResNet18(num_classes=args.num_classes)
@@ -307,59 +319,71 @@ def create_path(args):
         save_path = args.save_path
         model_save_path = save_path + 'models/'
     else:
-        addr = datetime.today().strftime('%Y-%m-%d-%H-%M-%S-%f')
-        save_path = f'./run/exp' + f'_{args.dataset}' + f'_{args.model}' + f'_{args.img_size}' + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + \
-        f'_{args.optimizer}' + f'_epochs_{args.epochs}' + f'_one_class_idx_{args.one_class_idx}' + \
-            f'_temprature_{args.temperature}' + f'_shift_normal_{str(args.shift_normal)}' + \
-            f'_preprocessing_{args.preprocessing}' + f'_seed_{args.seed}' + f'_linear_layer_{args.linear}' + f'_k_pairs_{args.k_pairs}' + '/'
+        root_addr = f'./run/exp_{args.exp_idx}/'
+        if args.exp_idx == 0:
+            while os.path.exists(root_addr):
+                args.exp_idx += 1
+                root_addr = root_addr.split('_')[0] + '_' + str(args.exp_idx) + '/'
+            
+            os.makedirs(root_addr)
+
+
+        save_path = root_addr + f'{args.dataset}' + f'_one_class_idx_{args.one_class_idx}' + f'_preprocessing_{args.preprocessing}' + \
+                    f'_{args.model}' + f'_{args.img_size}' + f'_{args.optimizer}' + f'_lr_{args.learning_rate}' + \
+                    f'_lru_{args.lr_update_rate}' + f'_lrg_{args.lr_gamma}' + f'_epochs_{args.epochs}'  + \
+                    f'_temprature_{args.temperature}' + f'_seed_{args.seed}' + f'_k_pairs_{args.k_pairs}' + '/'
+        
         model_save_path = save_path + 'models/'
-        if not os.path.exists(model_save_path):
-            os.makedirs(model_save_path, exist_ok=True)
-        else:
-            save_path = f'./run/exp-' + addr + f'_{args.dataset}' + f'_{args.learning_rate}' + f'_{args.lr_update_rate}' + f'_{args.lr_gamma}' + \
-            f'_{args.optimizer}' + f'_epochs_{args.epochs}' + f'_one_class_idx_{args.one_class_idx}' + \
-                f'_temprature_{args.temperature}' + f'_shift_normal_{str(args.shift_normal)}' +\
-                      f'_preprocessing_{args.preprocessing}' + f'_seed_{args.seed}' + f'_linear_layer_{args.linear}' + f'_k_pairs_{args.k_pairs}' + '/'
-            model_save_path = save_path + 'models/'
-            os.makedirs(model_save_path, exist_ok=True)
-    
+        os.makedirs(model_save_path, exist_ok=True)
+
     return model_save_path, save_path
 
 
-def loading_datasets(args):
+def loading_datasets(args, data_path, imagenet_path):
     if args.dataset == 'cifar10':
         args.num_classes = 10
         train_loader, test_loader = load_cifar10(data_path, 
                                             batch_size=args.batch_size,
-                                            one_class_idx=args.one_class_idx)
+                                            one_class_idx=args.one_class_idx,
+                                            seed=args.seed)
     elif args.dataset == 'svhn':
         args.num_classes = 10
         train_loader, test_loader = load_svhn(data_path, 
                                             batch_size=args.batch_size,
-                                            one_class_idx=args.one_class_idx)
+                                            one_class_idx=args.one_class_idx,
+                                            seed=args.seed)
     elif args.dataset == 'cifar100':
         args.num_classes = 20
         train_loader, test_loader = load_cifar100(data_path, 
                                                 batch_size=args.batch_size,
-                                                one_class_idx=args.one_class_idx)
+                                                one_class_idx=args.one_class_idx,
+                                                seed=args.seed)
     elif args.dataset == 'imagenet30':
         args.num_classes = 30
         train_loader, test_loader = load_imagenet(imagenet_path, 
                                                 batch_size=args.batch_size,
-                                                one_class_idx=args.one_class_idx)
+                                                one_class_idx=args.one_class_idx,
+                                                seed=args.seed)
     elif args.dataset == 'mvtec_ad':
         args.num_classes = 15
         train_loader, test_loader = load_mvtec_ad(data_path, 
                                                 resize=args.img_size,
                                                 batch_size=args.batch_size,
-                                                one_class_idx=args.one_class_idx)
+                                                one_class_idx=args.one_class_idx,
+                                                seed=args.seed)
 
     
     print("Start Loading noises")
-    train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader = \
-        noise_loader(args, batch_size=args.batch_size, one_class_idx=args.one_class_idx,
-                     resize=args.img_size,
-                    dataset=args.dataset, preprocessing=args.preprocessing, k_pairs=args.k_pairs)
+    train_positives_loader, train_negetives_loader,\
+    test_positives_loader, test_negetives_loader = noise_loader(
+                    args,
+                    batch_size=args.batch_size,
+                    one_class_idx=args.one_class_idx,
+                    resize=args.img_size,
+                    dataset=args.dataset,
+                    preprocessing=args.preprocessing, 
+                    k_pairs=args.k_pairs,
+                    seed=args.seed)
     print("Loading noises finished!")
 
     return train_loader, test_loader, train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader
@@ -371,61 +395,62 @@ def set_seed(seed_nu):
     np.random.seed(seed_nu)
 
 
+if __name__ == "__main__":
 
-with open('config.json', 'r') as config_file:
-    config = json.load(config_file)
+    with open('config.json', 'r') as config_file:
+        config = json.load(config_file)
 
-root_path = config['root_path']
-data_path = config['data_path']
-imagenet_path = config['imagenet_path']
-args = parsing()
-args.config = config
-
-
-# Setting seeds for reproducibility
-set_seed(args.seed)
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
-
-train_loader, test_loader, train_positives_loader, train_negetives_loader,\
-      test_positives_loader, test_negetives_loader = loading_datasets(args)
-
-model, criterion, optimizer, scheduler = load_model(args)
-
-if torch.cuda.device_count() > 1 and args.device == 'cuda' and args.multi_gpu:
-    print("Using", torch.cuda.device_count(), "GPUs")
-    model = torch.nn.DataParallel(model)
-
-elif args.device == 'cuda':    
-    os.environ['CUDA_VISIBLE_DEVICES']='0,1'
-    args.device=f'cuda:{args.gpu}'
-
-model = model.to(args.device)
-model_save_path, save_path = create_path(args)
-writer = SummaryWriter(save_path)
-args.save_path = save_path
-train_global_iter = 0
-
-args.last_lr = args.learning_rate
-for epoch in range(1, args.epochs):
-    print('epoch', epoch, '/', args.epochs)
-    args.e_holder = str(epoch)
-    train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns =\
-          train_one_class(train_loader, train_positives_loader, train_negetives_loader, \
-                          model, train_global_iter, optimizer, args.device, writer)
+    root_path = config['root_path']
+    data_path = config['data_path']
+    imagenet_path = config['imagenet_path']
+    args = parsing()
+    args.config = config
     
-    writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
-    writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
-    writer.add_scalar("Train/lr", args.last_lr, epoch)
-    print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}")
-    
-    if (epoch) % 5 == 0:
-        torch.save(model.state_dict(), os.path.join(model_save_path,f'model_params_epoch_{epoch}.pt'))
 
-    args.last_lr = scheduler.get_last_lr()[0]
-    last_sim_ps = avg_sim_ps
-    last_sim_ns = avg_sim_ns
-    args.seed += epoch
+    # Setting seeds for reproducibility
     set_seed(args.seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
 
-torch.save(model.state_dict(), os.path.join(save_path,'last_params.pt'))
+    train_loader, test_loader, train_positives_loader, train_negetives_loader,\
+        test_positives_loader, test_negetives_loader = loading_datasets(args, data_path, imagenet_path)
+
+    model, criterion, optimizer, scheduler = load_model(args)
+
+    if torch.cuda.device_count() > 1 and args.device == 'cuda' and args.multi_gpu:
+        print("Using", torch.cuda.device_count(), "GPUs")
+        model = torch.nn.DataParallel(model)
+
+    elif args.device == 'cuda':    
+        os.environ['CUDA_VISIBLE_DEVICES']='0,1'
+        args.device=f'cuda:{args.gpu}'
+
+    model = model.to(args.device)
+    model_save_path, save_path = create_path(args)
+    writer = SummaryWriter(save_path)
+    args.save_path = save_path
+    train_global_iter = 0
+
+    args.last_lr = args.learning_rate
+    for epoch in range(1, args.epochs):
+        print('epoch', epoch, '/', args.epochs)
+        args.e_holder = str(epoch)
+        train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns =\
+            train_one_class(train_loader, train_positives_loader, train_negetives_loader, \
+                            model, train_global_iter, optimizer, args, writer)
+        
+        writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
+        writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
+        writer.add_scalar("Train/lr", args.last_lr, epoch)
+        print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}")
+        
+        if (epoch) % 5 == 0:
+            torch.save(model.state_dict(), os.path.join(model_save_path,f'model_params_epoch_{epoch}.pt'))
+
+        args.last_lr = scheduler.get_last_lr()[0]
+        last_sim_ps = avg_sim_ps
+        last_sim_ns = avg_sim_ns
+        args.seed += epoch
+        set_seed(args.seed)
+
+    torch.save(model.state_dict(), os.path.join(save_path,'last_params.pt'))
