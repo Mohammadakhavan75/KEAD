@@ -56,3 +56,37 @@ def contrastive(input, positive, negative, temperature=0.5, epsilon = 1e-12): # 
         card = 1
     
     return (- 1/card) * torch.log(torch.sum(torch.exp(sim_p/temperature), dim=0)/(torch.sum(denom, dim=0) + epsilon)), sim_p, sim_n # epsilon for non getting devided by zero error
+
+
+
+
+def contrastive_matrix(input, positive, negative, temperature=0.5, epsilon = 1e-12): # epsilon for non getting devided by zero error
+    input_norm = torch.norm(input, p=2, keepdim=True)
+    negative_norms = torch.norm(negative, p=2, dim=1, keepdim=True)
+    if torch.any(negative_norms) == 0 or input_norm == 0:
+        sim_n = torch.tensor(0.).to(input.device)
+    else:
+        sim_n = torch.mm(negative, input.unsqueeze(0).t()) / (input_norm * negative_norms)
+
+    if len(positive.shape) > 1:
+        positive_norms = torch.norm(positive, p=2, dim=1, keepdim=True)
+        if torch.any(positive_norms) == 0 or input_norm == 0:
+            sim_p = torch.tensor(0.).to(input.device)
+        else:
+            sim_p = torch.mm(positive, input.unsqueeze(0).t()) / (input_norm * positive_norms)
+    else:
+        positive_norms = torch.norm(positive, p=2, keepdim=True)
+        if positive_norms == 0 or input_norm == 0:
+            sim_p = torch.tensor(0.).to(input.device)
+        else:
+            sim_p = torch.mm(positive.unsqueeze(0), input.unsqueeze(0).t()) / (input_norm * positive_norms)
+
+    denom = torch.exp(sim_n/temperature) + torch.exp(sim_p/temperature)
+    # if torch.any(denom) == 0:
+    #     return 0.1
+    
+    card = len(positive)
+    
+    # print(torch.sum(torch.exp(sim_p/temperature), dim=0)/(torch.sum(denom, dim=0) + epsilon), torch.sum(torch.exp(sim_p/temperature), dim=0), torch.sum(denom, dim=0))
+
+    return (- 1/card) * torch.log(torch.sum(torch.exp(sim_p/temperature), dim=0)/(torch.sum(denom, dim=0) + epsilon)), sim_p, sim_n # epsilon for non getting devided by zero error
