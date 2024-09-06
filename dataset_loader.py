@@ -103,32 +103,6 @@ class SVHN(Dataset):
         else:
             return len(self.data)
 
-    def _check_integrity(self):
-        root = self.root
-        if self.split == "train_and_extra":
-            md5 = self.split_list[self.split][0][2]
-            fpath = os.path.join(root, self.filename)
-            train_integrity = check_integrity(fpath, md5)
-            extra_filename = self.split_list[self.split][1][1]
-            md5 = self.split_list[self.split][1][2]
-            fpath = os.path.join(root, extra_filename)
-            return check_integrity(fpath, md5) and train_integrity
-        else:
-            md5 = self.split_list[self.split][2]
-            fpath = os.path.join(root, self.filename)
-            return check_integrity(fpath, md5)
-
-    def download(self):
-        if self.split == "train_and_extra":
-            md5 = self.split_list[self.split][0][2]
-            download_url(self.url, self.root, self.filename, md5)
-            extra_filename = self.split_list[self.split][1][1]
-            md5 = self.split_list[self.split][1][2]
-            download_url(self.url, self.root, extra_filename, md5)
-        else:
-            md5 = self.split_list[self.split][2]
-            download_url(self.url, self.root, self.filename, md5)
-
 
 class load_np_dataset(torch.utils.data.Dataset):
     def __init__(self, imgs_path, targets_path, transform, dataset, train=True, anomaly_path=None):
@@ -190,7 +164,7 @@ def sparse2coarse(targets):
     return coarse_labels[targets]
 
 
-def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=True, dataset='cifar10', preprocessing='clip', k_pairs=1, resize=224):
+def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=True, dataset='cifar10', preprocessing='clip', k_pairs=1, resize=224, seed=42):
     # Filling paths
     np_train_target_path = os.path.join(args.config['generalization_path'], f'{dataset}_Train_s1/labels.npy')
     np_test_target_path = os.path.join(args.config['generalization_path'], f'{dataset}_Test_s5/labels.npy')
@@ -228,6 +202,10 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=
     all_test_dataset_positives_one_class = []
     all_test_dataset_negetives_one_class = []
     
+    generator_train_positives = []
+    generator_test_positives = []
+    generator_train_negatives = []
+    generator_test_negatives = []
     # Loading positive
     for k in range(1, k_pairs + 1):
         noise = list(probs[one_class_idx].keys())[k].replace('dist_','')
@@ -252,8 +230,11 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=
             all_train_dataset_positives_one_class.append(train_positives_datasets)
             all_test_dataset_positives_one_class.append(test_positives_datasets)
 
-        train_positives_loader.append(DataLoader(all_train_dataset_positives_one_class[k-1], shuffle=False, batch_size=batch_size, num_workers=num_workers))
-        test_positives_loader.append(DataLoader(all_test_dataset_positives_one_class[k-1], shuffle=False, batch_size=batch_size, num_workers=num_workers))
+        
+        generator_train_positives.append(torch.Generator().manual_seed(seed))
+        generator_test_positives.append(torch.Generator().manual_seed(seed))
+        train_positives_loader.append(DataLoader(all_train_dataset_positives_one_class[k-1], shuffle=True, generator=generator_train_positives[k-1], batch_size=batch_size, num_workers=num_workers))
+        test_positives_loader.append(DataLoader(all_test_dataset_positives_one_class[k-1], shuffle=True, generator=generator_test_positives[k-1], batch_size=batch_size, num_workers=num_workers))
 
     # Loading negative 
     for k in range(1, k_pairs + 1):
@@ -279,14 +260,18 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=
             all_train_dataset_negetives_one_class.append(train_negetives_datasets)
             all_test_dataset_negetives_one_class.append(test_negetives_datasets)
         
-        train_negetives_loader.append(DataLoader(all_train_dataset_negetives_one_class[k-1], shuffle=False, batch_size=batch_size, num_workers=num_workers))
-        test_negetives_loader.append(DataLoader(all_test_dataset_negetives_one_class[k-1], shuffle=False, batch_size=batch_size, num_workers=num_workers))
+        generator_train_negatives.append(torch.Generator().manual_seed(seed))
+        generator_test_negatives.append(torch.Generator().manual_seed(seed))
+        train_negetives_loader.append(DataLoader(all_train_dataset_negetives_one_class[k-1], shuffle=True, generator=generator_train_negatives[k-1], batch_size=batch_size, num_workers=num_workers))
+        test_negetives_loader.append(DataLoader(all_test_dataset_negetives_one_class[k-1], shuffle=True, generator=generator_test_negatives[k-1], batch_size=batch_size, num_workers=num_workers))
 
     return train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader
 
 
-def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None):
+def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None, seed=42):
     print('loading Imagenet')
+    generator_train = torch.Generator().manual_seed(seed)
+    generator_test = torch.Generator().manual_seed(seed)
     transform = torchvision.transforms.Compose([
     torchvision.transforms.Resize(256),
     torchvision.transforms.CenterCrop(224),
@@ -299,14 +284,16 @@ def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None):
         train_data = get_subclass_dataset(train_data, one_class_idx)
         val_data = get_subclass_dataset(val_data, one_class_idx)
 
-    train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
-    val_loader = DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=True, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
+    val_loader = DataLoader(val_data, shuffle=True, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, val_loader
 
 
-def load_cifar10(path, batch_size=64, num_workers=0, one_class_idx=None):
+def load_cifar10(path, batch_size=64, num_workers=0, one_class_idx=None, seed=42):
     print('loading cifar10')
+    generator_train = torch.Generator().manual_seed(seed)
+    generator_test = torch.Generator().manual_seed(seed)
     data_transforms = transforms.Compose([transforms.ToTensor()])
     train_data = torchvision.datasets.CIFAR10(
         path, train=True, transform=data_transforms, download=True)
@@ -317,14 +304,16 @@ def load_cifar10(path, batch_size=64, num_workers=0, one_class_idx=None):
         train_data = get_subclass_dataset(train_data, one_class_idx)
         test_data = get_subclass_dataset(test_data, one_class_idx)
 
-    train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
-    val_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=True, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
+    val_loader = DataLoader(test_data, shuffle=True, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, val_loader
 
 
-def load_svhn(path, batch_size=64, num_workers=0, one_class_idx=None):
+def load_svhn(path, batch_size=64, num_workers=0, one_class_idx=None, seed=42):
     print('loading SVHN')
+    generator_train = torch.Generator().manual_seed(seed)
+    generator_test = torch.Generator().manual_seed(seed)
     transform = transforms.Compose([transforms.ToTensor()])
     train_data = SVHN(root=path, split="train", transform=transform)
     test_data = SVHN(root=path, split="test", transform=transform)
@@ -333,13 +322,15 @@ def load_svhn(path, batch_size=64, num_workers=0, one_class_idx=None):
         train_data = get_subclass_dataset(train_data, one_class_idx)
         test_data = get_subclass_dataset(test_data, one_class_idx)
 
-    train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
-    val_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=True, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
+    val_loader = DataLoader(test_data, shuffle=True, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, val_loader
 
 
-def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None, coarse=True):
+def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None, coarse=True, seed=42):
+    generator_train = torch.Generator().manual_seed(seed)
+    generator_test = torch.Generator().manual_seed(seed)
     transform = transforms.Compose([transforms.ToTensor()])
     train_data = torchvision.datasets.CIFAR100(path, train=True, download=True, transform=transform)
     test_data = torchvision.datasets.CIFAR100(path, train=False, download=True, transform=transform)
@@ -352,13 +343,16 @@ def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None, coarse
         train_data = get_subclass_dataset(train_data, one_class_idx)
         test_data = get_subclass_dataset(test_data, one_class_idx)
 
-    train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
-    test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=True, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
+    test_loader = DataLoader(test_data, shuffle=True, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, test_loader
 
 
-def load_mvtec_ad(path, resize=224, batch_size=64, num_workers=0, one_class_idx=None, coarse=True):
+def load_mvtec_ad(path, resize=224, batch_size=64, num_workers=0, one_class_idx=None, seed=42):
+    generator_train = torch.Generator().manual_seed(seed)
+    generator_test = torch.Generator().manual_seed(seed)
+
     transform = torchvision.transforms.Compose([
             torchvision.transforms.Resize(math.ceil(resize*1.14)),
             torchvision.transforms.CenterCrop(resize),
@@ -375,8 +369,8 @@ def load_mvtec_ad(path, resize=224, batch_size=64, num_workers=0, one_class_idx=
     train_data = MVTecADDataset(path, transform=transform, categories=categories, phase='train')
     test_data = MVTecADDataset(path, transform=transform, categories=categories, phase='test')
     
-    train_loader = DataLoader(train_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
-    test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=True, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
+    test_loader = DataLoader(test_data, shuffle=True, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, test_loader
 
