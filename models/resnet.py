@@ -11,6 +11,7 @@ This code mainly adopted from:
   year={2020}
 }
 '''
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -80,8 +81,11 @@ class ResNet(BaseModel):
 
         self.in_planes = 64
 
+        self.normalize = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         self.conv1 = conv3x3(3, 64)
         self.bn1 = nn.BatchNorm2d(64)
+        # self.fc1 = nn.Linear(512, 128)
+        # self.relu = nn.ReLU()
 
         self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
         self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
@@ -98,6 +102,8 @@ class ResNet(BaseModel):
 
     def penultimate(self, x, all_features=False):
         out_list = []
+        
+        x = self.normalize(x)
 
         out = self.conv1(x)
         out = self.bn1(out)
@@ -115,6 +121,10 @@ class ResNet(BaseModel):
 
         out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
+        
+        # out = self.fc1(out)
+        # out = self.relu(out)
+        
         out_list.append(out)
         if all_features:
             return out, out_list
@@ -130,3 +140,13 @@ def ResNet34(num_classes):
 
 def ResNet50(num_classes):
     return ResNet(Bottleneck, [3,4,6,3], num_classes=num_classes)
+
+
+class Normalize(nn.Module):
+    def __init__(self, mean, std):
+        super(Normalize, self).__init__()
+        self.register_buffer('mean', torch.tensor(mean).view(1, 3, 1, 1))
+        self.register_buffer('std', torch.tensor(std).view(1, 3, 1, 1))
+
+    def forward(self, x):
+        return (x - self.mean) / self.std
