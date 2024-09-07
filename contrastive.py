@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import warnings
 
 def norm(x):
     return torch.linalg.vector_norm(x)
@@ -60,33 +61,42 @@ def contrastive(input, positive, negative, temperature=0.5, epsilon = 1e-12): # 
 
 
 
-def contrastive_matrix(input, positive, negative, temperature=0.5, epsilon = 1e-12): # epsilon for non getting devided by zero error
-    input_norm = torch.norm(input, p=2, keepdim=True)
+def contrastive_matrix(data, positive, negative, temperature=0.5, epsilon = 1e-12): # epsilon for non getting devided by zero error
+    """
+    Compute the contrastive loss for a batch of inputs.
+
+    Args:
+        data (Tensor): The input tensor.
+        positive (Tensor): The positive tensor (soft augmentation).
+        negative (Tensor): The negative tensor (hard augmentation).
+        temperature (float, optional): The temperature parameter. Defaults to 0.5.
+        epsilon (float, optional): The epsilon value for avoiding division by zero. Defaults to 1e-12.
+
+    Returns:
+        Tensor: The contrastive loss.
+        Tensor: The similarity between the data and positive tensors.
+        Tensor: The similarity between the data and negative tensors.
+    """
+       
+    data_norm = torch.norm(data, p=2, dim=1, keepdim=True)
     negative_norms = torch.norm(negative, p=2, dim=1, keepdim=True)
-    if torch.any(negative_norms) == 0 or input_norm == 0:
-        sim_n = torch.tensor(0.).to(input.device)
-    else:
-        sim_n = torch.mm(negative, input.unsqueeze(0).t()) / (input_norm * negative_norms)
+    positive_norms = torch.norm(positive, p=2, dim=1, keepdim=True)
 
-    if len(positive.shape) > 1:
-        positive_norms = torch.norm(positive, p=2, dim=1, keepdim=True)
-        if torch.any(positive_norms) == 0 or input_norm == 0:
-            sim_p = torch.tensor(0.).to(input.device)
-        else:
-            sim_p = torch.mm(positive, input.unsqueeze(0).t()) / (input_norm * positive_norms)
-    else:
-        positive_norms = torch.norm(positive, p=2, keepdim=True)
-        if positive_norms == 0 or input_norm == 0:
-            sim_p = torch.tensor(0.).to(input.device)
-        else:
-            sim_p = torch.mm(positive.unsqueeze(0), input.unsqueeze(0).t()) / (input_norm * positive_norms)
+    # Check for zero norms
+    if torch.any(data_norm == 0) or torch.any(positive_norms == 0) or torch.any(negative_norms == 0):
+        # raise ValueError("Zero norm encountered")
+        warnings.warn("Zero norm encountered")
 
-    denom = torch.exp(sim_n/temperature) + torch.exp(sim_p/temperature)
-    # if torch.any(denom) == 0:
-    #     return 0.1
-    
-    card = len(positive)
-    
-    # print(torch.sum(torch.exp(sim_p/temperature), dim=0)/(torch.sum(denom, dim=0) + epsilon), torch.sum(torch.exp(sim_p/temperature), dim=0), torch.sum(denom, dim=0))
+    # sim_n = torch.matmul(data, negative.t()) / (data_norm * negative_norms)
+    sim_n = torch.matmul(data, negative.t()) / (data_norm * negative_norms.t() + epsilon)
+    sim_p = torch.matmul(data, positive.t()) / (data_norm * positive_norms.t() + epsilon)
+    # sim_p = torch.mm(positive, data.t()) / (data_norm * positive_norms + epsilon)
+   
+    sim_p = sim_p.diag() 
+    denom = torch.sum(torch.exp(sim_n/temperature), dim=1) + torch.exp(sim_p/temperature)
+   
+    # card = len(positive[0])
+    card=1
+    loss = (-1 / card) * torch.log(torch.exp(sim_p / temperature) / (denom + epsilon))
 
-    return (- 1/card) * torch.log(torch.sum(torch.exp(sim_p/temperature), dim=0)/(torch.sum(denom, dim=0) + epsilon)), sim_p, sim_n # epsilon for non getting devided by zero error
+    return torch.mean(loss), sim_p, sim_n, data_norm, negative_norms, positive_norms # epsilon for non getting devided by zero error
