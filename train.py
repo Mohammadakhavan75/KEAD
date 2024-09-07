@@ -50,7 +50,7 @@ def parsing():
     parser.add_argument('--lamb', type=float, default=1, help='loss scaling parameter')
     parser.add_argument('--momentum', type=float, default=0.9, help='Momentum.')
     parser.add_argument('--decay', '-d', type=float,
-                        default=0.0005, help='Weight decay (L2 penalty).')
+                        default=1e-6, help='Weight decay (L2 penalty).')
 
     parser.add_argument('--exp_idx', default=0, type=int, help='run index')
 
@@ -73,7 +73,7 @@ def parsing():
 
 
 def train_one_class(train_loader, train_positives_loader, train_negetives_loader,
-                     model, train_global_iter, optimizer, args, writer):
+                     model, train_global_iter, optimizer, args, writer, epoch, scheduler):
 
     # Enter model into train mode
     model.train()
@@ -93,7 +93,7 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
     sim_ps, sim_ns = [], []
     
     if args.k_pairs == 1: 
-        for normal, p_data, n_data in tqdm(zip(train_loader, train_positives_loader[0], train_negetives_loader[0])):
+        for n, (normal, p_data, n_data) in tqdm(enumerate(zip(train_loader, train_positives_loader[0], train_negetives_loader[0]))):
             imgs, labels = normal
             p_imgs, _ = p_data
             n_imgs, _ = n_data
@@ -115,24 +115,31 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             loss_contrastive = torch.tensor(0.0, requires_grad=True)
     
             # for norm_f, p_f, n_f  in zip(normal_features, p_features, n_features): # Single Negative Method
-                # l_c, sim_p, sim_n = contrastive(norm_f, p_f, n_f, temperature=args.temperature)
-            for norm_f, p_f in zip(normal_features, p_features): # SimCLR Method (But using all other negative data in batch as negative not using the original datas)
-                l_c, sim_p, sim_n = contrastive_matrix(norm_f, p_f, n_features, temperature=args.temperature)
-                loss_contrastive = loss_contrastive + l_c
-                sim_ps.append(sim_p.detach().cpu())
-                sim_ns.append(torch.mean(sim_n).detach().cpu())
+            #     l_c, sim_p, sim_n = contrastive(norm_f, p_f, n_f, temperature=args.temperature)
+            # for norm_f, p_f in zip(normal_features, p_features): # SimCLR Method (But using all other negative data in batch as negative not using the original datas)
+                # l_c, sim_p, sim_n = contrastive_matrix(norm_f, p_f, n_features, temperature=args.temperature)
+                # loss_contrastive = loss_contrastive + l_c
+                # sim_ps.append(sim_p.detach().cpu())
                 # sim_ns.append(sim_n.detach().cpu())
+                # sim_ns.append(torch.mean(sim_n).detach().cpu())
+                
             
-        
-            loss = loss_contrastive / len(normal_features)
+            loss_contrastive, sim_p, sim_n, data_norm, negative_norms, positive_norms = contrastive_matrix(normal_features, p_features, n_features, temperature=args.temperature)
+            sim_ps.append(torch.mean(sim_p).detach().cpu())
+            sim_ns.append(torch.mean(sim_n).detach().cpu())
+            loss = loss_contrastive
+            # loss = loss_contrastive / len(normal_features)
             
             epoch_loss['loss'].append(loss.item())
             epoch_loss['contrastive'].append(loss_contrastive.item())
 
             train_global_iter += 1
             writer.add_scalar("Train/loss", loss.item(), train_global_iter)
-            writer.add_scalar("Train/sim_p", torch.mean(torch.tensor(sim_ps)).detach().cpu().numpy(), train_global_iter)
-            writer.add_scalar("Train/sim_n", torch.mean(torch.tensor(sim_ns)).detach().cpu().numpy(), train_global_iter)
+            writer.add_scalar("Train/sim_p", torch.mean(sim_p).detach().cpu().numpy(), train_global_iter)
+            writer.add_scalar("Train/sim_n", torch.mean(sim_n).detach().cpu().numpy(), train_global_iter)
+            writer.add_scalar("Train/norm_p", torch.mean(data_norm).detach().cpu().numpy(), train_global_iter)
+            writer.add_scalar("Train/norm_n", torch.mean(negative_norms).detach().cpu().numpy(), train_global_iter)
+            writer.add_scalar("Train/norm_d", torch.mean(positive_norms).detach().cpu().numpy(), train_global_iter)
 
 
 
@@ -145,6 +152,9 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             writer.add_scalar("Train/grads", torch.mean(torch.tensor(pp)).detach().cpu().numpy(), train_global_iter)
 
             optimizer.step()
+            scheduler.step(epoch - 1 + n / len(train_loader))
+            args.last_lr = optimizer.param_groups[0]['lr']
+            writer.add_scalar("Train/lr", args.last_lr, epoch)
 
     elif args.k_pairs == 2:
         for normal, p_data, n_data, p_data1, n_data1 in zip(train_loader, train_positives_loader[0], train_negetives_loader[0], train_positives_loader[1], train_negetives_loader[1]):
@@ -308,7 +318,8 @@ def load_model(args):
     if args.model_path:
         model.load_state_dict(torch.load(args.model_path))
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_update_rate, gamma=args.lr_gamma)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_update_rate, gamma=args.lr_gamma)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
     criterion = torch.nn.CrossEntropyLoss().to(args.device)
 
     return model, criterion, optimizer, scheduler
@@ -437,7 +448,7 @@ if __name__ == "__main__":
         args.e_holder = str(epoch)
         train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns =\
             train_one_class(train_loader, train_positives_loader, train_negetives_loader, \
-                            model, train_global_iter, optimizer, args, writer)
+                            model, train_global_iter, optimizer, args, writer, epoch, scheduler)
         
         writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
         writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
@@ -447,7 +458,8 @@ if __name__ == "__main__":
         if (epoch) % 5 == 0:
             torch.save(model.state_dict(), os.path.join(model_save_path,f'model_params_epoch_{epoch}.pt'))
 
-        args.last_lr = scheduler.get_last_lr()[0]
+        # args.last_lr = scheduler.get_last_lr()[0]
+
         last_sim_ps = avg_sim_ps
         last_sim_ns = avg_sim_ns
         args.seed += epoch
