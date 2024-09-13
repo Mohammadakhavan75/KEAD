@@ -447,9 +447,9 @@ class VisADataset(Dataset):
             # Set the paths for training and test datasets
             category_path = os.path.normpath(os.path.join(self.root_dir, 'visa', category, 'Data', 'Images', phase_dir))
             for img_file in os.listdir(category_path):
-                if img_file.endswith(('.png', '.jpg', '.jpeg')):
-                    self.image_paths.append(os.path.join(category_path, img_file))
-                    self.targets.append(idx)
+                # if img_file.endswith(('.png', '.jpg', '.jpeg')):
+                self.image_paths.append(os.path.join(category_path, img_file))
+                self.targets.append(idx)
 
 
         # Map labels to indices

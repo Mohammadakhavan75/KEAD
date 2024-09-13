@@ -103,7 +103,7 @@ args.config = config
 
 sys.path.append(args.config["library_path"])
 from contrastive import cosine_similarity
-from dataset_loader import SVHN, load_np_dataset, MVTecADDataset
+from dataset_loader import SVHN, load_np_dataset, MVTecADDataset, VisADataset
 
 
 if args.save_rep_norm:
@@ -145,8 +145,23 @@ elif args.dataset == 'mvtec_ad':
     train_aug_targets_path = os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy').replace("\r", "")
     
     categories = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
-    noraml_dataset = MVTecADDataset(root_dir=args.config['mvtec_ad'], transform=transform, categories=categories, phase='train')
+    noraml_dataset = MVTecADDataset(root_dir=data_path, transform=transform, categories=categories, phase='train')
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
+
+elif args.dataset == 'visa':
+    import math
+    resize=224
+    transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(math.ceil(resize*1.14)),
+            torchvision.transforms.CenterCrop(resize),
+            torchvision.transforms.ToTensor()])
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'visa_Train_s1/{args.aug}.npy')).replace("\r", "")
+    train_aug_targets_path = os.path.join(generalization_path, 'visa_Train_s1/labels.npy').replace("\r", "")
+    
+    categories = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']  # List all categories
+    noraml_dataset = VisADataset(root_dir=data_path, transform=transform, categories=categories, phase='train')
+    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
+
 
 elif args.dataset == 'imagenet':
     # imagenet_path = os.path.join(data_path,'ImageNet')

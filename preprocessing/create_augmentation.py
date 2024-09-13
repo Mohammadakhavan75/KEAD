@@ -468,10 +468,24 @@ def loading_datasets(args):
                 torchvision.transforms.CenterCrop(resize),
                 torchvision.transforms.ToTensor()])
         categories = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']  # List all categories
-        mvtec_train = MVTecADDataset(root_dir=args.config['mvtec_ad'], transform=transform, categories=categories, phase='train')
-        mvtec_test = MVTecADDataset(root_dir=args.config['mvtec_ad'], transform=transform, categories=categories, phase='test')
+        mvtec_train = MVTecADDataset(root_dir=args.config['data_path'], transform=transform, categories=categories, phase='train')
+        mvtec_test = MVTecADDataset(root_dir=args.config['data_path'], transform=transform, categories=categories, phase='test')
         train_loader = DataLoader(mvtec_train, batch_size=1, shuffle=False)
         test_loader = DataLoader(mvtec_test, batch_size=1, shuffle=False)
+    
+    elif args.dataset == 'visa':
+        import math
+        import torchvision
+        resize=224
+        transform = torchvision.transforms.Compose([
+                torchvision.transforms.Resize(math.ceil(resize*1.14)),
+                torchvision.transforms.CenterCrop(resize),
+                torchvision.transforms.ToTensor()])
+        categories = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']  # List all categories
+        visa_train = VisADataset(root_dir=args.config['data_path'], transform=transform, categories=categories, phase='normal')
+        visa_test = VisADataset(root_dir=args.config['data_path'], transform=transform, categories=categories, phase='anomaly')
+        train_loader = DataLoader(visa_train, batch_size=1, shuffle=False)
+        test_loader = DataLoader(visa_test, batch_size=1, shuffle=False)
 
     return train_loader, test_loader
 
@@ -497,7 +511,7 @@ imagenet_path = config['imagenet_path']
 args.config = config
 
 sys.path.append(args.config["library_path"])
-from dataset_loader import load_cifar10, load_svhn, load_cifar100, load_imagenet, MVTecADDataset
+from dataset_loader import load_cifar10, load_svhn, load_cifar100, load_imagenet, MVTecADDataset, VisADataset
 
 
 
