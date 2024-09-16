@@ -84,19 +84,18 @@ def contrastive_matrix(data, positive, negative, temperature=0.5, epsilon = 1e-1
 
     # Check for zero norms
     if torch.any(data_norm == 0) or torch.any(positive_norms == 0) or torch.any(negative_norms == 0):
-        # raise ValueError("Zero norm encountered")
         warnings.warn("Zero norm encountered")
 
-    # sim_n = torch.matmul(data, negative.t()) / (data_norm * negative_norms)
     sim_n = torch.matmul(data, negative.t()) / (data_norm * negative_norms.t() + epsilon)
     sim_p = torch.matmul(data, positive.t()) / (data_norm * positive_norms.t() + epsilon)
-    # sim_p = torch.mm(positive, data.t()) / (data_norm * positive_norms + epsilon)
    
     sim_p = sim_p.diag() 
+    # sim_n = sim_n.diag() 
+    # denom = torch.exp(sim_n/temperature) + torch.exp(sim_p/temperature)
     denom = torch.sum(torch.exp(sim_n/temperature), dim=1) + torch.exp(sim_p/temperature)
    
     # card = len(positive[0])
-    card=1
+    card = 1
     loss = (-1 / card) * torch.log(torch.exp(sim_p / temperature) / (denom + epsilon))
 
     return torch.mean(loss), sim_p, sim_n, data_norm, negative_norms, positive_norms # epsilon for non getting devided by zero error
