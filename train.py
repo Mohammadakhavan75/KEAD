@@ -10,7 +10,7 @@ from contrastive import contrastive, contrastive_matrix
 from models.resnet_imagenet import resnet18, resnet50
 from models.resnet import ResNet18, ResNet50
 from torch.utils.tensorboard import SummaryWriter
-from dataset_loader import noise_loader, load_cifar10, load_svhn, load_cifar100, load_imagenet, load_mvtec_ad
+from dataset_loader import noise_loader, load_cifar10, load_svhn, load_cifar100, load_imagenet, load_mvtec_ad, load_visa
 
 def to_np(x):
     return x.data.cpu().numpy()
@@ -73,7 +73,7 @@ def parsing():
 
 
 def train_one_class(train_loader, train_positives_loader, train_negetives_loader,
-                     model, train_global_iter, optimizer, args, writer, epoch, scheduler):
+                     model, train_global_iter, BCELoss, optimizer, args, writer, epoch, scheduler):
 
     # Enter model into train mode
     model.train()
@@ -104,10 +104,9 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
         
         
             optimizer.zero_grad()
-            _, normal_features = model(imgs, True)
-            _, p_features = model(p_imgs, True)
-            _, n_features = model(n_imgs, True)
-
+            pred_d, normal_features = model(imgs, True)
+            pred_p, p_features = model(p_imgs, True)
+            pred_n, n_features = model(n_imgs, True)
             normal_features = normal_features[-1]
             p_features = p_features[-1]
             n_features = n_features[-1]
@@ -127,13 +126,27 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             loss_contrastive, sim_p, sim_n, data_norm, negative_norms, positive_norms = contrastive_matrix(normal_features, p_features, n_features, temperature=args.temperature)
             sim_ps.append(torch.mean(sim_p).detach().cpu())
             sim_ns.append(torch.mean(sim_n).detach().cpu())
-            loss = loss_contrastive
+
+            # label_normals = torch.tensor([torch.tensor(1.) for _ in range(len(pred_d))])
+            # label_positives = torch.tensor([torch.tensor(1.) for _ in range(len(pred_d))])
+            # label_anomals = torch.tensor([torch.tensor(0.) for _ in range(len(pred_d))])
+            # labels = torch.cat((label_normals, label_positives, label_anomals), dim=0).to(args.device)
+
+            labels = torch.zeros(len(pred_d)*3).to(args.device)
+            labels[len(pred_d)*2:] = 1.
+            preds = torch.cat((pred_d, pred_p, pred_n), dim=0).squeeze(1).to(args.device)
+
+
+            bc_loss = BCELoss(preds, labels)
+            loss = loss_contrastive + bc_loss
             # loss = loss_contrastive / len(normal_features)
             
             epoch_loss['loss'].append(loss.item())
             epoch_loss['contrastive'].append(loss_contrastive.item())
 
             train_global_iter += 1
+            writer.add_scalar("Train/loss_contrastive", loss_contrastive.item(), train_global_iter)
+            writer.add_scalar("Train/bc_loss", bc_loss.item(), train_global_iter)
             writer.add_scalar("Train/loss", loss.item(), train_global_iter)
             writer.add_scalar("Train/sim_p", torch.mean(sim_p).detach().cpu().numpy(), train_global_iter)
             writer.add_scalar("Train/sim_n", torch.mean(sim_n).detach().cpu().numpy(), train_global_iter)
@@ -320,9 +333,9 @@ def load_model(args):
 
     # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_update_rate, gamma=args.lr_gamma)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
-    criterion = torch.nn.CrossEntropyLoss().to(args.device)
+    BCELoss = torch.nn.BCEWithLogitsLoss().to(args.device)
 
-    return model, criterion, optimizer, scheduler
+    return model, BCELoss, optimizer, scheduler
 
 
 def create_path(args):
@@ -383,6 +396,13 @@ def loading_datasets(args, data_path, imagenet_path):
                                                 one_class_idx=args.one_class_idx,
                                                 seed=args.seed)
 
+    elif args.dataset == 'visa':
+        args.num_classes = 12
+        train_loader, test_loader = load_visa(data_path, 
+                                                resize=args.img_size,
+                                                batch_size=args.batch_size,
+                                                one_class_idx=args.one_class_idx,
+                                                seed=args.seed)
     
     print("Start Loading noises")
     train_positives_loader, train_negetives_loader,\
@@ -426,7 +446,7 @@ if __name__ == "__main__":
     train_loader, test_loader, train_positives_loader, train_negetives_loader,\
         test_positives_loader, test_negetives_loader = loading_datasets(args, data_path, imagenet_path)
 
-    model, criterion, optimizer, scheduler = load_model(args)
+    model, BCELoss, optimizer, scheduler = load_model(args)
 
     if torch.cuda.device_count() > 1 and args.device == 'cuda' and args.multi_gpu:
         print("Using", torch.cuda.device_count(), "GPUs")
@@ -448,7 +468,7 @@ if __name__ == "__main__":
         args.e_holder = str(epoch)
         train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns =\
             train_one_class(train_loader, train_positives_loader, train_negetives_loader, \
-                            model, train_global_iter, optimizer, args, writer, epoch, scheduler)
+                            model, train_global_iter, BCELoss, optimizer, args, writer, epoch, scheduler)
         
         writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
         writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
