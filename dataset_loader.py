@@ -375,6 +375,31 @@ def load_mvtec_ad(path, resize=224, batch_size=64, num_workers=0, one_class_idx=
     return train_loader, test_loader
 
 
+def load_visa(path, resize=224, batch_size=64, num_workers=0, one_class_idx=None, seed=42):
+    generator_train = torch.Generator().manual_seed(seed)
+    generator_test = torch.Generator().manual_seed(seed)
+
+    transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(math.ceil(resize*1.14)),
+            torchvision.transforms.CenterCrop(resize),
+            torchvision.transforms.ToTensor()])
+    
+    cc = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']
+    if one_class_idx != None:
+        print(cc[one_class_idx])
+        categories = [cc[one_class_idx]]
+        
+    else:
+        categories = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']
+    
+    train_data = VisADataset(path, transform=transform, categories=categories, phase='normal')
+    test_data = VisADataset(path, transform=transform, categories=categories, phase='anomaly')
+    
+    train_loader = DataLoader(train_data, shuffle=True, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
+    test_loader = DataLoader(test_data, shuffle=True, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
+
+    return train_loader, test_loader
+
 
 class MVTecADDataset(Dataset):
     def __init__(self, root_dir, categories, transform, phase='train'):
@@ -442,7 +467,13 @@ class VisADataset(Dataset):
         # Get all image files and corresponding labels
         self.image_paths = []
         self.targets = []
-        phase_dir = 'normal' if self.phase == 'normal' else 'anomaly'
+
+        assert self.phase.lower() == 'normal' or self.phase.lower() == 'anomaly', f"Phase is not valid: {self.phase}"
+        if self.phase.lower() == 'normal':
+            phase_dir = 'Normal'
+        elif self.phase.lower() == 'anomaly':
+            phase_dir = 'Anomaly'
+
         for idx, category in enumerate(self.categories):
             # Set the paths for training and test datasets
             category_path = os.path.normpath(os.path.join(self.root_dir, 'visa', category, 'Data', 'Images', phase_dir))
