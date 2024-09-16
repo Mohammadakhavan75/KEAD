@@ -86,7 +86,7 @@ def parsing():
     parser.add_argument('--thresh', default=0, type=int, help='noise')
     parser.add_argument('--svm_model', default=None, help='noise')
     parser.add_argument('--aug', default=None, type=str, help='noise')
-    parser.add_argument('--gpu', default='1', type=str, help='noise')
+    parser.add_argument('--gpu', default='0', type=str, help='noise')
     parser.add_argument('--linear', action="store_true", help='noise')
     parser.add_argument('--model', default='resnet18', type=str, help='noise')
     parser.add_argument('--img_size', default=32, type=int, help='noise')
@@ -250,12 +250,16 @@ def eval_auc_one_class(eval_in, eval_out, train_features_in, mahal_thresh, net, 
             preds_in, normal_features = net(inputs_in, True)     
             preds_out, out_features = net(inputs_out, True)     
             
-            in_features_list.append(normal_features[-1])
-            out_features_list.append(out_features[-1])
+            in_features_list.extend(normal_features[-1].detach().cpu().numpy())
+            out_features_list.extend(out_features[-1].detach().cpu().numpy())
         
-        in_features_list = torch.cat(in_features_list, dim=0)
-        out_features_list = torch.cat(out_features_list, dim=0)
+        in_features_list = torch.tensor(np.array(in_features_list))
+        out_features_list = torch.tensor(np.array(out_features_list))
+        l1 = torch.zeros(in_features_list.shape[0])
+        l2 = torch.ones(out_features_list.shape[0])
+        targets = torch.cat([l1, l2], dim=0)
 
+                                                               
         if args.score == 'mahalanobis':
             for in_feature in in_features_list:
                 pred_in.append(mahalanobis_distance(in_feature, mean, inv_covariance) < mahal_thresh)
@@ -285,14 +289,12 @@ def eval_auc_one_class(eval_in, eval_out, train_features_in, mahal_thresh, net, 
                 pred_out.append(torch.tensor(args.svm_model.predict(out_features_list.detach().cpu().numpy())==-1))
                 pred_in = np.concatenate(pred_in)
                 pred_out = np.concatenate(pred_out)
-                targets = torch.cat([torch.tensor(targets_in_list), torch.tensor(targets_out_list)], dim=0)
                 preds = torch.cat([torch.tensor(pred_in), torch.tensor(pred_out)], dim=0)
                 preds = (preds + 1)/2
                 auc = roc_auc_score(to_np(targets), to_np(preds))
         elif args.score == 'knn':
             f_list = torch.cat([in_features_list, out_features_list], dim=0)
             distances = knn_score(to_np(train_features_in), to_np(f_list))
-            targets = torch.cat([torch.tensor(targets_in_list), torch.tensor(targets_out_list)], dim=0)
             auc = roc_auc_score(targets, distances)
     return auc
 
@@ -357,7 +359,7 @@ def load_model(args):
         raise NotImplementedError("Not implemented optimizer!")
 
     if args.model_path:
-        m = torch.load(args.model_path)
+        m = torch.load(args.model_path, weights_only=True)
         model.load_state_dict(m)
 
 
@@ -408,6 +410,8 @@ args = parsing()
 os.environ['CUDA_VISIBLE_DEVICES']="0,1"
 torch.manual_seed(args.seed)
 model, criterion, optimizer, scheduler = load_model(args)
+if args.device == 'cuda':
+    args.device=f'cuda:{args.gpu}'
 
 root_path = 'D:/Datasets/data/'
 args.last_lr = args.learning_rate
