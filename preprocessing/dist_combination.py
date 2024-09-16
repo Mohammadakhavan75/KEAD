@@ -67,6 +67,10 @@ def get_target_labels(args, generalization_path):
     if args.dataset == 'mvtec_ad':
         classes = 15
         targets_list_loaded = np.load(os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy'))
+    
+    if args.dataset == 'visa':
+        classes = 12
+        targets_list_loaded = np.load(os.path.join(generalization_path, 'visa_Train_s1/labels.npy'))
 
     return targets_list_loaded, classes
 
