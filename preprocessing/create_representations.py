@@ -159,7 +159,7 @@ elif args.dataset == 'visa':
     train_aug_targets_path = os.path.join(generalization_path, 'visa_Train_s1/labels.npy').replace("\r", "")
     
     categories = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']  # List all categories
-    noraml_dataset = VisADataset(root_dir=data_path, transform=transform, categories=categories, phase='train')
+    noraml_dataset = VisADataset(root_dir=data_path, transform=transform, categories=categories, phase='normal')
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
 
 
@@ -183,7 +183,6 @@ else:
 
 normal_loader = DataLoader(noraml_dataset, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
 aug_loader = DataLoader(aug_dataset, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
-
 
 loader = zip(normal_loader, aug_loader)
 cosine_diff = []

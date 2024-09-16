@@ -82,9 +82,9 @@ for i in range(len(os.listdir(rep_aug_path))):
         except:
             print(f"Error occured in {args.aug} data idx:", i)
 
-
+print(len(imgs_n_features))
 imgs_n_features, imgs_aug_features = torch.cat(imgs_n_features, dim=0).numpy(), torch.cat(imgs_aug_features, dim=0).numpy()
-
+print(len(imgs_n_features))
 print(f'Running on: {args.aug}')
 wasser_dist_path = os.path.normpath(f'./wasser_dist/{args.backbone}/{args.dataset}/').replace("\r", "")
 wasser_dist_datasets_path = os.path.normpath(f'./wasser_dist_datasets/{args.backbone}/{args.dataset}/').replace("\r", "")
@@ -120,7 +120,7 @@ if args.dataset == 'mvtec_ad':
 if args.dataset == 'visa':
     classes = 12
     targets_list_loaded = np.load(os.path.join(generalization_path, 'visa_Train_s1/labels.npy'))
-
+print(len(imgs_n_features))
 distances = []
 if args.one_class:
     for class_idx in range(classes):
