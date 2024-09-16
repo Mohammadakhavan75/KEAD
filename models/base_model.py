@@ -27,7 +27,7 @@ class BaseModel(nn.Module, metaclass=ABCMeta):
     def forward(self, inputs, penultimate=False):
 
         output, features_list = self.penultimate(inputs, penultimate)
-        output = None
+        # output = None
         if penultimate:
             return output, features_list
         else:

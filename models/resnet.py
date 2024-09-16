@@ -84,8 +84,8 @@ class ResNet(BaseModel):
         self.normalize = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         self.conv1 = conv3x3(3, 64)
         self.bn1 = nn.BatchNorm2d(64)
-        # self.fc1 = nn.Linear(512, 128)
-        # self.relu = nn.ReLU()
+        self.fc1 = nn.Linear(512, 1)
+        self.relu = nn.ReLU()
 
         self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
         self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
@@ -121,11 +121,10 @@ class ResNet(BaseModel):
 
         out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
-        
-        # out = self.fc1(out)
-        # out = self.relu(out)
-        
         out_list.append(out)
+
+        out = self.fc1(out)
+
         if all_features:
             return out, out_list
         else:

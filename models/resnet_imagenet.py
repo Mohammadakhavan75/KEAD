@@ -122,6 +122,9 @@ class ResNet(BaseModel):
                  zero_init_residual=False, groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  norm_layer=None):
         super(ResNet, self).__init__(num_classes)
+
+        self.normalize = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        self.fc1 = nn.Linear(2048, 1)
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
@@ -195,7 +198,7 @@ class ResNet(BaseModel):
     def penultimate(self, x, all_features=False):
         # See note [TorchScript super()]
         out_list = []
-
+        x = self.normalize(x)
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -214,6 +217,8 @@ class ResNet(BaseModel):
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         out_list.append(x)
+
+        x = self.fc1(x)
 
         if all_features:
             return x, out_list
@@ -238,3 +243,13 @@ def resnet50(**kwargs):
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
     """
     return _resnet(Bottleneck, [3, 4, 6, 3], **kwargs)
+
+
+class Normalize(nn.Module):
+    def __init__(self, mean, std):
+        super(Normalize, self).__init__()
+        self.register_buffer('mean', torch.tensor(mean).view(1, 3, 1, 1))
+        self.register_buffer('std', torch.tensor(std).view(1, 3, 1, 1))
+
+    def forward(self, x):
+        return (x - self.mean) / self.std
