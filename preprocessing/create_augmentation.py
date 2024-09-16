@@ -173,7 +173,7 @@ def speckle_noise(x, severity=1):
 def gaussian_blur(x, severity=1):
     c = [.4, .6, 0.7, .8, 1][severity - 1]
 
-    x = gaussian(np.array(x) / 255., sigma=c, multichannel=True)
+    x = gaussian(np.array(x) / 255., sigma=c, channel_axis=-1)
     return np.clip(x, 0, 1) * 255
 
 
@@ -181,7 +181,7 @@ def glass_blur(x, severity=1):
     # sigma, max_delta, iterations
     c = [(0.05,1,1), (0.25,1,1), (0.4,1,1), (0.25,1,2), (0.4,1,2)][severity - 1]
 
-    x = np.uint8(gaussian(np.array(x) / 255., sigma=c[0], multichannel=True) * 255)
+    x = np.uint8(gaussian(np.array(x) / 255., sigma=c[0], channel_axis=-1) * 255)
 
     # locally shuffle pixels
     for i in range(c[2]):
@@ -192,7 +192,7 @@ def glass_blur(x, severity=1):
                 # swap
                 x[h, w], x[h_prime, w_prime] = x[h_prime, w_prime], x[h, w]
 
-    return np.clip(gaussian(x / 255., sigma=c[0], multichannel=True), 0, 1) * 255
+    return np.clip(gaussian(x / 255., sigma=c[0], channel_axis=-1), 0, 1) * 255
 
 
 def defocus_blur(x, severity=1):
@@ -564,11 +564,11 @@ if args.save_img:
     print(args.aug)
     labels_c = []
     counter = 0
-    saving_path = os.path.join(saving_path, args.aug)
+    saving_path = os.path.join(saving_path, args.aug.replace('\r',''))
     os.makedirs(saving_path, exist_ok=True)
     try:
         severity = args.severity
-        corruption = lambda clean_img: d[args.aug](clean_img, severity)
+        corruption = lambda clean_img: d[args.aug.replace('\r','')](clean_img, severity)
         for img, label in loader:
             # for k in range(len(img)):
             counter += 1
@@ -589,13 +589,13 @@ else:
     cifar_c, labels_c = [], []
     # try:
     severity = args.severity
-    corruption = lambda clean_img: d[args.aug](clean_img, severity)
+    corruption = lambda clean_img: d[args.aug.replace('\r','')](clean_img, severity)
     for img, label in loader:
         # for k in range(len(img)):
         labels_c.append(label.detach().cpu().numpy())
         cifar_c.append(np.uint8(corruption(PIL.Image.fromarray((img[0].permute(1,2,0).detach().cpu().numpy() * 255.).astype(np.uint8)))))
         
-    np.save(os.path.join(saving_path, d[args.aug].__name__ + '.npy'), np.array(cifar_c).astype(np.uint8))
+    np.save(os.path.join(saving_path, d[args.aug.replace('\r','')].__name__ + '.npy'), np.array(cifar_c).astype(np.uint8))
     np.save(os.path.join(saving_path, 'labels.npy'), np.array(labels_c).astype(np.uint8))
     # except:
         # print(f"Error occured in: {args.aug}")
