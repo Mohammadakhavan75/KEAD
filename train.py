@@ -22,6 +22,8 @@ def parsing():
                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--epochs', '-e', type=int, default=50,
                         help='Number of epochs to train.')
+    parser.add_argument('--from_epoch', type=int, default=1,
+                        help='from which epoch start the training.')
     parser.add_argument('--batch_size', '-b', type=int,
                         default=64, help='Batch size.')
     parser.add_argument('--seed', type=int, default=1,
@@ -331,8 +333,9 @@ def load_model(args):
 
     if args.resume:
         model_folder = args.save_path + 'models/'
-        model_path = natsorted(os.listdir(model_folder))[-1]
-        model.load_state_dict(torch.load(model_path, weights_only=True))
+        model_name = natsorted(os.listdir(model_folder))[-1]
+        args.from_epoch = int(model_name.split('_')[-1].split('.')[0])
+        model.load_state_dict(torch.load(os.path.join(model_folder, model_name), weights_only=True))
 
     # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_update_rate, gamma=args.lr_gamma)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
@@ -343,7 +346,9 @@ def load_model(args):
 
 def create_path(args):
     if args.resume:
-        assert args.save_path is None, "You must pass the model path in resume mode!"
+        print(args.save_path)
+        print(args.save_path is None)
+        assert args.save_path is not None, "You must pass the model path in resume mode!"
         save_path = args.save_path
         model_save_path = save_path + 'models/'
     else:
@@ -468,7 +473,7 @@ if __name__ == "__main__":
     train_global_iter = 0
 
     args.last_lr = args.learning_rate
-    for epoch in range(1, args.epochs):
+    for epoch in range(args.from_epoch, args.epochs):
         print('epoch', epoch, '/', args.epochs)
         args.e_holder = str(epoch)
         train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns =\
