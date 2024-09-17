@@ -5,6 +5,7 @@ import random
 import argparse
 import numpy as np
 from tqdm import tqdm
+from natsort import natsorted
 from datetime import datetime
 from contrastive import contrastive, contrastive_matrix
 from models.resnet_imagenet import resnet18, resnet50
@@ -25,12 +26,12 @@ def parsing():
                         default=64, help='Batch size.')
     parser.add_argument('--seed', type=int, default=1,
                         help='seed for np(tinyimages80M sampling); 1|2|8|100|107')
-    parser.add_argument('--num_workers', type=int, 
+    parser.add_argument('--num_workers', type=int,
                         default=0, help='starting epoch from.')
-    parser.add_argument('--save_path', type=str, 
+    parser.add_argument('--save_path', type=str,
                         default=None, help='Path to save files.')
-    parser.add_argument('--model_path', type=str, 
-                        default=None, help='Path to model to resume training.')
+    parser.add_argument('--resume', action="store_true",
+                        help='Path to model to resume training.')
     parser.add_argument('--device', type=str, 
                         default="cuda", help='cuda or cpu.')
     # Optimizer Config
@@ -328,8 +329,10 @@ def load_model(args):
     else:
         raise NotImplementedError("Not implemented optimizer!")
 
-    if args.model_path:
-        model.load_state_dict(torch.load(args.model_path))
+    if args.resume:
+        model_folder = args.save_path + 'models/'
+        model_path = natsorted(os.listdir(model_folder))[-1]
+        model.load_state_dict(torch.load(model_path, weights_only=True))
 
     # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_update_rate, gamma=args.lr_gamma)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
@@ -339,7 +342,8 @@ def load_model(args):
 
 
 def create_path(args):
-    if args.model_path is not None:
+    if args.resume:
+        assert args.save_path is None, "You must pass the model path in resume mode!"
         save_path = args.save_path
         model_save_path = save_path + 'models/'
     else:
@@ -437,11 +441,15 @@ if __name__ == "__main__":
     args = parsing()
     args.config = config
     
-
+    best_loss = torch.inf
     # Setting seeds for reproducibility
     set_seed(args.seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
+
+    model_save_path, save_path = create_path(args)
+    writer = SummaryWriter(save_path)
+    args.save_path = save_path
 
     train_loader, test_loader, train_positives_loader, train_negetives_loader,\
         test_positives_loader, test_negetives_loader = loading_datasets(args, data_path, imagenet_path)
@@ -457,9 +465,6 @@ if __name__ == "__main__":
         args.device=f'cuda:{args.gpu}'
 
     model = model.to(args.device)
-    model_save_path, save_path = create_path(args)
-    writer = SummaryWriter(save_path)
-    args.save_path = save_path
     train_global_iter = 0
 
     args.last_lr = args.learning_rate
@@ -475,14 +480,16 @@ if __name__ == "__main__":
         writer.add_scalar("Train/lr", args.last_lr, epoch)
         print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}")
         
-        if (epoch) % 5 == 0:
-            torch.save(model.state_dict(), os.path.join(model_save_path,f'model_params_epoch_{epoch}.pt'))
+        if (epoch) % (args.epochs / 10) == 0:
+            torch.save(model.state_dict(), os.path.join(model_save_path, f'model_params_epoch_{epoch}.pt'))
 
-        # args.last_lr = scheduler.get_last_lr()[0]
+
+        if epoch_loss['loss'] < best_loss:
+            torch.save(model.state_dict(), os.path.join(save_path, 'best_params.pt'))
 
         last_sim_ps = avg_sim_ps
         last_sim_ns = avg_sim_ns
         args.seed += epoch
         set_seed(args.seed)
 
-    torch.save(model.state_dict(), os.path.join(save_path,'last_params.pt'))
+    torch.save(model.state_dict(), os.path.join(save_path, 'last_params.pt'))
