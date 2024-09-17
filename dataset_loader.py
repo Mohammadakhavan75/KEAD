@@ -422,13 +422,13 @@ class MVTecADDataset(Dataset):
         for idx, category in enumerate(self.categories):
             category_path = os.path.normpath(os.path.join(self.root_dir, 'mvtec_ad', category, phase_dir))
 
-            for class_name in os.listdir(category_path):
-                class_dir = os.path.join(category_path, class_name)
-                if not os.path.isdir(class_dir):
+            for condition in os.listdir(category_path):
+                condition_dir = os.path.join(category_path, condition)
+                if not os.path.isdir(condition_dir):
                     continue
 
-                for img_name in os.listdir(class_dir):
-                    img_path = os.path.join(class_dir, img_name)
+                for img_name in os.listdir(condition_dir):
+                    img_path = os.path.join(condition_dir, img_name)
                     self.image_paths.append(img_path)
                     # Label: 0 for 'good' images, 1 for 'anomaly' images
                     # self.targets.append(0 if class_name == 'good' else 1)
