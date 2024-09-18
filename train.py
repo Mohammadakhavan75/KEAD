@@ -489,8 +489,9 @@ if __name__ == "__main__":
             torch.save(model.state_dict(), os.path.join(model_save_path, f'model_params_epoch_{epoch}.pt'))
 
 
-        if epoch_loss['loss'] < best_loss:
+        if np.mean(epoch_loss['loss']) < best_loss:
             torch.save(model.state_dict(), os.path.join(save_path, 'best_params.pt'))
+            best_loss = np.mean(epoch_loss['loss'])
 
         last_sim_ps = avg_sim_ps
         last_sim_ns = avg_sim_ns
