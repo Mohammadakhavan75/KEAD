@@ -5,7 +5,7 @@ import argparse
 import torchvision
 import numpy as np
 from torch.utils.data import DataLoader
-from dataset_loader import load_np_dataset, load_mvtec_ad, MVTecADDataset
+from dataset_loader import load_np_dataset, load_mvtec_ad, MVTecADDataset, VisADataset
 from torchvision.transforms import transforms
 from dataset_loader import SVHN, get_subclass_dataset, sparse2coarse
 from sklearn.metrics import roc_auc_score
@@ -209,6 +209,17 @@ def load_data(root_path, args):
         train_data = MVTecADDataset(root_path, transform=transform, categories=categories, phase='train')
         test_data = MVTecADDataset(root_path, transform=transform, categories=categories, phase='test')
 
+    elif args.dataset == 'visa':
+        import math
+        resize=args.img_size
+        transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(math.ceil(resize*1.14)),
+            torchvision.transforms.CenterCrop(resize),
+            torchvision.transforms.ToTensor()])
+
+        categories = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']
+        train_data = VisADataset(root_path, transform=transform, categories=categories, phase='normal')
+        test_data = VisADataset(root_path, transform=transform, categories=categories, phase='anomaly')
     # Create sub classes
     if args.one_class_idx != None:
         if (args.dataset == 'cifar100' or args.dataset == 'aug100' or args.dataset == 'anomaly100'):
