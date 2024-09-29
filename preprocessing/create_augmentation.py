@@ -448,46 +448,45 @@ def color_jitter(image, _):
 def loading_datasets(args):
     
     if args.dataset == 'cifar10':
-        train_loader, test_loader = load_cifar10(args.config['data_path'], 
-                                            batch_size=1)
+        train_loader, test_loader = load_cifar10(args.config['data_path'],
+                                            batch_size=1,
+                                            shuffle=False,
+                                            seed=args.seed)
     elif args.dataset == 'svhn':
-        train_loader, test_loader = load_svhn(args.config['data_path'], 
-                                            batch_size=1)
+        train_loader, test_loader = load_svhn(args.config['data_path'],
+                                            batch_size=1,
+                                            shuffle=False,
+                                            seed=args.seed)
     elif args.dataset == 'cifar100':
-        train_loader, test_loader = load_cifar100(args.config['data_path'], 
-                                                batch_size=1)
+        train_loader, test_loader = load_cifar100(args.config['data_path'],
+                                                batch_size=1,
+                                                shuffle=False,
+                                                seed=args.seed)
     elif args.dataset == 'imagenet':
-        train_loader, test_loader = load_imagenet(args.config['imagenet_path'], 
-                                                batch_size=1)
+        train_loader, test_loader = load_imagenet(args.config['imagenet_path'],
+                                                batch_size=1,
+                                                shuffle=False,
+                                                seed=args.seed)
     elif args.dataset == 'mvtec_ad':
-        import math
-        import torchvision
-        resize=224
-        transform = torchvision.transforms.Compose([
-                torchvision.transforms.Resize(math.ceil(resize*1.14)),
-                torchvision.transforms.CenterCrop(resize),
-                torchvision.transforms.ToTensor()])
-        categories = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']  # List all categories
-        mvtec_train = MVTecADDataset(root_dir=args.config['data_path'], transform=transform, categories=categories, phase='train')
-        mvtec_test = MVTecADDataset(root_dir=args.config['data_path'], transform=transform, categories=categories, phase='test')
-        train_loader = DataLoader(mvtec_train, batch_size=1, shuffle=False)
-        test_loader = DataLoader(mvtec_test, batch_size=1, shuffle=False)
-    
+        train_loader, test_loader = load_mvtec_ad(data_path,
+                                                batch_size=1,
+                                                shuffle=False,
+                                                seed=args.seed)
+
     elif args.dataset == 'visa':
-        import math
-        import torchvision
-        resize=224
-        transform = torchvision.transforms.Compose([
-                torchvision.transforms.Resize(math.ceil(resize*1.14)),
-                torchvision.transforms.CenterCrop(resize),
-                torchvision.transforms.ToTensor()])
-        categories = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']  # List all categories
-        visa_train = VisADataset(root_dir=args.config['data_path'], transform=transform, categories=categories, phase='normal')
-        visa_test = VisADataset(root_dir=args.config['data_path'], transform=transform, categories=categories, phase='anomaly')
-        train_loader = DataLoader(visa_train, batch_size=1, shuffle=False)
-        test_loader = DataLoader(visa_test, batch_size=1, shuffle=False)
+        train_loader, test_loader = load_visa(data_path,
+                                            batch_size=1,
+                                            shuffle=False,
+                                            seed=args.seed)
 
     return train_loader, test_loader
+
+import torch
+def set_seed(seed_nu):
+    torch.manual_seed(seed_nu)
+    random.seed(seed_nu)
+    np.random.seed(seed_nu)
+
 
 
 parser = argparse.ArgumentParser(description='',
@@ -499,9 +498,11 @@ parser.add_argument('--save_img', action="store_true", help='Using train data')
 parser.add_argument('--aug', default=None, type=str, help='config file')
 parser.add_argument('--config', default=None, help='config file')
 parser.add_argument('--severity', default=1, type=int, help='config file')
+parser.add_argument('--seed', type=int, default=1,
+                    help='seed for np(tinyimages80M sampling); 1|2|8|100|107')
 
 args = parser.parse_args()
-
+set_seed(args.seed)
 with open(args.config, 'r') as config_file:
     config = json.load(config_file)
 
@@ -511,7 +512,7 @@ imagenet_path = config['imagenet_path']
 args.config = config
 
 sys.path.append(args.config["library_path"])
-from dataset_loader import load_cifar10, load_svhn, load_cifar100, load_imagenet, MVTecADDataset, VisADataset
+from dataset_loader import load_cifar10, load_svhn, load_cifar100, load_imagenet, load_mvtec_ad, load_visa
 
 
 
@@ -599,3 +600,5 @@ else:
     np.save(os.path.join(saving_path, 'labels.npy'), np.array(labels_c).astype(np.uint8))
     # except:
         # print(f"Error occured in: {args.aug}")
+
+print(f"Augmentaion {args.aug} Finished!")

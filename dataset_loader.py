@@ -164,7 +164,7 @@ def sparse2coarse(targets):
     return coarse_labels[targets]
 
 
-def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=True, dataset='cifar10', preprocessing='clip', k_pairs=1, resize=224, seed=42):
+def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=True, dataset='cifar10', preprocessing='clip', k_pairs=1, resize=224, shuffle=True, seed=1):
     # Filling paths
     np_train_target_path = os.path.join(args.config['generalization_path'], f'{dataset}_Train_s1/labels.npy')
     np_test_target_path = os.path.join(args.config['generalization_path'], f'{dataset}_Test_s5/labels.npy')
@@ -233,8 +233,10 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=
         
         generator_train_positives.append(torch.Generator().manual_seed(seed))
         generator_test_positives.append(torch.Generator().manual_seed(seed))
-        train_positives_loader.append(DataLoader(all_train_dataset_positives_one_class[k-1], shuffle=True, generator=generator_train_positives[k-1], batch_size=batch_size, num_workers=num_workers))
-        test_positives_loader.append(DataLoader(all_test_dataset_positives_one_class[k-1], shuffle=True, generator=generator_test_positives[k-1], batch_size=batch_size, num_workers=num_workers))
+        train_positives_loader.append(DataLoader(all_train_dataset_positives_one_class[k-1], shuffle=shuffle, generator=generator_train_positives[k-1], batch_size=batch_size, num_workers=num_workers))
+        test_positives_loader.append(DataLoader(all_test_dataset_positives_one_class[k-1], shuffle=shuffle, generator=generator_test_positives[k-1], batch_size=batch_size, num_workers=num_workers))
+        # train_positives_loader.append(DataLoader(all_train_dataset_positives_one_class[k-1], shuffle=False, generator=generator_train_positives[k-1], batch_size=batch_size, num_workers=num_workers))
+        # test_positives_loader.append(DataLoader(all_test_dataset_positives_one_class[k-1], shuffle=False, generator=generator_test_positives[k-1], batch_size=batch_size, num_workers=num_workers))
 
     # Loading negative 
     for k in range(1, k_pairs + 1):
@@ -262,13 +264,15 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=
         
         generator_train_negatives.append(torch.Generator().manual_seed(seed))
         generator_test_negatives.append(torch.Generator().manual_seed(seed))
-        train_negetives_loader.append(DataLoader(all_train_dataset_negetives_one_class[k-1], shuffle=True, generator=generator_train_negatives[k-1], batch_size=batch_size, num_workers=num_workers))
-        test_negetives_loader.append(DataLoader(all_test_dataset_negetives_one_class[k-1], shuffle=True, generator=generator_test_negatives[k-1], batch_size=batch_size, num_workers=num_workers))
+        train_negetives_loader.append(DataLoader(all_train_dataset_negetives_one_class[k-1], shuffle=shuffle, generator=generator_train_negatives[k-1], batch_size=batch_size, num_workers=num_workers))
+        test_negetives_loader.append(DataLoader(all_test_dataset_negetives_one_class[k-1], shuffle=shuffle, generator=generator_test_negatives[k-1], batch_size=batch_size, num_workers=num_workers))
+        # train_negetives_loader.append(DataLoader(all_train_dataset_negetives_one_class[k-1], shuffle=False, generator=generator_train_negatives[k-1], batch_size=batch_size, num_workers=num_workers))
+        # test_negetives_loader.append(DataLoader(all_test_dataset_negetives_one_class[k-1], shuffle=False, generator=generator_test_negatives[k-1], batch_size=batch_size, num_workers=num_workers))
 
     return train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader
 
 
-def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None, seed=42):
+def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
     print('loading Imagenet')
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
@@ -284,37 +288,37 @@ def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None, seed=4
         train_data = get_subclass_dataset(train_data, one_class_idx)
         val_data = get_subclass_dataset(val_data, one_class_idx)
 
-    train_loader = DataLoader(train_data, shuffle=True, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
-    val_loader = DataLoader(val_data, shuffle=True, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
+    val_loader = DataLoader(val_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, val_loader
 
 
-def load_cifar10(path, batch_size=64, num_workers=0, one_class_idx=None, seed=42):
+def load_cifar10(path, transforms=transforms.ToTensor(), batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
     print('loading cifar10')
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-    data_transforms = transforms.Compose([transforms.ToTensor()])
+    transforms = transforms
     train_data = torchvision.datasets.CIFAR10(
-        path, train=True, transform=data_transforms, download=True)
+        path, train=True, transform=transforms, download=True)
     test_data = torchvision.datasets.CIFAR10(
-        path, train=False, transform=data_transforms, download=True)
+        path, train=False, transform=transforms, download=True)
 
     if one_class_idx != None:
         train_data = get_subclass_dataset(train_data, one_class_idx)
         test_data = get_subclass_dataset(test_data, one_class_idx)
 
-    train_loader = DataLoader(train_data, shuffle=True, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
-    val_loader = DataLoader(test_data, shuffle=True, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
+    val_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, val_loader
 
 
-def load_svhn(path, batch_size=64, num_workers=0, one_class_idx=None, seed=42):
+def load_svhn(path, transforms=transforms.ToTensor(), batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
     print('loading SVHN')
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-    transform = transforms.Compose([transforms.ToTensor()])
+    transform = transforms
     train_data = SVHN(root=path, split="train", transform=transform)
     test_data = SVHN(root=path, split="test", transform=transform)
 
@@ -322,16 +326,16 @@ def load_svhn(path, batch_size=64, num_workers=0, one_class_idx=None, seed=42):
         train_data = get_subclass_dataset(train_data, one_class_idx)
         test_data = get_subclass_dataset(test_data, one_class_idx)
 
-    train_loader = DataLoader(train_data, shuffle=True, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
-    val_loader = DataLoader(test_data, shuffle=True, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
+    val_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, val_loader
 
 
-def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None, coarse=True, seed=42):
+def load_cifar100(path, transforms=transforms.ToTensor(), batch_size=64, num_workers=0, one_class_idx=None, coarse=True, shuffle=True, seed=1):
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-    transform = transforms.Compose([transforms.ToTensor()])
+    transform = transforms
     train_data = torchvision.datasets.CIFAR100(path, train=True, download=True, transform=transform)
     test_data = torchvision.datasets.CIFAR100(path, train=False, download=True, transform=transform)
     
@@ -343,20 +347,22 @@ def load_cifar100(path, batch_size=64, num_workers=0, one_class_idx=None, coarse
         train_data = get_subclass_dataset(train_data, one_class_idx)
         test_data = get_subclass_dataset(test_data, one_class_idx)
 
-    train_loader = DataLoader(train_data, shuffle=True, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
-    test_loader = DataLoader(test_data, shuffle=True, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
+    test_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, test_loader
 
 
-def load_mvtec_ad(path, resize=224, batch_size=64, num_workers=0, one_class_idx=None, seed=42):
+def load_mvtec_ad(path, transforms=None, resize=224, batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-
-    transform = torchvision.transforms.Compose([
-            torchvision.transforms.Resize(math.ceil(resize*1.14)),
-            torchvision.transforms.CenterCrop(resize),
-            torchvision.transforms.ToTensor()])
+    if not transforms:
+        transform = torchvision.transforms.Compose([
+                torchvision.transforms.Resize(math.ceil(resize*1.14)),
+                torchvision.transforms.CenterCrop(resize),
+                torchvision.transforms.ToTensor()])
+    else:
+        transforms = transforms
     
     cc = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
     if one_class_idx != None:
@@ -369,21 +375,22 @@ def load_mvtec_ad(path, resize=224, batch_size=64, num_workers=0, one_class_idx=
     train_data = MVTecADDataset(path, transform=transform, categories=categories, phase='train')
     test_data = MVTecADDataset(path, transform=transform, categories=categories, phase='test')
     
-    train_loader = DataLoader(train_data, shuffle=True, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
-    test_loader = DataLoader(test_data, shuffle=True, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
+    test_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, test_loader
 
 
-def load_visa(path, resize=224, batch_size=64, num_workers=0, one_class_idx=None, seed=42):
+def load_visa(path, transforms=None, resize=224, batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-
-    transform = torchvision.transforms.Compose([
-            torchvision.transforms.Resize(math.ceil(resize*1.14)),
-            torchvision.transforms.CenterCrop(resize),
-            torchvision.transforms.ToTensor()])
-    
+    if not transforms:
+        transform = torchvision.transforms.Compose([
+                torchvision.transforms.Resize(math.ceil(resize*1.14)),
+                torchvision.transforms.CenterCrop(resize),
+                torchvision.transforms.ToTensor()])
+    else:
+        transforms = transforms
     cc = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']
     if one_class_idx != None:
         print(cc[one_class_idx])
@@ -395,8 +402,8 @@ def load_visa(path, resize=224, batch_size=64, num_workers=0, one_class_idx=None
     train_data = VisADataset(path, transform=transform, categories=categories, phase='normal')
     test_data = VisADataset(path, transform=transform, categories=categories, phase='anomaly')
     
-    train_loader = DataLoader(train_data, shuffle=True, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
-    test_loader = DataLoader(test_data, shuffle=True, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
+    test_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
 
     return train_loader, test_loader
 
