@@ -5,3 +5,9 @@ __pycache__
 representations
 wasser_dist
 saved_pickles
+run
+ranks_datasets
+wasser_dist_datasets
+ranks
+*.log
+*.ipynb
