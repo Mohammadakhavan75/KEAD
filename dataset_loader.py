@@ -362,7 +362,7 @@ def load_mvtec_ad(path, transforms=None, resize=224, batch_size=64, num_workers=
                 torchvision.transforms.CenterCrop(resize),
                 torchvision.transforms.ToTensor()])
     else:
-        transforms = transforms
+        transform = transforms
     
     cc = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
     if one_class_idx != None:
@@ -390,7 +390,7 @@ def load_visa(path, transforms=None, resize=224, batch_size=64, num_workers=0, o
                 torchvision.transforms.CenterCrop(resize),
                 torchvision.transforms.ToTensor()])
     else:
-        transforms = transforms
+        transform = transforms
     cc = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']
     if one_class_idx != None:
         print(cc[one_class_idx])
