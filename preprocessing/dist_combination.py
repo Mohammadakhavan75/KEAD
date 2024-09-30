@@ -99,14 +99,7 @@ if args.one_class:
             print(class_idx)
             softmax_sorted[class_idx][noise_name] = torch.mean(torch.tensor([loaded_diffs[noise_name][class_idx] for idx in indices])).float()
             
-        # for file_name in os.listdir(root):
-        #     with open(os.path.join(root, file_name), 'rb') as f:
-        #         loaded_diff = pickle.load(f)
-        
-            # print(class_idx)
-            # noise_name = file_name.split('.')[0]
-            # softmax_sorted[class_idx][noise_name] = torch.mean(torch.tensor([loaded_diff[class_idx].astype(np.float32) for idx in indices])).float()
-        
+
     for i in range(classes):
         softmaxes = torch.nn.functional.softmax(torch.tensor(list(softmax_sorted[i].values())), dim=0).numpy()
         for j, key in enumerate(softmax_sorted[i].keys()):
