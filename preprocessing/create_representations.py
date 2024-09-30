@@ -64,6 +64,7 @@ else:
 
 if args.backbone == 'clip':
     model, transform = clip.load("ViT-L/14", device=device)
+    # model, transform = clip.load("RN50x4", device=device)
     model = model.to(device)
 elif args.backbone == 'resnet50':
     model = wide_resnet50_2("IMAGENET1K_V2")
@@ -103,7 +104,7 @@ args.config = config
 
 sys.path.append(args.config["library_path"])
 from contrastive import cosine_similarity
-from dataset_loader import SVHN, load_np_dataset, MVTecADDataset, VisADataset
+from dataset_loader import load_cifar10, load_cifar100, load_svhn, load_mvtec_ad, load_visa, load_np_dataset
 
 
 if args.save_rep_norm:
@@ -117,49 +118,50 @@ if args.dataset == 'cifar10':
     train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar10_Train_s1/{args.aug}.npy')).replace("\r", "")
     train_aug_targets_path = os.path.join(generalization_path, 'cifar10_Train_s1/labels.npy').replace("\r", "")
     
-    noraml_dataset = CIFAR10(root=data_path, train=True, transform=transform)
+    normal_loader, _ = load_cifar10(data_path,
+                                    batch_size=args.batch_size,
+                                    transforms=transform,
+                                    seed=args.seed)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
     
 elif args.dataset == 'svhn':
     train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'svhn_Train_s1/{args.aug}.npy').replace("\r", ""))
     train_aug_targets_path = os.path.join(generalization_path, 'svhn_Train_s1/labels.npy').replace("\r", "")
     
-    noraml_dataset = SVHN(root=data_path, split="train", transform=transform)
+    normal_loader, _ = load_svhn(data_path,
+                                    batch_size=args.batch_size,
+                                    transforms=transform,
+                                    seed=args.seed)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset='svhn')
 
 elif args.dataset == 'cifar100':
     train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar100_Train_s1/{args.aug}.npy').replace("\r", ""))
     train_aug_targets_path = os.path.join(generalization_path, 'cifar100_Train_s1/labels.npy').replace("\r", "")
     
-    noraml_dataset = CIFAR100(root=data_path, train=True, transform=transform)
+    normal_loader, _ = load_cifar100(data_path,
+                                    batch_size=args.batch_size,
+                                    transforms=transform,
+                                    seed=args.seed)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
 
 elif args.dataset == 'mvtec_ad':
-    import math
-    resize=224
-    transform = torchvision.transforms.Compose([
-            torchvision.transforms.Resize(math.ceil(resize*1.14)),
-            torchvision.transforms.CenterCrop(resize),
-            torchvision.transforms.ToTensor()])
     train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'mvtec_ad_Train_s1/{args.aug}.npy')).replace("\r", "")
     train_aug_targets_path = os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy').replace("\r", "")
     
-    categories = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
-    noraml_dataset = MVTecADDataset(root_dir=data_path, transform=transform, categories=categories, phase='train')
+    normal_loader, _ = load_mvtec_ad(data_path,
+                                    batch_size=args.batch_size,
+                                    transforms=transform,
+                                    seed=args.seed)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
 
 elif args.dataset == 'visa':
-    import math
-    resize=224
-    transform = torchvision.transforms.Compose([
-            torchvision.transforms.Resize(math.ceil(resize*1.14)),
-            torchvision.transforms.CenterCrop(resize),
-            torchvision.transforms.ToTensor()])
     train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'visa_Train_s1/{args.aug}.npy')).replace("\r", "")
     train_aug_targets_path = os.path.join(generalization_path, 'visa_Train_s1/labels.npy').replace("\r", "")
     
-    categories = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']  # List all categories
-    noraml_dataset = VisADataset(root_dir=data_path, transform=transform, categories=categories, phase='normal')
+    normal_loader, _ = load_visa(data_path,
+                                    batch_size=args.batch_size,
+                                    transforms=transform,
+                                    seed=args.seed)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
 
 
@@ -180,9 +182,8 @@ elif args.dataset == 'imagenet':
 else:
     raise NotImplemented(f"Not Available Dataset {args.dataset}!")
 
-
-normal_loader = DataLoader(noraml_dataset, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
-aug_loader = DataLoader(aug_dataset, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+generator_aug = torch.Generator().manual_seed(args.seed)
+aug_loader = DataLoader(aug_dataset, shuffle=True, batch_size=args.batch_size, num_workers=args.num_workers, generator=generator_aug)
 
 loader = zip(normal_loader, aug_loader)
 cosine_diff = []
@@ -207,11 +208,11 @@ for i, data in tqdm(enumerate(loader)):
             with open(os.path.join(rep_aug_path, f'batch_{i}.pkl').replace("\r", ""), 'wb') as f:
                 pickle.dump(imgs_aug_features, f)
 
-        for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
-            cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
-            wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
+        # for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
+        #     cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
+        #     wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
 
-        euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
+        # euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
         targets_list.extend(targets.detach().cpu().numpy())
         break
 
