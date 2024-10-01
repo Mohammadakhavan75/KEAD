@@ -95,7 +95,11 @@ def contrastive_matrix(data, positive, negative, temperature=0.5, epsilon = 1e-1
     denom = torch.sum(torch.exp(sim_n/temperature), dim=1) + torch.exp(sim_p/temperature)
    
     # card = len(positive[0])
-    card = 1
+    if positive.shape[0] != data.shape[0]:
+        card = int(positive.shape[0]/data.shape[0])
+    else:
+        card = 1
+
     loss = (-1 / card) * torch.log(torch.exp(sim_p / temperature) / (denom + epsilon))
 
     return torch.mean(loss), sim_p, sim_n, data_norm, negative_norms, positive_norms # epsilon for non getting devided by zero error
