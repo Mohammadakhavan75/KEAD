@@ -98,13 +98,13 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
     if args.k_pairs == 1: 
         for n, (normal, p_data, n_data) in tqdm(enumerate(zip(train_loader, train_positives_loader[0], train_negetives_loader[0]))):
             imgs, labels = normal
-            p_imgs, _ = p_data
-            n_imgs, _ = n_data
-            
+            p_imgs, p_label = p_data
+            n_imgs, n_label = n_data
+            assert torch.equal(torch.squeeze(labels), torch.squeeze(p_label)), f"The labels of positives images do not match to noraml images, {torch.squeeze(labels)}, {torch.squeeze(p_label)}"
+            assert torch.equal(torch.squeeze(labels), torch.squeeze(n_label)), f"The labels of negatives images do not match to noraml images, {torch.squeeze(labels)}, {torch.squeeze(n_label)}"
             imgs, labels = imgs.to(args.device), labels.to(args.device)
             p_imgs = p_imgs.to(args.device)
             n_imgs = n_imgs.to(args.device)
-        
         
             optimizer.zero_grad()
             pred_d, normal_features = model(imgs, True)
@@ -115,34 +115,16 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             n_features = n_features[-1]
 
             loss_contrastive = torch.tensor(0.0, requires_grad=True)
-    
-            # for norm_f, p_f, n_f  in zip(normal_features, p_features, n_features): # Single Negative Method
-            #     l_c, sim_p, sim_n = contrastive(norm_f, p_f, n_f, temperature=args.temperature)
-            # for norm_f, p_f in zip(normal_features, p_features): # SimCLR Method (But using all other negative data in batch as negative not using the original datas)
-                # l_c, sim_p, sim_n = contrastive_matrix(norm_f, p_f, n_features, temperature=args.temperature)
-                # loss_contrastive = loss_contrastive + l_c
-                # sim_ps.append(sim_p.detach().cpu())
-                # sim_ns.append(sim_n.detach().cpu())
-                # sim_ns.append(torch.mean(sim_n).detach().cpu())
-                
-            
             loss_contrastive, sim_p, sim_n, data_norm, negative_norms, positive_norms = contrastive_matrix(normal_features, p_features, n_features, temperature=args.temperature)
             sim_ps.append(torch.mean(sim_p).detach().cpu())
             sim_ns.append(torch.mean(sim_n).detach().cpu())
-
-            # label_normals = torch.tensor([torch.tensor(1.) for _ in range(len(pred_d))])
-            # label_positives = torch.tensor([torch.tensor(1.) for _ in range(len(pred_d))])
-            # label_anomals = torch.tensor([torch.tensor(0.) for _ in range(len(pred_d))])
-            # labels = torch.cat((label_normals, label_positives, label_anomals), dim=0).to(args.device)
 
             labels = torch.zeros(len(pred_d)*3).to(args.device)
             labels[len(pred_d)*2:] = 1.
             preds = torch.cat((pred_d, pred_p, pred_n), dim=0).squeeze(1).to(args.device)
 
-
             bc_loss = BCELoss(preds, labels)
             loss = loss_contrastive + bc_loss
-            # loss = loss_contrastive / len(normal_features)
             
             epoch_loss['loss'].append(loss.item())
             epoch_loss['contrastive'].append(loss_contrastive.item())
@@ -156,7 +138,6 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             writer.add_scalar("Train/norm_p", torch.mean(data_norm).detach().cpu().numpy(), train_global_iter)
             writer.add_scalar("Train/norm_n", torch.mean(negative_norms).detach().cpu().numpy(), train_global_iter)
             writer.add_scalar("Train/norm_d", torch.mean(positive_norms).detach().cpu().numpy(), train_global_iter)
-
 
 
             loss.backward()
@@ -173,56 +154,78 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             writer.add_scalar("Train/lr", args.last_lr, epoch)
 
     elif args.k_pairs == 2:
-        for normal, p_data, n_data, p_data1, n_data1 in zip(train_loader, train_positives_loader[0], train_negetives_loader[0], train_positives_loader[1], train_negetives_loader[1]):
+        for n, (normal, p1_data, n1_data, p2_data, n2_data) in tqdm(enumerate(zip(train_loader, train_positives_loader[0], train_negetives_loader[0], train_positives_loader[1], train_negetives_loader[1]))):
             imgs, labels = normal
-            p_imgs, _ = p_data
-            n_imgs, _ = n_data
-            p_imgs1, _ = p_data1
-            n_imgs1, _ = n_data1
+            p1_imgs, p1_label = p1_data
+            n1_imgs, n1_label = n1_data
+            p2_imgs, p2_label = p2_data
+            n2_imgs, n2_label = n2_data
             
+            assert torch.equal(torch.squeeze(labels), torch.squeeze(p1_label)), f"The labels of positives 1 images do not match to noraml images, {torch.squeeze(labels)}, {torch.squeeze(p1_label)}"
+            assert torch.equal(torch.squeeze(labels), torch.squeeze(n1_label)), f"The labels of negatives 1 images do not match to noraml images, {torch.squeeze(labels)}, {torch.squeeze(n1_label)}"
+            assert torch.equal(torch.squeeze(labels), torch.squeeze(p2_label)), f"The labels of positives 2 images do not match to noraml images, {torch.squeeze(labels)}, {torch.squeeze(p2_label)}"
+            assert torch.equal(torch.squeeze(labels), torch.squeeze(n2_label)), f"The labels of negatives 2 images do not match to noraml images, {torch.squeeze(labels)}, {torch.squeeze(n2_label)}"
+
             imgs, labels = imgs.to(args.device), labels.to(args.device)
-            p_imgs = p_imgs.to(args.device)
-            n_imgs = n_imgs.to(args.device)
-            p_imgs1 = p_imgs1.to(args.device)
-            n_imgs1 = n_imgs1.to(args.device)
+            p1_imgs = p1_imgs.to(args.device)
+            n1_imgs = n1_imgs.to(args.device)
+            p2_imgs = p2_imgs.to(args.device)
+            n2_imgs = n2_imgs.to(args.device)
         
         
             optimizer.zero_grad()
-            _, normal_features = model(imgs, True)
-            _, p_features = model(p_imgs, True)
-            _, n_features = model(n_imgs, True)
-            _, p_features1 = model(p_imgs1, True)
-            _, n_features1 = model(n_imgs1, True)
+            pred_d, normal_features = model(imgs, True)
+            p1_pred, p1_features = model(p1_imgs, True)
+            n1_pred, n1_features = model(n1_imgs, True)
+            p2_pred, p2_features = model(p2_imgs, True)
+            n2_pred, n2_features = model(n2_imgs, True)
 
             normal_features = normal_features[-1]
-            p_features = p_features[-1]
-            n_features = n_features[-1]
-            p_features1 = p_features1[-1]
-            n_features1 = n_features1[-1]
+            p1_features = p1_features[-1]
+            n1_features = n1_features[-1]
+            p2_features = p2_features[-1]
+            n2_features = n2_features[-1]
 
             loss_contrastive = torch.tensor(0.0, requires_grad=True)
 
-            for norm_f, p_f, n_f, p_f1, n_f1  in zip(normal_features, p_features, n_features, p_features1, n_features1):
-                p_fs = torch.stack([p_f, p_f1], dim=0)
-                n_fs = torch.stack([n_f, n_f1], dim=0)
-                l_c, sim_p, sim_n = contrastive(norm_f, p_fs, n_fs, temperature=args.temperature)
-                loss_contrastive = loss_contrastive + l_c
-                sim_ps.append(sim_p.detach().cpu())
-                sim_ns.append(sim_n.detach().cpu())
-            
-        
-            loss = loss_contrastive / len(normal_features)
+            p_features = torch.cat([p1_features, p2_features], dim=0)
+            n_features = torch.cat([n1_features, n2_features], dim=0)
+            loss_contrastive, sim_p, sim_n, data_norm, negative_norms, positive_norms = contrastive_matrix(normal_features, p_features, n_features, temperature=args.temperature)
+
+            sim_ps.append(torch.mean(sim_p).detach().cpu())
+            sim_ns.append(torch.mean(sim_n).detach().cpu())
+
+            labels = torch.zeros(len(pred_d) * 5).to(args.device)
+            labels[len(pred_d) * 3:] = 1.
+            preds = torch.cat((pred_d, p1_pred, p2_pred, n1_pred, n2_pred), dim=0).squeeze(1).to(args.device)
+
+            bc_loss = BCELoss(preds, labels)
+            loss = loss_contrastive + bc_loss
             
             epoch_loss['loss'].append(loss.item())
             epoch_loss['contrastive'].append(loss_contrastive.item())
 
-            train_global_iter += 1
+            writer.add_scalar("Train/loss_contrastive", loss_contrastive.item(), train_global_iter)
+            writer.add_scalar("Train/bc_loss", bc_loss.item(), train_global_iter)
             writer.add_scalar("Train/loss", loss.item(), train_global_iter)
             writer.add_scalar("Train/sim_p", torch.mean(sim_p).detach().cpu().numpy(), train_global_iter)
             writer.add_scalar("Train/sim_n", torch.mean(sim_n).detach().cpu().numpy(), train_global_iter)
-
+            writer.add_scalar("Train/norm_p", torch.mean(data_norm).detach().cpu().numpy(), train_global_iter)
+            writer.add_scalar("Train/norm_n", torch.mean(negative_norms).detach().cpu().numpy(), train_global_iter)
+            writer.add_scalar("Train/norm_d", torch.mean(positive_norms).detach().cpu().numpy(), train_global_iter)
+            
             loss.backward()
+            pp = []
+            for param in model.parameters():
+                if param.grad is not None:
+                    pp.append(torch.mean(param.grad.norm()).detach().cpu())
+            
+            writer.add_scalar("Train/grads", torch.mean(torch.tensor(pp)).detach().cpu().numpy(), train_global_iter)
+
             optimizer.step()
+            scheduler.step(epoch - 1 + n / len(train_loader))
+            args.last_lr = optimizer.param_groups[0]['lr']
+            writer.add_scalar("Train/lr", args.last_lr, epoch)
 
     elif args.k_pairs == 3:
         for normal, p_data, n_data, p_data1, n_data1, p_data2, n_data2 in zip(train_loader, train_positives_loader[0], train_negetives_loader[0], train_positives_loader[1], train_negetives_loader[1], train_positives_loader[2], train_negetives_loader[2]):
