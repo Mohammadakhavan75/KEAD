@@ -294,8 +294,8 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
         writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, train_global_iter)
 
     else:
-        avg_sim_ps = torch.mean(torch.cat(sim_ps, dim=0), dim=0).detach().cpu().numpy()
-        avg_sim_ns = torch.mean(torch.cat(sim_ns, dim=0), dim=0).detach().cpu().numpy()
+        avg_sim_ps = torch.mean(torch.tensor(sim_ps), dim=0).detach().cpu().numpy()
+        avg_sim_ns = torch.mean(torch.tensor(sim_ns), dim=0).detach().cpu().numpy()
         writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, train_global_iter)
         writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, train_global_iter)
 
