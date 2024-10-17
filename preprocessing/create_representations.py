@@ -192,8 +192,9 @@ euclidean_diffs = []
 targets_list = []
 for i, data in tqdm(enumerate(loader)):
     data_normal, data_aug = data
-    imgs_n, targets = data_normal
-    imgs_aug, _ = data_aug
+    imgs_n, n_targets = data_normal
+    imgs_aug, augs_targets = data_aug
+    assert torch.equal(n_targets, torch.squeeze(augs_targets)), f"The labels of aug images do not match to noraml images, {n_targets}, {augs_targets}"
     # This condition is for when len imgs_aug is larger than imgs_normal
     if len(imgs_n) != len(imgs_aug): 
         imgs_aug = imgs_aug[:len(imgs_n)]
@@ -203,17 +204,17 @@ for i, data in tqdm(enumerate(loader)):
         # Saving the representations
         if args.save_rep_norm:
             with open(os.path.join(rep_norm_path, f'batch_{i}.pkl').replace("\r", ""), 'wb') as f:
-                pickle.dump(imgs_n_features, f)
+                pickle.dump(imgs_n_features.detach().cpu().numpy(), f)
         if args.save_rep_aug:
             with open(os.path.join(rep_aug_path, f'batch_{i}.pkl').replace("\r", ""), 'wb') as f:
-                pickle.dump(imgs_aug_features, f)
+                pickle.dump(imgs_aug_features.detach().cpu().numpy(), f)
 
         # for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
         #     cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
         #     wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
 
         # euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
-        targets_list.extend(targets.detach().cpu().numpy())
+        targets_list.extend(n_targets.detach().cpu().numpy())
         break
 
     imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
@@ -241,7 +242,7 @@ for i, data in tqdm(enumerate(loader)):
     #     wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
 
     # euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
-    targets_list.extend(targets.detach().cpu().numpy())
+    targets_list.extend(n_targets.detach().cpu().numpy())
 
 # euclidean_diffs = np.asarray(euclidean_diffs)
 targets_list = np.asarray(targets_list)
