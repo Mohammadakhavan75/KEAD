@@ -99,7 +99,9 @@ if args.dataset == 'svhn':
 
 if args.dataset == 'cifar10':
     classes = 10
-    targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar10_Train_s1/labels.npy'))
+    # targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar10_Train_s1/labels.npy'))
+    with open(f'./saved_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+        targets_list_loaded = pickle.load(f)
 
 if args.dataset == 'cifar100':
     classes = 100
