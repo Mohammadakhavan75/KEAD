@@ -1,115 +1,57 @@
-'''
-ResNet in PyTorch.
-This code mainly adopted from:
-
-<https://github.com/alinlab/CSI>
-
-@inproceedings{tack2020csi,
-  title={CSI: Novelty Detection via Contrastive Learning on Distributionally Shifted Instances},
-  author={Jihoon Tack and Sangwoo Mo and Jongheon Jeong and Jinwoo Shin},
-  booktitle={Advances in Neural Information Processing Systems},
-  year={2020}
-}
-'''
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from models.basic_block import BasicBlock
+from models.bottel_neck import Bottleneck
 
-from models.base_model import BaseModel
-
-
-def conv3x3(in_planes, out_planes, stride=1):
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
-
-
-class BasicBlock(nn.Module):
-    expansion = 1
-
-    def __init__(self, in_planes, planes, stride=1):
-        super(BasicBlock, self).__init__()
-        self.conv1 = conv3x3(in_planes, planes, stride)
-        self.conv2 = conv3x3(planes, planes)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.bn2 = nn.BatchNorm2d(planes)
-
-        self.shortcut = nn.Sequential()
-        if stride != 1 or in_planes != self.expansion*planes:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion*planes)
-            )
-
-    def forward(self, x):
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = self.bn2(self.conv2(out))
-        out += self.shortcut(x)
-        out = F.relu(out)
-        return out
+# Define the ResNet model
+class ResNet(nn.Module):
+    def __init__(self, block, num_blocks, img_size=32, batch_norm=True, fc_available=False, num_classes=10):
+        super(ResNet, self).__init__()
+        self.in_channels = 64
+        self.fc_available = fc_available
+        self.batch_norm = batch_norm
+        self.img_size = img_size
+        if img_size == 224:
+            self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False) # for 224 resolution
+            self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1) # for 224 resolution
+        elif img_size == 32:
+            self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        else:
+            raise NotImplementedError("img_size is not implemented: {}".format(img_size))
 
 
-class Bottleneck(nn.Module):
-    expansion = 4
-
-    def __init__(self, in_planes, planes, stride=1):
-        super(Bottleneck, self).__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.conv3 = nn.Conv2d(planes, self.expansion*planes, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.bn3 = nn.BatchNorm2d(self.expansion * planes)
-
-        self.shortcut = nn.Sequential()
-        if stride != 1 or in_planes != self.expansion*planes:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion*planes)
-            )
-
-    def forward(self, x):
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = F.relu(self.bn2(self.conv2(out)))
-        out = self.bn3(self.conv3(out))
-        out += self.shortcut(x)
-        out = F.relu(out)
-        return out
+        if self.batch_norm:
+            self.bn1 = nn.BatchNorm2d(64)
 
 
-class ResNet(BaseModel):
-    def __init__(self, block, num_blocks, num_classes=10):
-        super(ResNet, self).__init__(num_classes)
-
-        self.in_planes = 64
-
-        self.normalize = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        self.conv1 = conv3x3(3, 64)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.fc1 = nn.Linear(512, 1)
-        self.relu = nn.ReLU()
 
         self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
         self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(512 * block.expansion, num_classes)
 
-    def _make_layer(self, block, planes, num_blocks, stride):
-        strides = [stride] + [1]*(num_blocks-1)
+    def _make_layer(self, block, out_channels, num_blocks, stride):
         layers = []
-        for stride in strides:
-            layers.append(block(self.in_planes, planes, stride))
-            self.in_planes = planes * block.expansion
+        layers.append(block(self.in_channels, out_channels, stride, self.batch_norm))
+        self.in_channels = out_channels * block.expansion
+        for _ in range(1, num_blocks):
+            layers.append(block(self.in_channels, out_channels, batch_norm=self.batch_norm))
         return nn.Sequential(*layers)
 
-    def penultimate(self, x, all_features=False):
+    def forward(self, x):
         out_list = []
-        
-        x = self.normalize(x)
-
         out = self.conv1(x)
-        out = self.bn1(out)
-        out = F.relu(out)
         out_list.append(out)
-
+        if self.batch_norm:
+            out = self.bn1(out)
+            out_list.append(out)
+        if self.img_size==224:
+            out = self.maxpool(out)
+            out_list.append(out)
+        out = torch.relu(out)
+        out_list.append(out)
         out = self.layer1(out)
         out_list.append(out)
         out = self.layer2(out)
@@ -118,34 +60,19 @@ class ResNet(BaseModel):
         out_list.append(out)
         out = self.layer4(out)
         out_list.append(out)
-
-        out = F.avg_pool2d(out, 4)
-        out = out.view(out.size(0), -1)
+        out = self.avgpool(out)
+        out_list.append(out)
+        out = torch.flatten(out, 1)
         out_list.append(out)
 
-        out = self.fc1(out)
+        if self.fc_available:
+            out = self.fc(out)
 
-        if all_features:
-            return out, out_list
-        else:
-            return out
+        return out, out_list
 
+def ResNet18(img_size=32, batch_norm=True, fc_available=False, num_classes=10):
+    return ResNet(BasicBlock, [2, 2, 2, 2], img_size=img_size,  batch_norm=batch_norm, fc_available=fc_available, num_classes=num_classes)
 
-def ResNet18(num_classes):
-    return ResNet(BasicBlock, [2,2,2,2], num_classes=num_classes)
-
-def ResNet34(num_classes):
-    return ResNet(BasicBlock, [3,4,6,3], num_classes=num_classes)
-
-def ResNet50(num_classes):
-    return ResNet(Bottleneck, [3,4,6,3], num_classes=num_classes)
-
-
-class Normalize(nn.Module):
-    def __init__(self, mean, std):
-        super(Normalize, self).__init__()
-        self.register_buffer('mean', torch.tensor(mean).view(1, 3, 1, 1))
-        self.register_buffer('std', torch.tensor(std).view(1, 3, 1, 1))
-
-    def forward(self, x):
-        return (x - self.mean) / self.std
+# Function to instantiate ResNet-50
+def ResNet50(img_size=32, batch_norm=True, fc_available=False, num_classes=10):
+    return ResNet(Bottleneck, [3, 4, 6, 3], img_size=img_size,  batch_norm=batch_norm, fc_available=fc_available, num_classes=num_classes)
