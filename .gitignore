@@ -11,3 +11,5 @@ wasser_dist_datasets
 ranks
 *.log
 *.ipynb
+.vscode
+run_history
