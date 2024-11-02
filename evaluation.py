@@ -11,6 +11,7 @@ from dataset_loader import SVHN, get_subclass_dataset, sparse2coarse
 from sklearn.metrics import roc_auc_score
 from models.resnet import ResNet18, ResNet50
 from models.resnet_imagenet import resnet18, resnet50
+from sklearn.metrics import accuracy_score
 
 
 CIFAR100_SUPERCLASS = [
@@ -96,6 +97,7 @@ def parsing():
 
     return args
 
+
 def knn_score(train_set, test_set, n_neighbours=1):
     index = faiss.IndexFlatL2(train_set.shape[1])
     index.add(train_set)
@@ -126,116 +128,132 @@ def mahalanobis_distance(x, mu, inv_cov):
 
 def load_data(root_path, args):
     test_transform = transforms.Compose([transforms.ToTensor()])
+    if args.noise:
+        print(f"Loading noise {args.noise} as test data")
+        if args.dataset == 'cifar10':
+            np_test_img_path = root_path + f'/generalization_repo_dataset/cifar10_Test_s5/{args.noise}.npy'
+            np_test_target_path = root_path + '/generalization_repo_dataset/cifar10_Test_s5/labels.npy'
+            
+            train_data = torchvision.datasets.CIFAR10(
+                root_path, train=True, transform=test_transform, download=True)
+            test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10', train=False)
 
-    if args.dataset == 'cifar10':
-        train_data = torchvision.datasets.CIFAR10(
-            root_path, train=True, transform=test_transform, download=True)
-        test_data = torchvision.datasets.CIFAR10(
-            root_path, train=False, transform=test_transform, download=True)
-    
-    elif args.dataset == 'svhn':
-        train_data = SVHN(root=root_path, split="train", transform=test_transform)
-        test_data = SVHN(root=root_path, split="test", transform=test_transform)
-    
-    elif args.dataset == 'cifar100':
-        train_data = torchvision.datasets.CIFAR100(
-            root_path, train=True, transform=test_transform, download=True)
-        test_data = torchvision.datasets.CIFAR100(
-            root_path, train=False, transform=test_transform, download=True)
-    
-    elif args.dataset == 'anomaly':
+        elif args.dataset == 'svhn':
+            np_test_img_path = root_path + f'/generalization_repo_dataset/svhn_Test_s5/{args.noise}.npy'
+            np_test_target_path = root_path + '/generalization_repo_dataset/svhn_Test_s5/labels.npy'
+            train_data = SVHN(root=root_path, split="train", transform=test_transform)
+            test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10', train=False)
 
-        np_test_img_path = 'path_to_new_anomaly_data'
-        np_test_target_path = 'path_to_new_anomaly_labels'
-        
-        train_data = torchvision.datasets.CIFAR10(
-            root_path, train=True, transform=test_transform, download=True)
-        test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='anomaly', train=False)
+        elif args.dataset == 'cifar100':
+            np_test_img_path = root_path + f'/generalization_repo_dataset/cifar100_Test_s5/{args.noise}.npy'
+            np_test_target_path = root_path + '/generalization_repo_dataset/cifar100_Test_s5/labels.npy'
+            train_data = torchvision.datasets.CIFAR100(
+                root_path, train=True, transform=test_transform, download=True)
+            test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10', train=False)
 
+        elif args.dataset == 'mvtec_ad':
+            import math
+            resize=args.img_size
+            transform = torchvision.transforms.Compose([
+                torchvision.transforms.Resize(math.ceil(resize*1.14)),
+                torchvision.transforms.CenterCrop(resize),
+                torchvision.transforms.ToTensor()])    
+            categories = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
+            train_data = MVTecADDataset(root_path, transform=transform, categories=categories, phase='train')
+            
+            np_test_img_path = root_path + f'/generalization_repo_dataset/mvtec_ad_Test_s5/{args.noise}.npy'
+            np_test_target_path = root_path + '/generalization_repo_dataset/mvtec_ad_Test_s5/labels.npy'
+            test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10', train=False)
 
-    elif args.dataset == 'anomaly100':
+        elif args.dataset == 'visa':
+            import math
+            resize=args.img_size
+            transform = torchvision.transforms.Compose([
+                torchvision.transforms.Resize(math.ceil(resize*1.14)),
+                torchvision.transforms.CenterCrop(resize),
+                torchvision.transforms.ToTensor()])
 
-        np_test_img_path = 'path_to_new_anomaly_data'
-        np_test_target_path = 'path_to_new_anomaly_label'
-        anomaly_path = 'path_to_new_anomaly_config'
-        
-        train_data = torchvision.datasets.CIFAR100(
-            root_path, train=True, transform=test_transform, download=True)
-        test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='anomaly', train=False, anomaly_path=anomaly_path)
-    
-    elif args.dataset == 'anomalysvhn':
+            categories = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']
+            train_data = VisADataset(root_path, transform=transform, categories=categories, phase='normal')
 
-        np_test_img_path = 'path_to_new_anomaly_data'
-        np_test_target_path = 'path_to_new_anomaly_label'
-        anomaly_path = 'path_to_new_anomaly_config'
-        
-        train_data = SVHN(root=root_path, split="train", transform=test_transform)
-        test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='anomaly', train=False, anomaly_path=anomaly_path)
+            np_test_img_path = root_path + f'/generalization_repo_dataset/visa_Train_s5/{args.noise}.npy'
+            np_test_target_path = root_path + '/generalization_repo_dataset/visa_Train_s5/labels.npy'
+            test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10', train=False)
 
-
-    elif args.dataset == 'aug':
-        if args.aug:
-            np_test_img_path = f'/generalization_repo_dataset/CIFAR10_Test_AC_6/{args.aug}.npy'
-            np_test_target_path = '/generalization_repo_dataset/CIFAR10_Test_AC_6/labels_test.npy'
         else:
-            np_test_img_path = '/cifar10_test.npy'
-            np_test_target_path = '/cifar10_test_labels.npy'
+            raise NotImplementedError("Not impelemented dataset!")
+
+    else:
+        print("Loading original test data")
+        if args.dataset == 'cifar10':
+            train_data = torchvision.datasets.CIFAR10(
+                root_path, train=True, transform=test_transform, download=True)
+            test_data = torchvision.datasets.CIFAR10(
+                root_path, train=False, transform=test_transform, download=True)
         
-        train_data = torchvision.datasets.CIFAR10(
-            root_path, train=True, transform=test_transform, download=True)
-        test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10', train=False)
+        elif args.dataset == 'svhn':
+            train_data = SVHN(root=root_path, split="train", transform=test_transform)
+            test_data = SVHN(root=root_path, split="test", transform=test_transform)
+        
+        elif args.dataset == 'cifar100':
+            train_data = torchvision.datasets.CIFAR100(
+                root_path, train=True, transform=test_transform, download=True)
+            test_data = torchvision.datasets.CIFAR100(
+                root_path, train=False, transform=test_transform, download=True)
+        
+        elif args.dataset == 'mvtec_ad':
+            import math
+            resize=args.img_size
+            transform = torchvision.transforms.Compose([
+                torchvision.transforms.Resize(math.ceil(resize*1.14)),
+                torchvision.transforms.CenterCrop(resize),
+                torchvision.transforms.ToTensor()])    
+            categories = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
+            train_data = MVTecADDataset(root_path, transform=transform, categories=categories, phase='train')
+            test_data = MVTecADDataset(root_path, transform=transform, categories=categories, phase='test')
 
-    elif args.dataset == 'svhn_aug':
-        np_test_img_path = f'/generalization_repo_dataset/SVHN_Test_AC_6/{args.aug}.npy'
-        np_test_target_path = '/generalization_repo_dataset/SVHN_Test_AC_6/labels_test.npy'
-        train_data = SVHN(root=root_path, split="train", transform=test_transform)
-        test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10', train=False)
+        elif args.dataset == 'visa':
+            import math
+            resize=args.img_size
+            transform = torchvision.transforms.Compose([
+                torchvision.transforms.Resize(math.ceil(resize*1.14)),
+                torchvision.transforms.CenterCrop(resize),
+                torchvision.transforms.ToTensor()])
 
-    elif args.dataset == 'aug100':
-        np_test_img_path = f'/generalization_repo_dataset/CIFAR100_Test_AC_6/{args.aug}.npy'
-        np_test_target_path = '/generalization_repo_dataset/CIFAR100_Test_AC_6/labels_test.npy'
-        train_data = torchvision.datasets.CIFAR100(
-            root_path, train=True, transform=test_transform, download=True)
-        test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10', train=False)
-
-    elif args.dataset == 'mvtec_ad':
-        import math
-        resize=args.img_size
-        transform = torchvision.transforms.Compose([
-            torchvision.transforms.Resize(math.ceil(resize*1.14)),
-            torchvision.transforms.CenterCrop(resize),
-            torchvision.transforms.ToTensor()])    
-        categories = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
-        train_data = MVTecADDataset(root_path, transform=transform, categories=categories, phase='train')
-        test_data = MVTecADDataset(root_path, transform=transform, categories=categories, phase='test')
-
-    elif args.dataset == 'visa':
-        import math
-        resize=args.img_size
-        transform = torchvision.transforms.Compose([
-            torchvision.transforms.Resize(math.ceil(resize*1.14)),
-            torchvision.transforms.CenterCrop(resize),
-            torchvision.transforms.ToTensor()])
-
-        categories = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']
-        train_data = VisADataset(root_path, transform=transform, categories=categories, phase='normal')
-        test_data = VisADataset(root_path, transform=transform, categories=categories, phase='anomaly')
+            categories = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']
+            train_data = VisADataset(root_path, transform=transform, categories=categories, phase='normal')
+            test_data = VisADataset(root_path, transform=transform, categories=categories, phase='anomaly')
+        
+        else:
+            raise NotImplementedError("Not impelemented dataset!")
+        
     # Create sub classes
     if args.one_class_idx != None:
-        if (args.dataset == 'cifar100' or args.dataset == 'aug100' or args.dataset == 'anomaly100'):
+        if args.dataset == 'cifar100':
             train_data.targets = sparse2coarse(train_data.targets)
             test_data.targets = sparse2coarse(test_data.targets)
-            eval_in_train_data = get_subclass_dataset(train_data, args.one_class_idx)
-            eval_in_data = get_subclass_dataset(test_data, args.one_class_idx)
+            train_data_in = get_subclass_dataset(train_data, args.one_class_idx)
+            test_data_in = get_subclass_dataset(test_data, args.one_class_idx)
         else:
-            eval_in_train_data = get_subclass_dataset(train_data, args.one_class_idx)
-            eval_in_data = get_subclass_dataset(test_data, args.one_class_idx)
+            train_data_in = get_subclass_dataset(train_data, args.one_class_idx)
+            test_data_in = get_subclass_dataset(test_data, args.one_class_idx)
     
-    return eval_in_train_data, eval_in_data, train_data, test_data
+    return train_data_in, test_data_in, train_data, test_data
 
 
+def calculate_accuracy(model_output, true_labels):
+    # Convert sigmoid output to class predictions
+    predicted_classes = [1 if x > 0.5 else 0 for x in model_output]
+    
+    # Flatten the tensor if necessary
+    if len(predicted_classes) != len(true_labels):
+        predicted_classes = torch.tensor(predicted_classes).view(-1)
+        
+    accuracy = accuracy_score(true_labels, predicted_classes)
+    return accuracy
 
-def eval_auc_one_class(eval_in, eval_out, train_features_in, mahal_thresh, net, args):
+
+def novelty_detection(eval_in, eval_out, train_features_in, mahal_thresh, net, args):
 
     net = net.to(args.device)
     net.eval()  # enter valid mode
@@ -246,24 +264,27 @@ def eval_auc_one_class(eval_in, eval_out, train_features_in, mahal_thresh, net, 
     targets_out_list = []
     in_features_list = []
     out_features_list = []
+    
+    model_preds = []
+    trues = []
     with torch.no_grad():
         for data_in, data_out in zip(eval_in, eval_out):       
             inputs_in, targets_in = data_in
             inputs_out, targets_out = data_out
-            if args.dataset == 'anomaly':
-                targets_in_list.extend(targets_in)
-                targets_out_list.extend(targets_out)
-            else:
-                targets_in_list.extend([1 for _ in range(len(targets_in))])
-                targets_out_list.extend([0 for _ in range(len(targets_out))])
+            
             inputs_in , inputs_out = inputs_in.to(args.device) , inputs_out.to(args.device)
 
-            preds_in, normal_features = net(inputs_in, True)     
-            preds_out, out_features = net(inputs_out, True)     
+            preds_in, normal_features = net(inputs_in, True)
+            preds_out, out_features = net(inputs_out, True)
             
             in_features_list.extend(normal_features[-1].detach().cpu().numpy())
             out_features_list.extend(out_features[-1].detach().cpu().numpy())
-        
+
+            model_preds.extend(torch.cat([preds_in, preds_out]).detach().cpu().numpy())
+            trues.extend(torch.cat([torch.zeros_like(preds_in), torch.ones_like(preds_out)]).detach().cpu().numpy())
+            
+        accuracy = calculate_accuracy(model_preds, trues)
+
         in_features_list = torch.tensor(np.array(in_features_list))
         out_features_list = torch.tensor(np.array(out_features_list))
         l1 = torch.zeros(in_features_list.shape[0])
@@ -307,7 +328,7 @@ def eval_auc_one_class(eval_in, eval_out, train_features_in, mahal_thresh, net, 
             f_list = torch.cat([in_features_list, out_features_list], dim=0)
             distances = knn_score(to_np(train_features_in), to_np(f_list))
             auc = roc_auc_score(targets, distances)
-    return auc
+    return auc, accuracy
 
 
 def eval_auc_anomaly(loader, train_features_in, net, args):
@@ -360,41 +381,11 @@ def load_model(args):
     else:
         raise NotImplementedError("Not implemented image size!")                
     
-    if args.optimizer == 'sgd':
-        optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, 
-                                momentum=args.momentum,weight_decay=args.decay)
-    elif args.optimizer == 'adam':
-        optimizer = torch.optim.Adam(model.parameters(), args.learning_rate,
-                                      weight_decay=args.decay)
-    else:
-        raise NotImplementedError("Not implemented optimizer!")
-
     if args.model_path:
         m = torch.load(args.model_path, weights_only=True)
         model.load_state_dict(m)
 
-
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_update_rate, gamma=args.lr_gamma)
-    criterion = torch.nn.CrossEntropyLoss().to(args.device)
-
-    return model, criterion, optimizer, scheduler
-
-
-def noise_loading(dataset, noise):
-    if dataset == 'cifar10':
-        np_test_target_path = 'path_to_genralization_labels'
-        np_test_root_path = 'path_to_genralization_folder'
-    elif dataset == 'svhn':
-        np_test_target_path = 'path_to_genralization_labels'
-        np_test_root_path = 'path_to_genralization_folder'
-
-
-    test_transform = transforms.Compose([transforms.ToTensor()])
-
-    np_test_img_path = np_test_root_path + noise + '.npy'
-    test_dataset_noise = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, train=False)
-
-    return test_dataset_noise
+    return model
 
 
 def feature_extraction(loader, net):
@@ -416,103 +407,93 @@ def feature_extraction(loader, net):
     return features
 
 
+if __name__ == "__main__":
 
-args = parsing()
-os.environ['CUDA_VISIBLE_DEVICES']="0,1"
-torch.manual_seed(args.seed)
-model, criterion, optimizer, scheduler = load_model(args)
-if args.device == 'cuda':
-    args.device=f'cuda:{args.gpu}'
+    args = parsing()
+    os.environ['CUDA_VISIBLE_DEVICES']="0,1"
+    torch.manual_seed(args.seed)
 
-root_path = 'D:/Datasets/data/'
-args.last_lr = args.learning_rate
-in_distance = torch.tensor(0)
-
-eval_in_train_data, eval_in_data, train_data, test_data = load_data(root_path, args)
-
-eval_in_train = DataLoader(eval_in_train_data, shuffle=True, batch_size=args.batch_size, num_workers=args.num_workers)
-eval_in = DataLoader(eval_in_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
-
-if args.score == 'svm':
-    from sklearn.svm import OneClassSVM
-    svm_model = OneClassSVM(kernel='sigmoid', gamma='auto', nu=0.2)
-    train_features_in = feature_extraction(eval_in_train, model)
-    print(f"Fitting svm model {train_features_in.shape}")
-    svm_model.fit(train_features_in.detach().cpu().numpy())
-    args.svm_model = svm_model
-if args.score == 'knn':
-    train_features_in = feature_extraction(eval_in_train, model)
-
-if args.score == 'mahalanobis':
-    train_features_in = feature_extraction(eval_in_train, model)
-    mean, inv_covariance, features = mahalanobis_parameters(train_features_in, args)
-
-if args.noise:
-    test_dataset_noise = noise_loading(args.dataset, args.noise)
-
-
-resutls = {}
-aucs = []
-
-# resutls['OD']=in_distance.detach().cpu().numpy()
-if args.dataset == 'cifar100':
-    args.classes = 20
-elif args.dataset == 'mvtec_ad':
-    args.classes = 15
-else:
-    args.classes = 10
     
-if args.dataset == 'anomaly' or args.dataset == 'anomaly100' or args.dataset == 'anomalysvhn':
-    auc = eval_auc_anomaly(eval_in, train_features_in, model, args)
-    print(f"Anomaly auc is: {auc}")
-    exit()
-if args.one_class_idx != None:
-    for id in range(args.classes):
-        if id == args.one_class_idx:
-            continue
-        
-        if args.noise:
-            eval_out_data = get_subclass_dataset(test_dataset_noise, id)
-        else:
-            eval_out_data = get_subclass_dataset(test_data, id)
-        eval_out = DataLoader(eval_out_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+    if args.device == 'cuda':
+        args.device=f'cuda:{args.gpu}'
 
-        if args.dataset == 'anomaly':
-            auc = eval_auc_anomaly(eval_out, train_features_in, model, args)
-        else:
-            auc = eval_auc_one_class(eval_in, eval_out, train_features_in, in_distance + args.thresh, model, args)
+    model = load_model(args)
+
+    root_path = 'D:/Datasets/data/'
+    args.last_lr = args.learning_rate
+    in_distance = torch.tensor(0)
+
+    train_data_in, test_data_in, train_data, test_data = load_data(root_path, args)
+
+    train_data_in_loader = DataLoader(train_data_in, shuffle=True, batch_size=args.batch_size, num_workers=args.num_workers)
+    test_data_in_loader = DataLoader(test_data_in, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+
+    if args.score == 'svm':
+        from sklearn.svm import OneClassSVM
+        svm_model = OneClassSVM(kernel='sigmoid', gamma='auto', nu=0.2)
+        train_features_in = feature_extraction(train_data_in_loader, model)
+        print(f"Fitting svm model {train_features_in.shape}")
+        svm_model.fit(train_features_in.detach().cpu().numpy())
+        args.svm_model = svm_model
+    
+    elif args.score == 'knn':
+        train_features_in = feature_extraction(train_data_in_loader, model)
+
+    elif args.score == 'mahalanobis':
+        train_features_in = feature_extraction(train_data_in_loader, model)
+        mean, inv_covariance, features = mahalanobis_parameters(train_features_in, model, args)
+
+    else:
+        raise NotImplementedError("Not implemented score!")
+
+    resutls = {}
+    aucs = []
+    accs = []
+
+    # resutls['OD']=in_distance.detach().cpu().numpy()
+    if args.dataset == 'cifar100':
+        args.classes = 20
+    elif args.dataset == 'mvtec_ad':
+        args.classes = 15
+    else:
+        args.classes = 10
+        
+    if args.one_class_idx != None:
+        for id in range(args.classes):
+            if id == args.one_class_idx:
+                continue
+            
+            test_data_out = get_subclass_dataset(test_data, id)
+            test_data_out_loader = DataLoader(test_data_out, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+
+            auc, acc = novelty_detection(test_data_in_loader, test_data_out_loader, train_features_in, in_distance + args.thresh, model, args)
+            aucs.append(auc)
+            accs.append(acc)
+
+            print(f"Evaluation distance on class {id}: auc: {auc}, acc: {acc}")
+    else:
+        test_data_out_loader = DataLoader(test_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+        auc, acc = novelty_detection(test_data_in_loader, test_data_out_loader, train_features_in, in_distance + args.thresh, model, args)
+
         aucs.append(auc)
+        accs.append(acc)
         
-        print(f"Evaluation distance on class {id}: auc: {auc}")
-else:
-    if args.noise:
-        eval_out_data = test_dataset_noise
-    else:
-        eval_out_data = test_data
-
-    eval_out = DataLoader(eval_out_data, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
-    if args.dataset == 'anomaly':
-        auc = eval_auc_anomaly(eval_out, train_features_in, model, args)
-    else:
-        auc = eval_auc_one_class(eval_in, eval_out, train_features_in, in_distance + args.thresh, model, args)
-
-    aucs.append(auc)
-    
-    print(f"Evaluation distance on class {id}: auc: {auc}")
+        print(f"Evaluation distance on datases auc: {auc}, acc: {acc}")
 
 
-print(f"Average auc is: {np.mean(aucs)}")
-print(f"Results of model: {args.model_path}")
-print(f"In class is {args.one_class_idx}")
-resutls['avg_auc']=np.mean(aucs)
-if args.csv:
-    import pandas as pd
-    df = pd.DataFrame(resutls, index=[0])
+    print(f"Average auc is: {np.mean(aucs)}, acc: {np.mean(accs)}")
+    print(f"Results of model: {args.model_path}")
+    print(f"In class is {args.one_class_idx}")
+    resutls['avg_auc']=np.mean(aucs)
 
-    # Save DataFrame as CSV file
-    ev = args.model_path.split('_')[1]
-    save_path = f'./csv_results/{ev}/dataset_{args.dataset}/report_class_{args.one_class_idx}/'
-    if not os.path.exists(save_path):
-        os.makedirs(save_path, exist_ok=True)
+    if args.csv:
+        import pandas as pd
+        df = pd.DataFrame(resutls, index=[0])
 
-    df.to_csv(save_path+f"{args.model_path.split('/')[-2]}.csv", index=False) 
+        # Save DataFrame as CSV file
+        ev = args.model_path.split('_')[1]
+        save_path = f'./csv_results/{ev}/dataset_{args.dataset}/report_class_{args.one_class_idx}/'
+        if not os.path.exists(save_path):
+            os.makedirs(save_path, exist_ok=True)
+
+        df.to_csv(save_path+f"{args.model_path.split('/')[-2]}.csv", index=False) 
