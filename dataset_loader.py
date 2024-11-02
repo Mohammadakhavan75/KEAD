@@ -105,21 +105,10 @@ class SVHN(Dataset):
 
 
 class load_np_dataset(torch.utils.data.Dataset):
-    def __init__(self, imgs_path, targets_path, transform, dataset, train=True, anomaly_path=None):
+    def __init__(self, imgs_path, targets_path, transform, dataset):
         self.dataset = dataset
-        if train and dataset == 'cifar10':
-            self.data = np.load(imgs_path)[:50000]
-            self.targets = np.load(targets_path)[:50000]
-        elif dataset == 'cifar10':
-            self.data = np.load(imgs_path)[:10000]
-            self.targets = np.load(targets_path)[:10000]
-        elif dataset == 'anomaly':
-            self.data = np.load(imgs_path)[:10000]
-            self.targets = np.load(targets_path)[:10000]
-            self.anomaly = np.load(anomaly_path)
-        else:
-            self.data = np.load(imgs_path)
-            self.targets = np.load(targets_path)
+        self.data = np.load(imgs_path)
+        self.targets = np.load(targets_path)
 
         self.transform = transform
         
@@ -131,10 +120,8 @@ class load_np_dataset(torch.utils.data.Dataset):
             
         img = PIL.Image.fromarray(img)
         img = self.transform(img)
-        if self.dataset == 'anomaly':
-            return img, target, self.anomaly[idx]
-        else:
-            return img, target
+
+        return img, target
 
 
 def get_subclass_dataset(dataset, classes):
