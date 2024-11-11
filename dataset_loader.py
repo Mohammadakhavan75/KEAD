@@ -198,12 +198,12 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=
         noise = list(probs[one_class_idx].keys())[k].replace('dist_','')
         print(f"Selecting {noise} as positive pair for class {one_class_idx}")
         np_train_img_path = os.path.join(np_train_root_path, noise + '.npy')
-        train_positives_datasets = load_np_dataset(np_train_img_path, np_train_target_path, train_transform, dataset, train=True)
+        train_positives_datasets = load_np_dataset(np_train_img_path, np_train_target_path, train_transform, dataset)
         if dataset == 'cifar100' and coarse:
             train_positives_datasets.targets = sparse2coarse(train_positives_datasets.targets)
 
         np_test_img_path = os.path.join(np_test_root_path, noise + '.npy')
-        test_positives_datasets = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset, train=False)
+        test_positives_datasets = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset)
         if dataset == 'cifar100' and coarse:
             test_positives_datasets.targets = sparse2coarse(test_positives_datasets.targets)
 
@@ -230,12 +230,12 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=
         noise = list(probs[one_class_idx].keys())[-k].replace('dist_', '')
         print(f"Selecting {noise} as negetive pair for class {one_class_idx}")
         np_train_img_path = os.path.join(np_train_root_path, noise + '.npy')
-        train_negetives_datasets = load_np_dataset(np_train_img_path, np_train_target_path, train_transform, dataset, train=True)
+        train_negetives_datasets = load_np_dataset(np_train_img_path, np_train_target_path, train_transform, dataset)
         if dataset == 'cifar100':
             train_negetives_datasets.targets = sparse2coarse(train_negetives_datasets.targets)
         
         np_test_img_path = os.path.join(np_test_root_path, noise + '.npy')
-        test_negetives_datasets = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset, train=False)
+        test_negetives_datasets = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset)
         if dataset == 'cifar100':
             test_negetives_datasets.targets = sparse2coarse(test_negetives_datasets.targets)
 
