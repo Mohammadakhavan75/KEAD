@@ -12,6 +12,7 @@ from models.resnet_imagenet import resnet18, resnet50
 from models.resnet import ResNet18, ResNet50
 from torch.utils.tensorboard import SummaryWriter
 from dataset_loader import noise_loader, load_cifar10, load_svhn, load_cifar100, load_imagenet, load_mvtec_ad, load_visa
+from sklearn.metrics import accuracy_score
 
 def to_np(x):
     return x.data.cpu().numpy()
@@ -70,6 +71,9 @@ def parsing():
     parser.add_argument('--config', default=None, help='Config file for reading paths')
     parser.add_argument('--img_size', default=32, type=int, help='image size selection')
     parser.add_argument('--model', default='resnet18', type=str, help='resnet model selection')
+
+    parser.add_argument('--l_con', default=1., type=float, help='Weight of Contrastive loss')
+    parser.add_argument('--l_bc', default=1., type=float, help='Wieght of BCE loss')
     args = parser.parse_args()
 
     return args
@@ -95,7 +99,7 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
     
     sim_ps, sim_ns = [], []
     
-    if args.k_pairs == 1: 
+    if args.k_pairs == 1:
         for n, (normal, p_data, n_data) in tqdm(enumerate(zip(train_loader, train_positives_loader[0], train_negetives_loader[0]))):
             imgs, labels = normal
             p_imgs, p_label = p_data
@@ -122,9 +126,9 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             labels = torch.zeros(len(pred_d)*3).to(args.device)
             labels[len(pred_d)*2:] = 1.
             preds = torch.cat((pred_d, pred_p, pred_n), dim=0).squeeze(1).to(args.device)
-
+ 
             bc_loss = BCELoss(preds, labels)
-            loss = loss_contrastive + bc_loss
+            loss = args.l_con * loss_contrastive + args.l_bc * bc_loss
             
             epoch_loss['loss'].append(loss.item())
             epoch_loss['contrastive'].append(loss_contrastive.item())
@@ -145,7 +149,11 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             for param in model.parameters():
                 if param.grad is not None:
                     pp.append(torch.mean(param.grad.norm()).detach().cpu())
+            pd = []
+            for param in model.parameters():
+                pd.append(torch.mean(param.data.norm()).detach().cpu())
             
+            writer.add_scalar("Train/params", torch.mean(torch.tensor(pd)).detach().cpu().numpy(), train_global_iter)
             writer.add_scalar("Train/grads", torch.mean(torch.tensor(pp)).detach().cpu().numpy(), train_global_iter)
 
             optimizer.step()
@@ -301,6 +309,36 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
 
     return train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns
 
+
+def calculate_accuracy(model_output, true_labels):
+    # Convert sigmoid output to class predictions
+    predicted_classes = [1 if x > 0.5 else 0 for x in model_output]
+    
+    # Flatten the tensor if necessary
+    if len(predicted_classes) != len(true_labels):
+        predicted_classes = torch.tensor(predicted_classes).view(-1)
+        
+    accuracy = accuracy_score(true_labels, predicted_classes)
+    return accuracy
+
+
+def evaluate(eval_in, net, args):
+    net = net.to(args.device)
+    net.eval()  # enter valid mode
+
+    model_preds = []
+    trues = []
+    with torch.no_grad():
+        for inputs_in, _ in eval_in:
+            inputs_in = inputs_in.to(args.device)
+
+            preds_in, _ = net(inputs_in, True)
+
+            model_preds.extend(preds_in.detach().cpu().numpy())
+            trues.extend(torch.zeros_like(preds_in).detach().cpu().numpy())
+            
+        accuracy = calculate_accuracy(model_preds, trues)
+    return accuracy
 
 def load_model(args):
 
@@ -486,7 +524,9 @@ if __name__ == "__main__":
         writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
         writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
         writer.add_scalar("Train/lr", args.last_lr, epoch)
-        print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}")
+
+        accuracy = evaluate(test_loader, model, args)
+        print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}, Train/avg_acc: {accuracy}")
         
         if (epoch) % (args.epochs / 10) == 0:
             torch.save(model.state_dict(), os.path.join(model_save_path, f'model_params_epoch_{epoch}.pt'))
