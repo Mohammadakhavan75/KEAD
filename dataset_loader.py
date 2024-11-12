@@ -151,14 +151,14 @@ def sparse2coarse(targets):
     return coarse_labels[targets]
 
 
-def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=True, dataset='cifar10', preprocessing='clip', k_pairs=1, resize=224, shuffle=True, seed=1):
+def noise_loader(args, transform=None, batch_size=64, num_workers=0, one_class_idx=None, coarse=True, dataset='cifar10', preprocessing='clip', k_pairs=1, resize=224, shuffle=True, seed=1):
     # Filling paths
     np_train_target_path = os.path.join(args.config['generalization_path'], f'{dataset}_Train_s1/labels.npy')
     np_test_target_path = os.path.join(args.config['generalization_path'], f'{dataset}_Test_s5/labels.npy')
     np_train_root_path = os.path.join(args.config['generalization_path'], f'{dataset}_Train_s1')
     np_test_root_path = os.path.join(args.config['generalization_path'], f'{dataset}_Test_s5')
-        
-    if args.dataset == 'mvtec_ad' and resize==32:
+    
+    if args.dataset == 'mvtec_ad' and resize==32 and transform==None:
         train_transform = torchvision.transforms.Compose([
             torchvision.transforms.Resize(math.ceil(resize*1.14)),
             torchvision.transforms.CenterCrop(resize),
@@ -167,9 +167,12 @@ def noise_loader(args, batch_size=64, num_workers=0, one_class_idx=None, coarse=
             torchvision.transforms.Resize(math.ceil(resize*1.14)),
             torchvision.transforms.CenterCrop(resize),
             torchvision.transforms.ToTensor()])
-    else:
+    elif transform==None:
         train_transform = transforms.Compose([transforms.ToTensor()])
         test_transform = transforms.Compose([transforms.ToTensor()])
+    else:
+        train_transform=transform
+        test_transform=transform
 
     with open(f'./ranks/{preprocessing}/{dataset}/wasser_dist_softmaxed.pkl', 'rb') as file:
         probs = pickle.load(file)
