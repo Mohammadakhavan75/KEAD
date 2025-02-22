@@ -215,7 +215,8 @@ def noise_loader(args, transform=None, batch_size=64, num_workers=0, one_class_i
         
         if one_class_idx != None:
             all_train_dataset_positives_one_class.append(get_subclass_dataset(train_positives_datasets, one_class_idx))
-            all_test_dataset_positives_one_class.append(get_subclass_dataset(test_positives_datasets, one_class_idx))
+            # all_test_dataset_positives_one_class.append(get_subclass_dataset(test_positives_datasets, one_class_idx))
+            all_test_dataset_positives_one_class.append(test_positives_datasets)
         else:
             all_train_dataset_positives_one_class.append(train_positives_datasets)
             all_test_dataset_positives_one_class.append(test_positives_datasets)
@@ -247,7 +248,8 @@ def noise_loader(args, transform=None, batch_size=64, num_workers=0, one_class_i
         
         if one_class_idx != None:
             all_train_dataset_negetives_one_class.append(get_subclass_dataset(train_negetives_datasets, one_class_idx))
-            all_test_dataset_negetives_one_class.append(get_subclass_dataset(test_negetives_datasets, one_class_idx))
+            # all_test_dataset_negetives_one_class.append(get_subclass_dataset(test_negetives_datasets, one_class_idx))
+            all_test_dataset_negetives_one_class.append(test_negetives_datasets)
         else:
             all_train_dataset_negetives_one_class.append(train_negetives_datasets)
             all_test_dataset_negetives_one_class.append(test_negetives_datasets)
@@ -276,7 +278,7 @@ def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None, shuffl
 
     if one_class_idx != None:
         train_data = get_subclass_dataset(train_data, one_class_idx)
-        val_data = get_subclass_dataset(val_data, one_class_idx)
+        # val_data = get_subclass_dataset(val_data, one_class_idx)
 
     train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
     val_loader = DataLoader(val_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
@@ -296,7 +298,7 @@ def load_cifar10(path, transforms=transforms.ToTensor(), batch_size=64, num_work
 
     if one_class_idx != None:
         train_data = get_subclass_dataset(train_data, one_class_idx)
-        test_data = get_subclass_dataset(test_data, one_class_idx)
+        # test_data = get_subclass_dataset(test_data, one_class_idx)
 
     train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
     val_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
@@ -314,7 +316,7 @@ def load_svhn(path, transforms=transforms.ToTensor(), batch_size=64, num_workers
 
     if one_class_idx != None:
         train_data = get_subclass_dataset(train_data, one_class_idx)
-        test_data = get_subclass_dataset(test_data, one_class_idx)
+        # test_data = get_subclass_dataset(test_data, one_class_idx)
 
     train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
     val_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
@@ -335,7 +337,7 @@ def load_cifar100(path, transforms=transforms.ToTensor(), batch_size=64, num_wor
  
     if one_class_idx != None:
         train_data = get_subclass_dataset(train_data, one_class_idx)
-        test_data = get_subclass_dataset(test_data, one_class_idx)
+        # test_data = get_subclass_dataset(test_data, one_class_idx)
 
     train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
     test_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
