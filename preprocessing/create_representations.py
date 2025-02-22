@@ -196,7 +196,7 @@ for i, data in tqdm(enumerate(loader)):
     imgs_aug, augs_targets = data_aug
     assert torch.equal(n_targets, torch.squeeze(augs_targets)), f"The labels of aug images do not match to noraml images, {n_targets}, {augs_targets}"
     # This condition is for when len imgs_aug is larger than imgs_normal
-    if len(imgs_n) != len(imgs_aug): 
+    if len(imgs_n) != len(imgs_aug):
         imgs_aug = imgs_aug[:len(imgs_n)]
         imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
         imgs_n_features = model.encode_image(imgs_n)
@@ -209,11 +209,11 @@ for i, data in tqdm(enumerate(loader)):
             with open(os.path.join(rep_aug_path, f'batch_{i}.pkl').replace("\r", ""), 'wb') as f:
                 pickle.dump(imgs_aug_features.detach().cpu().numpy(), f)
 
-        # for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
-        #     cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
-        #     wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
+        for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
+            cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
+            wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
 
-        # euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
+        euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
         targets_list.extend(n_targets.detach().cpu().numpy())
         break
 
@@ -237,30 +237,30 @@ for i, data in tqdm(enumerate(loader)):
         with open(os.path.join(rep_aug_path, f'batch_{i}.pkl').replace("\r", ""), 'wb') as f:
             pickle.dump(imgs_aug_features.detach().cpu().numpy(), f)
 
-    # for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
-    #     cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
-    #     wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
+    for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
+        cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
+        wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
 
-    # euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
+    euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
     targets_list.extend(n_targets.detach().cpu().numpy())
 
-# euclidean_diffs = np.asarray(euclidean_diffs)
+euclidean_diffs = np.asarray(euclidean_diffs)
 targets_list = np.asarray(targets_list)
 
 
 
-os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/'.replace("\r", ""), exist_ok=True)
-os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/diffs/'.replace("\r", ""), exist_ok=True)
-os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/targets/'.replace("\r", ""), exist_ok=True)
-os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/cosine/'.replace("\r", ""), exist_ok=True)
-os.makedirs(f'./saved_pickles/{args.backbone}/{args.dataset}/wasser/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/euclidean_diffs/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/cosine_pair/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/wasser_pair/'.replace("\r", ""), exist_ok=True)
 
 
-with open(f'./saved_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
+with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(targets_list, f)
-# with open(f'./saved_pickles/{args.backbone}/{args.dataset}/diffs/{args.aug}.pkl', 'wb') as f:
-#     pickle.dump(euclidean_diffs, f)
-# with open(f'./saved_pickles/{args.backbone}/{args.dataset}/cosine/{args.aug}.pkl', 'wb') as f:
-#     pickle.dump(cosine_diff, f)
-# with open(f'./saved_pickles/{args.backbone}/{args.dataset}/wasser/{args.aug}.pkl', 'wb') as f:
-#     pickle.dump(wasser_diff, f)
+with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/euclidean_diffs/{args.aug}.pkl', 'wb') as f:
+    pickle.dump(euclidean_diffs, f)
+with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/cosine_pair/{args.aug}.pkl', 'wb') as f:
+    pickle.dump(cosine_diff, f)
+with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/wasser_pair/{args.aug}.pkl', 'wb') as f:
+    pickle.dump(wasser_diff, f)
