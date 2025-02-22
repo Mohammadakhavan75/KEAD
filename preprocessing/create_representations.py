@@ -258,9 +258,9 @@ os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/wasser_pair/'.rep
 
 with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(targets_list, f)
-with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/euclidean_diffs/{args.aug}.pkl', 'wb') as f:
+with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/euclidean_diffs/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(euclidean_diffs, f)
-with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/cosine_pair/{args.aug}.pkl', 'wb') as f:
+with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/cosine_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(cosine_diff, f)
-with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/wasser_pair/{args.aug}.pkl', 'wb') as f:
+with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/wasser_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(wasser_diff, f)
