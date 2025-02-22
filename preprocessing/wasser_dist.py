@@ -132,7 +132,7 @@ if args.one_class:
         imgs_aug_features_one_class = np.squeeze(np.asarray([imgs_aug_features[idx].astype(np.float64) for idx in indices]))
         cost_matrix = ot.dist(imgs_n_features_one_class, imgs_aug_features_one_class, metric=cosine)
         # Compute the EMD
-        emd_distance = ot.emd2([], [], cost_matrix, numItermax=200000)
+        emd_distance = ot.emd2([], [], cost_matrix, numItermax=200000) # uniform weight if empty list (check here https://pythonot.github.io/all.html#ot.emd)
         distances.append(emd_distance)
         print(f'{class_idx}: {emd_distance}')
 
@@ -144,7 +144,7 @@ else:
     imgs_aug_features_one_class = np.asarray(imgs_aug_features.astype(np.float64))
     cost_matrix = ot.dist(imgs_n_features_one_class, imgs_aug_features_one_class, metric=cosine)
     # Compute the EMD
-    emd_distance = ot.emd2([], [], cost_matrix, numItermax=200000)
+    emd_distance = ot.emd2([], [], cost_matrix, numItermax=200000) # uniform weight if empty list (check here https://pythonot.github.io/all.html#ot.emd)
 
     
     with open(wasser_dataset_pickle_path, 'wb') as f:
