@@ -13,3 +13,4 @@ ranks
 *.ipynb
 .vscode
 run_history
+.zshrc
