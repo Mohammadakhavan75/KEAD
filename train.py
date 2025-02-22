@@ -8,7 +8,6 @@ from tqdm import tqdm
 from natsort import natsorted
 from datetime import datetime
 from contrastive import contrastive, contrastive_matrix
-from models.resnet_imagenet import resnet18, resnet50
 from models.resnet import ResNet18, ResNet50
 from torch.utils.tensorboard import SummaryWriter
 from dataset_loader import noise_loader, load_cifar10, load_svhn, load_cifar100, load_imagenet, load_mvtec_ad, load_visa
@@ -72,6 +71,7 @@ def parsing():
     parser.add_argument('--img_size', default=32, type=int, help='image size selection')
     parser.add_argument('--model', default='resnet18', type=str, help='resnet model selection')
 
+    parser.add_argument('--fc_available', default=0, type=int, help='Weight of Contrastive loss')
     parser.add_argument('--l_con', default=1., type=float, help='Weight of Contrastive loss')
     parser.add_argument('--l_bc', default=1., type=float, help='Wieght of BCE loss')
     args = parser.parse_args()
@@ -111,9 +111,9 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             n_imgs = n_imgs.to(args.device)
         
             optimizer.zero_grad()
-            pred_d, normal_features = model(imgs, True)
-            pred_p, p_features = model(p_imgs, True)
-            pred_n, n_features = model(n_imgs, True)
+            pred_d, normal_features = model(imgs)
+            pred_p, p_features = model(p_imgs)
+            pred_n, n_features = model(n_imgs)
             normal_features = normal_features[-1]
             p_features = p_features[-1]
             n_features = n_features[-1]
@@ -322,46 +322,50 @@ def calculate_accuracy(model_output, true_labels):
     return accuracy
 
 
-def evaluate(eval_in, net, args):
-    net = net.to(args.device)
-    net.eval()  # enter valid mode
+def evaluate(eval_in, test_positives_loader, test_negetives_loader, model, args):
+    model = model.to(args.device)
+    model.eval()  # enter valid mode
 
     model_preds = []
     trues = []
+    normal_pred = []
     with torch.no_grad():
-        for inputs_in, _ in eval_in:
-            inputs_in = inputs_in.to(args.device)
+        for (normal, p_data, n_data) in zip(eval_in, test_positives_loader[0], test_negetives_loader[0]):
+            imgs, labels = normal
+            p_imgs, p_label = p_data
+            n_imgs, n_label = n_data
+            
+            imgs = imgs.to(args.device)
+            p_imgs = p_imgs.to(args.device)
+            n_imgs = n_imgs.to(args.device)
 
-            preds_in, _ = net(inputs_in, True)
 
-            model_preds.extend(preds_in.detach().cpu().numpy())
-            trues.extend(torch.zeros_like(preds_in).detach().cpu().numpy())
+            pred_d, _ = model(imgs)
+            pred_p, _ = model(p_imgs)
+            pred_n, _ = model(n_imgs)
+
+            for target in labels:
+                trues.append(target == args.one_class_idx)
+            for target in p_label:
+                trues.append(target == args.one_class_idx)
+            for target in n_label:
+                trues.append(target == torch.tensor(-1)) # generating false value
+            
+            model_preds.extend(pred_d.detach().cpu().numpy())
+            model_preds.extend(pred_p.detach().cpu().numpy())
+            model_preds.extend(pred_n.detach().cpu().numpy())
             
         accuracy = calculate_accuracy(model_preds, trues)
     return accuracy
 
 def load_model(args):
 
-    if args.img_size == 224:
-        if args.model == 'resnet18':
-            model = resnet18(num_classes=args.num_classes)
-        elif args.model == 'resnet50':
-            model = resnet50(num_classes=args.num_classes)
-        else:
-            raise NotImplementedError("Not implemented model!")
-        
-    elif args.img_size == 32:
-        if args.linear:
-            model = ResNet18(args.num_classes)
-        else:
-            if args.model == 'resnet18':
-                model = ResNet18(num_classes=args.num_classes)
-            elif args.model == 'resnet50':
-                model = ResNet50(num_classes=args.num_classes)
-            else:
-                raise NotImplementedError("Not implemented model!")
+    if args.model == 'resnet18':
+        model = ResNet18(img_size=args.img_size, num_classes=1, fc_available=args.fc_available) # num_class is 1 for binary anomaly classification
+    elif args.model == 'resnet50':
+        model = ResNet50(img_size=args.img_size, num_classes=1, fc_available=args.fc_available)
     else:
-        raise NotImplementedError("Not implemented image size!")
+        raise NotImplementedError("Not implemented model!")
     
     if args.optimizer == 'sgd':
         optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, 
@@ -509,7 +513,7 @@ if __name__ == "__main__":
     elif args.device == 'cuda':    
         os.environ['CUDA_VISIBLE_DEVICES']='0,1'
         args.device=f'cuda:{args.gpu}'
-
+    args.device='mps'
     model = model.to(args.device)
     train_global_iter = 0
 
@@ -525,8 +529,8 @@ if __name__ == "__main__":
         writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
         writer.add_scalar("Train/lr", args.last_lr, epoch)
 
-        accuracy = evaluate(test_loader, model, args)
-        print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}, Train/avg_acc: {accuracy}")
+        accuracy = evaluate(test_loader, test_positives_loader, test_negetives_loader, model, args)
+        print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}, Eval/avg_acc: {accuracy}")
         
         if (epoch) % (args.epochs / 10) == 0:
             torch.save(model.state_dict(), os.path.join(model_save_path, f'model_params_epoch_{epoch}.pt'))
