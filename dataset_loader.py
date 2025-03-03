@@ -197,7 +197,8 @@ def noise_loader(args, transform=None, batch_size=64, num_workers=0, one_class_i
     generator_train_negatives = []
     generator_test_negatives = []
     # Loading positive
-    for k in range(1, k_pairs + 1):
+    # for k in range(1, k_pairs + 1):
+    for k in range(0, k_pairs):
         noise = list(probs[one_class_idx].keys())[k].replace('dist_','')
         print(f"Selecting {noise} as positive pair for class {one_class_idx}")
         np_train_img_path = os.path.join(np_train_root_path, noise + '.npy')
