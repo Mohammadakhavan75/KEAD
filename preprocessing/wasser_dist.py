@@ -84,8 +84,10 @@ for i in range(len(os.listdir(rep_aug_path))):
 
 print(len(imgs_n_features))
 imgs_n_features, imgs_aug_features = torch.cat(imgs_n_features, dim=0).numpy(), torch.cat(imgs_aug_features, dim=0).numpy()
+
 print(len(imgs_n_features))
 print(f'Running on: {args.aug}')
+
 wasser_dist_path = os.path.normpath(f'./wasser_dist/{args.backbone}/{args.dataset}/').replace("\r", "")
 wasser_dist_datasets_path = os.path.normpath(f'./wasser_dist_datasets/{args.backbone}/{args.dataset}/').replace("\r", "")
 wasser_pickle_path = os.path.normpath(os.path.join(wasser_dist_path, f'{args.aug}.pkl')).replace("\r", "")
@@ -100,34 +102,39 @@ if args.dataset == 'svhn':
 if args.dataset == 'cifar10':
     classes = 10
     # targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar10_Train_s1/labels.npy'))
-    with open(f'./saved_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
         targets_list_loaded = pickle.load(f)
 
 if args.dataset == 'cifar100':
     classes = 100
-    targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar100_Train_s1/labels.npy'))
+    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+        targets_list_loaded = pickle.load(f)
     if args.super_class:
         classes = 20
-        targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar100_Train_s1/labels.npy'))
+        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+            targets_list_loaded = pickle.load(f)
         targets_list_loaded = sparse2coarse(targets_list_loaded)
        
 if args.dataset == 'imagenet30':
     classes = 30
-    targets_list_loaded = np.load(os.path.join(generalization_path, 'imagenet30_Train_s1/labels.npy'))
+    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+        targets_list_loaded = pickle.load(f)
 
 if args.dataset == 'mvtec_ad':
     classes = 15
-    targets_list_loaded = np.load(os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy'))
+    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+        targets_list_loaded = pickle.load(f)
 
 if args.dataset == 'visa':
     classes = 12
-    targets_list_loaded = np.load(os.path.join(generalization_path, 'visa_Train_s1/labels.npy'))
+    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+        targets_list_loaded = pickle.load(f)
 print(len(imgs_n_features))
 distances = []
+
 if args.one_class:
     for class_idx in range(classes):
         indices = [k for k in range(len(targets_list_loaded)) if targets_list_loaded[k]==class_idx]
-
         imgs_n_features_one_class = np.squeeze(np.asarray([imgs_n_features[idx].astype(np.float64) for idx in indices]))
         imgs_aug_features_one_class = np.squeeze(np.asarray([imgs_aug_features[idx].astype(np.float64) for idx in indices]))
         cost_matrix = ot.dist(imgs_n_features_one_class, imgs_aug_features_one_class, metric=cosine)
@@ -136,9 +143,9 @@ if args.one_class:
         distances.append(emd_distance)
         print(f'{class_idx}: {emd_distance}')
 
-
     with open(wasser_pickle_path, 'wb') as f:
         pickle.dump(distances, f)
+
 else:
     imgs_n_features_one_class = np.asarray(imgs_n_features.astype(np.float64))
     imgs_aug_features_one_class = np.asarray(imgs_aug_features.astype(np.float64))
