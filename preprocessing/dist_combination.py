@@ -48,29 +48,40 @@ def sparse2coarse(targets):
 def get_target_labels(args, generalization_path):
     
     if args.dataset == 'svhn':
-        classes = 10    
-        targets_list_loaded = np.load(os.path.join(generalization_path, 'svhn_Train_s1/labels.npy'))
+        classes = 10
+        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
+            targets_list_loaded = pickle.load(f)
 
     if args.dataset == 'cifar10':
         classes = 10
-        targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar10_Train_s1/labels.npy'))
+        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
+            targets_list_loaded = pickle.load(f)
+
 
     if args.dataset == 'cifar100':
         classes = 20
-        targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar100_Train_s1/labels.npy'))
+        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
+            targets_list_loaded = pickle.load(f)
+
         targets_list_loaded = sparse2coarse(targets_list_loaded)
         
     if args.dataset == 'imagenet30':
         classes = 30
-        targets_list_loaded = np.load(os.path.join(generalization_path, 'imagenet_Train_s1/labels.npy'))
+        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
+            targets_list_loaded = pickle.load(f)
+
     
     if args.dataset == 'mvtec_ad':
         classes = 15
-        targets_list_loaded = np.load(os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy'))
+        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
+            targets_list_loaded = pickle.load(f)
+
     
     if args.dataset == 'visa':
         classes = 12
-        targets_list_loaded = np.load(os.path.join(generalization_path, 'visa_Train_s1/labels.npy'))
+        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
+            targets_list_loaded = pickle.load(f)
+
 
     return targets_list_loaded, classes
 
@@ -90,19 +101,21 @@ for file_name in os.listdir(root):
 
 if args.one_class:
     softmax_sorted = {}
+    softmax_sorted_preproc = {}
     for class_idx in range(classes):
         softmax_sorted[class_idx] = {}
+        softmax_sorted_preproc[class_idx] = {}
 
     for class_idx in range(classes):
         indices = [k for k in range(len(target_labels)) if target_labels[k]==class_idx]
         for noise_name in loaded_diffs.keys():
             print(class_idx)
-            softmax_sorted[class_idx][noise_name] = torch.mean(torch.tensor([loaded_diffs[noise_name][class_idx] for idx in indices])).float()
-            
+            # this line is useful for cosine similarity and eucladian distance and has no use in wasser distance using POT
+            softmax_sorted_preproc[class_idx][noise_name] = torch.mean(torch.tensor([loaded_diffs[noise_name][class_idx] for idx in indices])).float()
 
     for i in range(classes):
-        softmaxes = torch.nn.functional.softmax(torch.tensor(list(softmax_sorted[i].values())), dim=0).numpy()
-        for j, key in enumerate(softmax_sorted[i].keys()):
+        softmaxes = torch.nn.functional.softmax(torch.tensor(list(softmax_sorted_preproc[i].values())), dim=0).numpy()
+        for j, key in enumerate(softmax_sorted_preproc[i].keys()):
             softmax_sorted[i][key] = softmaxes[j]
 
         sorted_values = sorted(softmax_sorted[i].items(), key=lambda item: item[1])
