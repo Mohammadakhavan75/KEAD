@@ -118,7 +118,7 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             p_features = p_features[-1]
             n_features = n_features[-1]
 
-            loss_contrastive = torch.tensor(0.0, requires_grad=True)
+            # loss_contrastive = torch.tensor(0.0, requires_grad=True)
             loss_contrastive, sim_p, sim_n, data_norm, negative_norms, positive_norms = contrastive_matrix(normal_features, p_features, n_features, temperature=args.temperature)
             sim_ps.append(torch.mean(sim_p).detach().cpu())
             sim_ns.append(torch.mean(sim_n).detach().cpu())
@@ -127,15 +127,16 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             labels[len(pred_d)*2:] = 1.
             preds = torch.cat((pred_d, pred_p, pred_n), dim=0).squeeze(1).to(args.device)
  
-            bc_loss = BCELoss(preds, labels)
-            loss = args.l_con * loss_contrastive + args.l_bc * bc_loss
+            # bc_loss = BCELoss(preds, labels)
+            # loss = args.l_con * loss_contrastive + args.l_bc * bc_loss
+            loss = loss_contrastive
             
             epoch_loss['loss'].append(loss.item())
             epoch_loss['contrastive'].append(loss_contrastive.item())
 
             train_global_iter += 1
             writer.add_scalar("Train/loss_contrastive", loss_contrastive.item(), train_global_iter)
-            writer.add_scalar("Train/bc_loss", bc_loss.item(), train_global_iter)
+            # writer.add_scalar("Train/bc_loss", bc_loss.item(), train_global_iter)
             writer.add_scalar("Train/loss", loss.item(), train_global_iter)
             writer.add_scalar("Train/sim_p", torch.mean(sim_p).detach().cpu().numpy(), train_global_iter)
             writer.add_scalar("Train/sim_n", torch.mean(sim_n).detach().cpu().numpy(), train_global_iter)
@@ -323,7 +324,7 @@ def calculate_accuracy(model_output, true_labels):
 
 
 def evaluate(eval_in, test_positives_loader, test_negetives_loader, model, args):
-    model = model.to(args.device)
+    # model = model.to(args.device)
     model.eval()  # enter valid mode
 
     model_preds = []
@@ -339,7 +340,6 @@ def evaluate(eval_in, test_positives_loader, test_negetives_loader, model, args)
             p_imgs = p_imgs.to(args.device)
             n_imgs = n_imgs.to(args.device)
 
-
             pred_d, _ = model(imgs)
             pred_p, _ = model(p_imgs)
             pred_n, _ = model(n_imgs)
@@ -354,9 +354,10 @@ def evaluate(eval_in, test_positives_loader, test_negetives_loader, model, args)
             model_preds.extend(pred_d.detach().cpu().numpy())
             model_preds.extend(pred_p.detach().cpu().numpy())
             model_preds.extend(pred_n.detach().cpu().numpy())
-            
+
         accuracy = calculate_accuracy(model_preds, trues)
     return accuracy
+
 
 def load_model(args):
 
@@ -474,7 +475,102 @@ def loading_datasets(args, data_path, imagenet_path):
     return train_loader, test_loader, train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader
 
 
+import faiss
+from sklearn.metrics import roc_auc_score
+from torch.utils.data import DataLoader
+from dataset_loader import load_np_dataset, get_subclass_dataset
+from torchvision.transforms import transforms
+import torchvision
+
+def knn_score(train_set, test_set, n_neighbours=1):
+    index = faiss.IndexFlatL2(train_set.shape[1])
+    index.add(train_set)
+    D, _ = index.search(test_set, n_neighbours)
+    return np.sum(D, axis=1)
+
+
+def novelty_detection(eval_in, eval_out, train_features_in, net, args):
+    net = net.to(args.device)
+    net.eval()  # enter valid mode
+
+    in_features_list = []
+    out_features_list = []
+    
+    model_preds = []
+    trues = []
+    with torch.no_grad():
+        for data_in, data_out in zip(eval_in, eval_out):
+            inputs_in, targets_in = data_in
+            inputs_out, targets_out = data_out
+            
+            inputs_in , inputs_out = inputs_in.to(args.device) , inputs_out.to(args.device)
+
+            preds_in, normal_features = net(inputs_in)
+            preds_out, out_features = net(inputs_out)
+            
+            in_features_list.extend(normal_features[-1].detach().cpu().numpy())
+            out_features_list.extend(out_features[-1].detach().cpu().numpy())
+
+            
+        in_features_list = torch.tensor(np.array(in_features_list))
+        out_features_list = torch.tensor(np.array(out_features_list))
+        l1 = torch.zeros(in_features_list.shape[0])
+        l2 = torch.ones(out_features_list.shape[0])
+        targets = torch.cat([l1, l2], dim=0)
+    
+        f_list = torch.cat([in_features_list, out_features_list], dim=0)
+        distances = knn_score(to_np(train_features_in), to_np(f_list))
+        auc = roc_auc_score(targets, distances)
+    return auc
+
+def feature_extraction(loader, net):
+    print("extracting features...")
+    net = net.to(args.device)
+    net.eval()  # enter train mode
+    
+    features = []
+    with torch.no_grad():
+        for data_in in loader:
+            inputs_in, _ = data_in
+            
+            inputs = inputs_in.to(args.device)
+
+            _, normal_features = net(inputs)            
+            features.append(normal_features[-1])
+    
+    features = torch.cat(features, dim=0)
+    return features
+
+
+def eval_cifar10_novelity(model, args, root_path):
+    np_test_img_path = root_path + f'/generalization_repo_dataset/cifar10_Test_s5/rot270.npy'
+    np_test_target_path = root_path + '/generalization_repo_dataset/cifar10_Test_s5/labels.npy'
+    
+    test_transform = transforms.Compose([transforms.ToTensor()])
+    train_data = torchvision.datasets.CIFAR10(root_path, train=True, transform=test_transform, download=True)
+    test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10')
+    train_data_in = get_subclass_dataset(train_data, args.one_class_idx)
+    test_data_in = get_subclass_dataset(test_data, args.one_class_idx)
+    train_data_in_loader = DataLoader(train_data_in, shuffle=True, batch_size=args.batch_size, num_workers=args.num_workers)
+    test_data_in_loader = DataLoader(test_data_in, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+    train_features_in = feature_extraction(train_data_in_loader, model)
+
+    aucs = []
+    for id in range(10):
+        if id == args.one_class_idx:
+            continue
+
+        test_data_out = get_subclass_dataset(test_data, id)
+        test_data_out_loader = DataLoader(test_data_out, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+        auc = novelty_detection(test_data_in_loader, test_data_out_loader, train_features_in, model, args)
+        aucs.append(auc)
+        print(f"Evaluation distance on class {id}: auc: {auc}")
+
+    print(f"Average auc is: {np.mean(aucs)}")
+    return np.mean(aucs)
+
 def set_seed(seed_nu):
+
     torch.manual_seed(seed_nu)
     random.seed(seed_nu)
     np.random.seed(seed_nu)
@@ -510,10 +606,10 @@ if __name__ == "__main__":
         print("Using", torch.cuda.device_count(), "GPUs")
         model = torch.nn.DataParallel(model)
 
-    elif args.device == 'cuda':    
+    elif args.device == 'cuda':
         os.environ['CUDA_VISIBLE_DEVICES']='0,1'
         args.device=f'cuda:{args.gpu}'
-    args.device='mps'
+    # args.device='mps'
     model = model.to(args.device)
     train_global_iter = 0
 
@@ -529,9 +625,13 @@ if __name__ == "__main__":
         writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
         writer.add_scalar("Train/lr", args.last_lr, epoch)
 
-        accuracy = evaluate(test_loader, test_positives_loader, test_negetives_loader, model, args)
-        print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}, Eval/avg_acc: {accuracy}")
-        
+        # accuracy = evaluate(test_loader, test_positives_loader, test_negetives_loader, model, args)
+        # print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}, Eval/avg_acc: {accuracy}")
+        print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}")
+        if epoch % 10 == 9:
+            avg_auc = eval_cifar10_novelity(model, args, root_path)
+            writer.add_scalar("Eval/avg_auc", avg_auc, epoch)
+
         if (epoch) % (args.epochs / 10) == 0:
             torch.save(model.state_dict(), os.path.join(model_save_path, f'model_params_epoch_{epoch}.pt'))
 
@@ -542,7 +642,7 @@ if __name__ == "__main__":
 
         last_sim_ps = avg_sim_ps
         last_sim_ns = avg_sim_ns
-        args.seed += epoch
-        set_seed(args.seed)
+        # args.seed += epoch
+        # set_seed(args.seed)
 
     torch.save(model.state_dict(), os.path.join(save_path, 'last_params.pt'))
