@@ -89,8 +89,8 @@ def contrastive_matrix(data, positive, negative, temperature=0.5, epsilon = 1e-1
     sim_n = torch.matmul(data, negative.t()) / (data_norm * negative_norms.t() + epsilon)
     sim_p = torch.matmul(data, positive.t()) / (data_norm * positive_norms.t() + epsilon)
    
-    sim_p = sim_p.diag() 
-    # sim_n = sim_n.diag() 
+    sim_p = sim_p.diag()
+    # sim_n = sim_n.diag()
     # denom = torch.exp(sim_n/temperature) + torch.exp(sim_p/temperature)
     denom = torch.sum(torch.exp(sim_n/temperature), dim=1) + torch.exp(sim_p/temperature)
    
