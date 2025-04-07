@@ -301,12 +301,13 @@ def novelty_detection(eval_in_loader, eval_out_loader, train_features_in, thresh
 
             inputs_in , inputs_out = inputs_in.to(args.device) , inputs_out.to(args.device)
 
-            preds_in, features_in = net(inputs_in)
-            preds_out, features_out = net(inputs_out)
-
+            preds_in, features_in = net(inputs_in, True)
+            preds_out, features_out = net(inputs_out, True)
+            features_in = features_in['penultimate']
+            features_out = features_out['penultimate']
             # Save features from the last layer (assumed to be at index -1)
-            in_features_list.extend(features_in[-1].detach().cpu().numpy())
-            out_features_list.extend(features_out[-1].detach().cpu().numpy())
+            in_features_list.extend(features_in.detach().cpu().numpy())
+            out_features_list.extend(features_out.detach().cpu().numpy())
 
             # Collect model predictions (for accuracy) and true labels
             model_preds.extend(torch.cat([preds_in, preds_out]).detach().cpu().numpy())
@@ -430,7 +431,7 @@ def load_model(args):
         raise NotImplementedError("Not implemented image size!")                
     
     if args.model_path:
-        m = torch.load(args.model_path, weights_only=True)
+        m = torch.load(args.model_path, weights_only=True, map_location=args.device)
         model.load_state_dict(m)
 
     return model
@@ -448,8 +449,9 @@ def feature_extraction(loader, net, device: str):
     with torch.no_grad():
         for inputs, _ in loader:
             inputs = inputs.to(device)
-            _, feats = net(inputs)
-            features.append(feats[-1])
+            _, feats = net(inputs, True)
+            feats = feats['penultimate']
+            features.append(feats)
     
     return torch.cat(features, dim=0)
 
@@ -462,6 +464,8 @@ def main():
     # Set device
     if args.device == 'cuda':
         args.device=f'cuda:{args.gpu}'
+
+    args.device='mps'
 
     model = load_model(args)
     root_path = 'D:/Datasets/data/'
