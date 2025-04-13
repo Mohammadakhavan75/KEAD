@@ -274,12 +274,8 @@ def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None, shuffl
     torchvision.transforms.CenterCrop(224),
     torchvision.transforms.ToTensor()])
 
-    if "ImageNet-30" in path:
-        train_data = torchvision.datasets.ImageNet(root=path, split='train', transform=transform)
-        val_data = torchvision.datasets.ImageNet(root=path, split='val', transform=transform)
-    else:
-        train_data = torchvision.datasets.ImageNet(root=os.path.join(path, 'ImageNet'), split='train', transform=transform)
-        val_data = torchvision.datasets.ImageNet(root=os.path.join(path, 'ImageNet'), split='val', transform=transform)
+    train_data = torchvision.datasets.ImageNet(root=path, split='train', transform=transform)
+    val_data = torchvision.datasets.ImageNet(root=path, split='val', transform=transform)
 
     if one_class_idx != None:
         train_data = get_subclass_dataset(train_data, one_class_idx)
