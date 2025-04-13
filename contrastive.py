@@ -89,7 +89,7 @@ def contrastive_matrix(data, positive, negative, temperature=0.5, epsilon = 1e-1
     sim_n = torch.matmul(data, negative.t()) / (data_norm * negative_norms.t() + epsilon)
     sim_p = torch.matmul(data, positive.t()) / (data_norm * positive_norms.t() + epsilon)
    
-    sim_p = sim_p.diag()
+    # sim_p = sim_p.diag()
     # sim_n = sim_n.diag()
     # denom = torch.exp(sim_n/temperature) + torch.exp(sim_p/temperature)
     denom = torch.sum(torch.exp(sim_n/temperature), dim=1) + torch.exp(sim_p/temperature)
@@ -99,6 +99,16 @@ def contrastive_matrix(data, positive, negative, temperature=0.5, epsilon = 1e-1
         card = int(positive.shape[0]/data.shape[0])
     else:
         card = 1
+
+     # Extract the correct similarities for positive pairs
+    if card > 1:
+        N = data.shape[0]
+        K = card
+        indices = (torch.arange(N, device=data.device) * K).unsqueeze(1) + torch.arange(K, device=data.device).unsqueeze(0)
+        sim_p = sim_p.gather(1, indices)
+    else:
+        sim_p = sim_p.diag()
+
 
     loss = (-1 / card) * torch.log(torch.exp(sim_p / temperature) / (denom + epsilon))
 
