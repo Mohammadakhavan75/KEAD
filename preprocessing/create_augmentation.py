@@ -467,6 +467,12 @@ def loading_datasets(args):
                                                 batch_size=1,
                                                 shuffle=False,
                                                 seed=args.seed)
+    elif args.dataset == 'imagenet_30':
+        train_loader, test_loader = load_imagenet(args.config['imagenet_30_path'],
+                                                batch_size=1,
+                                                shuffle=False,
+                                                seed=args.seed)
+
     elif args.dataset == 'mvtec_ad':
         train_loader, test_loader = load_mvtec_ad(data_path,
                                                 batch_size=1,
