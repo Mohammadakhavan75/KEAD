@@ -3,6 +3,9 @@ pip install Wand
 sudo apt-get update
 sudo apt-get install libmagickwand-dev
 
+Also you could install wand and magickwand using conda like this:
+
+conda install -c conda-forge imagemagick wand
 
 Mainly this code adopted from the below repo:
 
@@ -14,6 +17,8 @@ Mainly this code adopted from the below repo:
   journal={arXiv preprint arXiv:2211.10892},
   year={2023}
 }
+
+
 
 """
 
