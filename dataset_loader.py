@@ -265,14 +265,17 @@ def noise_loader(args, transform=None, batch_size=64, num_workers=0, one_class_i
     return train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader
 
 
-def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
+def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None, transforms=None, shuffle=True, seed=1):
     print('loading Imagenet')
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-    transform = torchvision.transforms.Compose([
-    torchvision.transforms.Resize(256),
-    torchvision.transforms.CenterCrop(224),
-    torchvision.transforms.ToTensor()])
+    if transforms is None:
+        transform = torchvision.transforms.Compose([
+                torchvision.transforms.Resize(256),
+                torchvision.transforms.CenterCrop(224),
+                torchvision.transforms.ToTensor()])
+    else:
+        transform = transforms
 
     train_data = torchvision.datasets.ImageNet(root=path, split='train', transform=transform)
     val_data = torchvision.datasets.ImageNet(root=path, split='val', transform=transform)

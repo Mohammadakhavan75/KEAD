@@ -104,7 +104,7 @@ args.config = config
 
 sys.path.append(args.config["library_path"])
 from contrastive import cosine_similarity
-from dataset_loader import load_cifar10, load_cifar100, load_svhn, load_mvtec_ad, load_visa, load_np_dataset
+from dataset_loader import load_cifar10, load_cifar100, load_svhn, load_mvtec_ad, load_visa, load_np_dataset, load_imagenet
 
 
 if args.save_rep_norm:
@@ -159,16 +159,15 @@ elif args.dataset == 'visa':
     train_aug_targets_path = os.path.join(generalization_path, 'visa_Train_s1/labels.npy').replace("\r", "")
     
     normal_loader, _ = load_visa(data_path,
-                                    batch_size=args.batch_size,
-                                    transforms=transform,
-                                    seed=args.seed)
+                                batch_size=args.batch_size,
+                                transforms=transform,
+                                seed=args.seed)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
-
 
 elif args.dataset == 'imagenet':
     # imagenet_path = os.path.join(data_path,'ImageNet')
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_Train_s1/{args.aug}/')).replace("\r", "")
-    train_aug_targets_path = os.path.join(generalization_path, os.path.normpath( f'imagenet_Train_s1/{args.aug}/labels.npy')).replace("\r", "")
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_Train_s1/{args.aug}.npy')).replace("\r", "")
+    train_aug_targets_path = os.path.join(generalization_path, os.path.normpath('imagenet_Train_s1/labels.npy')).replace("\r", "")
     
     if args.backbone != 'clip':
         transform = torchvision.transforms.Compose([
@@ -176,9 +175,30 @@ elif args.dataset == 'imagenet':
         torchvision.transforms.CenterCrop(224),
         torchvision.transforms.ToTensor()])
 
-    noraml_dataset = torchvision.datasets.ImageNet(root=imagenet_path, split='train', transform=transform)
-    aug_dataset = CustomImageDataset(image_dir=train_aug_imgs_path, target_dir=train_aug_targets_path, transform=transform)
+    normal_loader, _ = load_imagenet(args.config['imagenet_30_path'],
+                                    batch_size=args.batch_size,
+                                    transforms=transform,
+                                    seed=args.seed)
     
+    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
+
+elif args.dataset == 'imagenet_30':
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_30_Train_s1/{args.aug}.npy')).replace("\r", "")
+    train_aug_targets_path = os.path.join(generalization_path, os.path.normpath('imagenet_30_Train_s1/labels.npy')).replace("\r", "")
+    
+    if args.backbone != 'clip':
+        transform = torchvision.transforms.Compose([
+        torchvision.transforms.Resize(256),
+        torchvision.transforms.CenterCrop(224),
+        torchvision.transforms.ToTensor()])
+
+    normal_loader, _ = load_imagenet(args.config['imagenet_30_path'],
+                                    batch_size=args.batch_size,
+                                    transforms=transform,
+                                    seed=args.seed)
+    
+    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
+
 else:
     raise NotImplemented(f"Not Available Dataset {args.dataset}!")
 
