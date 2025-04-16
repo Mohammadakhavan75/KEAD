@@ -65,7 +65,7 @@ def get_target_labels(args, generalization_path):
 
         targets_list_loaded = sparse2coarse(targets_list_loaded)
         
-    if args.dataset == 'imagenet30':
+    if args.dataset == 'imagenet_30':
         classes = 30
         with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
             targets_list_loaded = pickle.load(f)
