@@ -115,7 +115,7 @@ if args.dataset == 'cifar100':
             targets_list_loaded = pickle.load(f)
         targets_list_loaded = sparse2coarse(targets_list_loaded)
        
-if args.dataset == 'imagenet30':
+if args.dataset == 'imagenet_30':
     classes = 30
     with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
         targets_list_loaded = pickle.load(f)
