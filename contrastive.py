@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import warnings
-
+import torch.nn.functional as F
 def norm(x):
     return torch.linalg.vector_norm(x)
 
@@ -61,55 +61,77 @@ def contrastive(input, positive, negative, temperature=0.5, epsilon = 1e-12): # 
 
 
 
-def contrastive_matrix(data, positive, negative, temperature=0.5, epsilon = 1e-12): # epsilon for non getting devided by zero error
+import torch
+import warnings
+from typing import Optional
+
+def contrastive_matrix(
+    anchors: torch.Tensor,          # (B, D)
+    positives: torch.Tensor,        # (B·Kₚ, D)  or (B, D) if Kₚ=1
+    negatives: torch.Tensor,        # (B·Kₙ, D)  or arbitrary (M, D) if Kₙ=None
+    temperature: float = 0.5,
+    epsilon: float = 1e-12,
+    positives_per_anchor: Optional[int] = None,     # Kₚ, or None → infer
+    negatives_per_anchor: Optional[int] = None,     # Kₙ, or None → treat all M as negatives
+):
     """
-    Compute the contrastive loss for a batch of inputs.
+    General NT‑Xent with Kₚ positives and Kₙ negatives per anchor.
 
-    Args:
-        data (Tensor): The input tensor.
-        positive (Tensor): The positive tensor (soft augmentation).
-        negative (Tensor): The negative tensor (hard augmentation).
-        temperature (float, optional): The temperature parameter. Defaults to 0.5.
-        epsilon (float, optional): The epsilon value for avoiding division by zero. Defaults to 1e-12.
-
-    Returns:
-        Tensor: The contrastive loss.
-        Tensor: The similarity between the data and positive tensors.
-        Tensor: The similarity between the data and negative tensors.
+    If negatives_per_anchor is None, every entry in `negatives`
+    is used for every anchor (SimCLR‑like).
     """
-       
-    data_norm = torch.norm(data, p=2, dim=1, keepdim=True)
-    negative_norms = torch.norm(negative, p=2, dim=1, keepdim=True)
-    positive_norms = torch.norm(positive, p=2, dim=1, keepdim=True)
 
-    # Check for zero norms
-    if torch.any(data_norm == 0) or torch.any(positive_norms == 0) or torch.any(negative_norms == 0):
-        warnings.warn("Zero norm encountered")
+    B = anchors.shape[0]
+    D = anchors.shape[1]
+    device = anchors.device
 
-    sim_n = torch.matmul(data, negative.t()) / (data_norm * negative_norms.t() + epsilon)
-    sim_p = torch.matmul(data, positive.t()) / (data_norm * positive_norms.t() + epsilon)
-   
-    # sim_p = sim_p.diag()
-    # sim_n = sim_n.diag()
-    # denom = torch.exp(sim_n/temperature) + torch.exp(sim_p/temperature)
-    denom = torch.sum(torch.exp(sim_n/temperature), dim=1) + torch.exp(sim_p/temperature)
-   
-    # card = len(positive[0])
-    if positive.shape[0] != data.shape[0]:
-        card = int(positive.shape[0]/data.shape[0])
+    # ---------------- l2 norms ----------------
+    norm_a = torch.norm(anchors,   p=2, dim=1, keepdim=True)    # (B,1)
+    norm_p = torch.norm(positives, p=2, dim=1, keepdim=True)    # (B·Kₚ,1) or (B,1)
+    norm_n = torch.norm(negatives, p=2, dim=1, keepdim=True)    # (B·Kₙ,1) or (M,1)
+
+    if (norm_a == 0).any() or (norm_p == 0).any() or (norm_n == 0).any():
+        warnings.warn("Zero‑norm row(s) detected; cosine similarity undefined there.")
+
+    # ---------------- cosine similarities ----------------
+    sim_p_full = anchors @ positives.t() / (norm_a * norm_p.t() + epsilon)   # (B, B·Kₚ) or (B, B)
+    sim_n_full = anchors @ negatives.t() / (norm_a * norm_n.t() + epsilon)   # (B, B·Kₙ) or (B, M)
+
+    # ----------- extract Kₚ positives for each anchor ------------
+    if positives_per_anchor is None:
+        positives_per_anchor = positives.shape[0] // B                       # infers 1 or Kₚ
+    Kp = positives_per_anchor
+
+    if Kp > 1:
+        row_offset = (torch.arange(B, device=device) * Kp).unsqueeze(1)      # (B,1)
+        col_index  = torch.arange(Kp, device=device).unsqueeze(0)            # (1,Kₚ)
+        idx_p      = row_offset + col_index                                  # (B,Kₚ)
+        sim_p = sim_p_full.gather(1, idx_p)                                  # (B,Kₚ)
+    else:                                                                    # Kₚ = 1
+        sim_p = sim_p_full.diag().unsqueeze(1)                               # (B,1)
+
+    # ----------- extract Kₙ negatives for each anchor ------------
+    if negatives_per_anchor is None:                                         # use ALL negatives
+        sim_n = sim_n_full                                                   # (B,M)
+        Kn    = sim_n.shape[1]                                               # M
     else:
-        card = 1
+        Kn = negatives_per_anchor
+        row_offset = (torch.arange(B, device=device) * Kn).unsqueeze(1)      # (B,1)
+        col_index  = torch.arange(Kn, device=device).unsqueeze(0)            # (1,Kₙ)
+        idx_n      = row_offset + col_index                                  # (B,Kₙ)
+        sim_n      = sim_n_full.gather(1, idx_n)                             # (B,Kₙ)
 
-     # Extract the correct similarities for positive pairs
-    if card > 1:
-        N = data.shape[0]
-        K = card
-        indices = (torch.arange(N, device=data.device) * K).unsqueeze(1) + torch.arange(K, device=data.device).unsqueeze(0)
-        sim_p = sim_p.gather(1, indices)
-    else:
-        sim_p = sim_p.diag()
+    # ---------------- denominator ----------------
+    denom = (
+        torch.sum(torch.exp(sim_p / temperature), dim=1, keepdim=True) +
+        torch.sum(torch.exp(sim_n / temperature), dim=1, keepdim=True)
+    )                                                                        # (B,1)
 
+    # ---------------- loss ----------------
+    loss_per_positive = (
+        -torch.log(torch.exp(sim_p / temperature) / (denom + epsilon))
+    ) / Kp                                                                    # (B,Kₚ) or (B,1)
 
-    loss = (-1 / card) * torch.log(torch.exp(sim_p / temperature) / (denom + epsilon))
+    loss = loss_per_positive.mean()
 
-    return torch.mean(loss), sim_p, sim_n, data_norm, negative_norms, positive_norms # epsilon for non getting devided by zero error
+    return loss, sim_p, sim_n, norm_a, norm_n, norm_p
