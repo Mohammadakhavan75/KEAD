@@ -62,7 +62,7 @@ class ResNet(nn.Module):
         out_list.append(out)
         out = self.avgpool(out)
         out_list.append(out)
-        out = torch.flatten(out, 1)
+        out = out.view(out.size(0), -1)
         out_list.append(out)
 
         if self.fc_available:
