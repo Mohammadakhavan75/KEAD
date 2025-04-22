@@ -72,6 +72,7 @@ def parsing():
     parser.add_argument('--model', default='resnet18', type=str, help='resnet model selection')
 
     parser.add_argument('--fc_available', default=0, type=int, help='Weight of Contrastive loss')
+    parser.add_argument('--projection_head', default=0, type=int, help='Weight of Contrastive loss')
     parser.add_argument('--l_con', default=1., type=float, help='Weight of Contrastive loss')
     parser.add_argument('--l_bc', default=1., type=float, help='Wieght of BCE loss')
     args = parser.parse_args()
@@ -150,9 +151,15 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             pred_d, normal_features = model(imgs)
             pred_p, p_features = model(p_imgs)
             pred_n, n_features = model(n_imgs)
-            normal_features = normal_features[-1]
-            p_features = p_features[-1]
-            n_features = n_features[-1]
+
+            if args.projection_head:
+                normal_features = pred_d
+                p_features = pred_p
+                n_features = pred_n
+            else:
+                normal_features = normal_features[-1]
+                p_features = p_features[-1]
+                n_features = n_features[-1]
 
             with torch.no_grad():
                 z1 = F.normalize(p_features, dim=1)
@@ -172,9 +179,9 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             sim_ps.append(torch.mean(sim_p).detach().cpu())
             sim_ns.append(torch.mean(sim_n).detach().cpu())
 
-            labels = torch.zeros(len(pred_d)*3).to(args.device)
-            labels[len(pred_d)*2:] = 1.
-            preds = torch.cat((pred_d, pred_p, pred_n), dim=0).squeeze(1).to(args.device)
+            # labels = torch.zeros(len(pred_d)*3).to(args.device)
+            # labels[len(pred_d)*2:] = 1.
+            # preds = torch.cat((pred_d, pred_p, pred_n), dim=0).squeeze(1).to(args.device)
  
             # bc_loss = BCELoss(preds, labels)
             # loss = args.l_con * loss_contrastive + args.l_bc * bc_loss
@@ -195,7 +202,6 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             
             writer.add_scalar("Train/sanity_p", torch.mean(torch.tensor(sanity_sim_p)).detach().cpu().numpy(), train_global_iter)
             writer.add_scalar("Train/sanity_n", torch.mean(torch.tensor(sanity_sim_n)).detach().cpu().numpy(), train_global_iter)
-            writer.add_scalar("Train/sanity_sigma", torch.mean(torch.tensor(sanity_sigma)).detach().cpu().numpy(), train_global_iter)
 
 
             loss.backward()
@@ -678,7 +684,6 @@ if __name__ == "__main__":
         writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, epoch)
         writer.add_scalar("AVG_Train/sanity_p", np.mean(sanity['sim_p']), epoch)
         writer.add_scalar("AVG_Train/sanity_n", np.mean(sanity['sim_n']), epoch)
-        writer.add_scalar("AVG_Train/sanity_sigma", np.mean(sanity['sigma']), epoch)
 
         writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
         writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
