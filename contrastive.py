@@ -93,6 +93,11 @@ def contrastive_matrix(
     if (norm_a == 0).any() or (norm_p == 0).any() or (norm_n == 0).any():
         warnings.warn("Zero‑norm row(s) detected; cosine similarity undefined there.")
 
+        # Clamp norms to avoid division by zero
+        norm_a = torch.clamp(norm_a, min=epsilon)
+        norm_p = torch.clamp(norm_p, min=epsilon)
+        norm_n = torch.clamp(norm_n, min=epsilon)
+
     # ---------------- cosine similarities ----------------
     sim_p_full = anchors @ positives.t() / (norm_a * norm_p.t() + epsilon)   # (B, B·Kₚ) or (B, B)
     sim_n_full = anchors @ negatives.t() / (norm_a * norm_n.t() + epsilon)   # (B, B·Kₙ) or (B, M)
@@ -112,8 +117,12 @@ def contrastive_matrix(
 
     # ----------- extract Kₙ negatives for each anchor ------------
     if negatives_per_anchor is None:                                         # use ALL negatives
-        sim_n = sim_n_full                                                   # (B,M)
-        Kn    = sim_n.shape[1]                                               # M
+        # sim_n = sim_n_full                                                   # (B,M)
+        # Kn    = sim_n.shape[1]                                               # M
+        # exclude the “self‐negative” n_i for anchor x_i
+        mask = ~torch.eye(B, dtype=torch.bool, device=device)   # (B,B)
+        sim_n = sim_n_full[mask].view(B, B-1)                   # (B, B−1)
+        Kn    = B - 1
     else:
         Kn = negatives_per_anchor
         row_offset = (torch.arange(B, device=device) * Kn).unsqueeze(1)      # (B,1)
