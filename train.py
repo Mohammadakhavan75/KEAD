@@ -80,7 +80,7 @@ def parsing():
     return args
 
 
-def eigenspectrum(train_loader, train_positives_loader, train_negetives_loader, model):
+def eigenspectrum(train_loader, train_positives_loader, train_negetives_loader, model, args):
     model.eval()
     all_feats = []
     with torch.no_grad():
@@ -92,12 +92,12 @@ def eigenspectrum(train_loader, train_positives_loader, train_negetives_loader, 
             p_imgs = p_imgs.to(args.device)
             n_imgs = n_imgs.to(args.device)
         
-            z = model.encoder(imgs)
-            all_feats.append(z)
-            z = model.encoder(p_imgs)
-            all_feats.append(z)
-            z = model.encoder(n_imgs)
-            all_feats.append(z)
+            _, z = model(imgs)
+            all_feats.append(z[-1])
+            _, z = model(p_imgs)
+            all_feats.append(z[-1])
+            _, z = model(n_imgs)
+            all_feats.append(z[-1])
 
         z = torch.cat(all_feats, dim=0)
         z = F.normalize(z, dim=1)
@@ -153,17 +153,17 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             pred_n, n_features = model(n_imgs)
 
             if args.projection_head:
-                normal_features = pred_d
-                p_features = pred_p
-                n_features = pred_n
+                normal_feat = pred_d
+                p_feat = pred_p
+                n_feat = pred_n
             else:
-                normal_features = normal_features[-1]
-                p_features = p_features[-1]
-                n_features = n_features[-1]
+                normal_feat = normal_features[-1]
+                p_feat = p_features[-1]
+                n_feat = n_features[-1]
 
             with torch.no_grad():
-                z1 = F.normalize(p_features, dim=1)
-                z2 = F.normalize(n_features, dim=1)
+                z1 = F.normalize(p_features[-1], dim=1)
+                z2 = F.normalize(n_features[-1], dim=1)
                 # ——— SANITY CHECK ———
                 S = z1 @ z2.T
                 diag = torch.diag(S).mean().item()
@@ -175,7 +175,7 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
                 sanity['sim_n'].append(offdiag)
 
             # loss_contrastive = torch.tensor(0.0, requires_grad=True)
-            loss_contrastive, sim_p, sim_n, data_norm, negative_norms, positive_norms = contrastive_matrix(normal_features, p_features, n_features, temperature=args.temperature)
+            loss_contrastive, sim_p, sim_n, data_norm, negative_norms, positive_norms = contrastive_matrix(normal_feat, p_feat, n_feat, temperature=args.temperature)
             sim_ps.append(torch.mean(sim_p).detach().cpu())
             sim_ns.append(torch.mean(sim_n).detach().cpu())
 
@@ -205,6 +205,9 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
 
 
             loss.backward()
+            assert imgs.grad is not None
+            assert p_imgs.grad is not None
+            assert n_imgs.grad is not None
             pp = []
             for param in model.parameters():
                 if param.grad is not None:
@@ -421,9 +424,9 @@ def evaluate(eval_in, test_positives_loader, test_negetives_loader, model, args)
 def load_model(args):
 
     if args.model == 'resnet18':
-        model = ResNet18(img_size=args.img_size, num_classes=1, fc_available=args.fc_available) # num_class is 1 for binary anomaly classification
+        model = ResNet18(img_size=args.img_size, num_classes=1, fc_available=args.fc_available, proj_head=args.projection_head) # num_class is 1 for binary anomaly classification
     elif args.model == 'resnet50':
-        model = ResNet50(img_size=args.img_size, num_classes=1, fc_available=args.fc_available)
+        model = ResNet50(img_size=args.img_size, num_classes=1, fc_available=args.fc_available, proj_head=args.projection_head)
     else:
         raise NotImplementedError("Not implemented model!")
     
