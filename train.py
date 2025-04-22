@@ -12,7 +12,7 @@ from models.resnet import ResNet18, ResNet50
 from torch.utils.tensorboard import SummaryWriter
 from dataset_loader import noise_loader, load_cifar10, load_svhn, load_cifar100, load_imagenet, load_mvtec_ad, load_visa
 from sklearn.metrics import accuracy_score
-
+import torch.nn.functional as F
 def to_np(x):
     return x.data.cpu().numpy()
 
@@ -79,6 +79,35 @@ def parsing():
     return args
 
 
+def eigenspectrum(train_loader, train_positives_loader, train_negetives_loader, model):
+    model.eval()
+    all_feats = []
+    with torch.no_grad():
+        for n, (normal, p_data, n_data) in tqdm(enumerate(zip(train_loader, train_positives_loader[0], train_negetives_loader[0]))):
+            imgs, _ = normal
+            p_imgs, _ = p_data
+            n_imgs, _ = n_data
+            imgs = imgs.to(args.device)
+            p_imgs = p_imgs.to(args.device)
+            n_imgs = n_imgs.to(args.device)
+        
+            z = model.encoder(imgs)
+            all_feats.append(z)
+            z = model.encoder(p_imgs)
+            all_feats.append(z)
+            z = model.encoder(n_imgs)
+            all_feats.append(z)
+
+        z = torch.cat(all_feats, dim=0)
+        z = F.normalize(z, dim=1)
+        sigma  = (z.t() @ z) / z.size(0)
+        eigvals = torch.linalg.eigvals(sigma).real
+        collapse_ratio = eigvals.max()/eigvals.sum()
+    
+    return collapse_ratio
+
+
+
 def train_one_class(train_loader, train_positives_loader, train_negetives_loader,
                      model, train_global_iter, BCELoss, optimizer, args, writer, epoch, scheduler):
 
@@ -96,11 +125,18 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
         'ce': [],
         'contrastive': []
     }
-    
+
+    sanity = {
+        'sim_p': [],
+        'sim_n': [],
+    }
+
     sim_ps, sim_ns = [], []
     
     if args.k_pairs == 1:
         for n, (normal, p_data, n_data) in tqdm(enumerate(zip(train_loader, train_positives_loader[0], train_negetives_loader[0]))):
+            sanity_sim_p = []
+            sanity_sim_n = []
             imgs, labels = normal
             p_imgs, p_label = p_data
             n_imgs, n_label = n_data
@@ -117,6 +153,19 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             normal_features = normal_features[-1]
             p_features = p_features[-1]
             n_features = n_features[-1]
+
+            with torch.no_grad():
+                z1 = F.normalize(p_features, dim=1)
+                z2 = F.normalize(n_features, dim=1)
+                # ——— SANITY CHECK ———
+                S = z1 @ z2.T
+                diag = torch.diag(S).mean().item()
+                offdiag = (S[~torch.eye(S.size(0),dtype=bool)]).abs().mean().item()
+
+                sanity_sim_p.append(diag)
+                sanity_sim_n.append(offdiag)
+                sanity['sim_p'].append(diag)
+                sanity['sim_n'].append(offdiag)
 
             # loss_contrastive = torch.tensor(0.0, requires_grad=True)
             loss_contrastive, sim_p, sim_n, data_norm, negative_norms, positive_norms = contrastive_matrix(normal_features, p_features, n_features, temperature=args.temperature)
@@ -143,6 +192,10 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             writer.add_scalar("Train/norm_p", torch.mean(data_norm).detach().cpu().numpy(), train_global_iter)
             writer.add_scalar("Train/norm_n", torch.mean(negative_norms).detach().cpu().numpy(), train_global_iter)
             writer.add_scalar("Train/norm_d", torch.mean(positive_norms).detach().cpu().numpy(), train_global_iter)
+            
+            writer.add_scalar("Train/sanity_p", torch.mean(torch.tensor(sanity_sim_p)).detach().cpu().numpy(), train_global_iter)
+            writer.add_scalar("Train/sanity_n", torch.mean(torch.tensor(sanity_sim_n)).detach().cpu().numpy(), train_global_iter)
+            writer.add_scalar("Train/sanity_sigma", torch.mean(torch.tensor(sanity_sigma)).detach().cpu().numpy(), train_global_iter)
 
 
             loss.backward()
@@ -299,16 +352,16 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
     if args.k_pairs == 1:
         avg_sim_ps = torch.mean(torch.tensor(sim_ps), dim=0).detach().cpu().numpy()
         avg_sim_ns = torch.mean(torch.tensor(sim_ns), dim=0).detach().cpu().numpy()
-        writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, train_global_iter)
-        writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, train_global_iter)
+        # writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, train_global_iter)
+        # writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, train_global_iter)
 
     else:
         avg_sim_ps = torch.mean(torch.tensor(sim_ps), dim=0).detach().cpu().numpy()
         avg_sim_ns = torch.mean(torch.tensor(sim_ns), dim=0).detach().cpu().numpy()
-        writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, train_global_iter)
-        writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, train_global_iter)
+        # writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, train_global_iter)
+        # writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, train_global_iter)
 
-    return train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns
+    return train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, sanity
 
 
 def calculate_accuracy(model_output, true_labels):
@@ -617,10 +670,16 @@ if __name__ == "__main__":
     for epoch in range(args.from_epoch, args.epochs):
         print('epoch', epoch, '/', args.epochs)
         args.e_holder = str(epoch)
-        train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns =\
+        train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, sanity =\
             train_one_class(train_loader, train_positives_loader, train_negetives_loader, \
                             model, train_global_iter, BCELoss, optimizer, args, writer, epoch, scheduler)
         
+        writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, epoch)
+        writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, epoch)
+        writer.add_scalar("AVG_Train/sanity_p", np.mean(sanity['sim_p']), epoch)
+        writer.add_scalar("AVG_Train/sanity_n", np.mean(sanity['sim_n']), epoch)
+        writer.add_scalar("AVG_Train/sanity_sigma", np.mean(sanity['sigma']), epoch)
+
         writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
         writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
         writer.add_scalar("Train/lr", args.last_lr, epoch)
