@@ -5,7 +5,7 @@ from models.bottel_neck import Bottleneck
 
 # Define the ResNet model
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, img_size=32, batch_norm=True, fc_available=False, num_classes=10, proj_head=False, proj_dim=2048):
+    def __init__(self, block, num_blocks, img_size=32, batch_norm=True, fc_available=False, num_classes=10, proj_head=False, proj_dim=512):
         super(ResNet, self).__init__()
         self.in_channels = 64
         self.fc_available = fc_available
@@ -41,8 +41,8 @@ class ResNet(nn.Module):
         if self.proj_head:
             self.projection_head = nn.Sequential(
             nn.Linear(512 * block.expansion, proj_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(proj_dim, proj_dim),
+            # nn.ReLU(inplace=True),
+            # nn.Linear(proj_dim, proj_dim),
         )
 
 
