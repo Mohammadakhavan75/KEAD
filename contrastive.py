@@ -70,7 +70,7 @@ def contrastive_matrix(
     positives: torch.Tensor,        # (B·Kₚ, D)  or (B, D) if Kₚ=1
     negatives: torch.Tensor,        # (B·Kₙ, D)  or arbitrary (M, D) if Kₙ=None
     temperature: float = 0.5,
-    epsilon: float = 1e-12,
+    epsilon: float = 1e-9,
     positives_per_anchor: Optional[int] = None,     # Kₚ, or None → infer
     negatives_per_anchor: Optional[int] = None,     # Kₙ, or None → treat all M as negatives
 ):
@@ -86,17 +86,12 @@ def contrastive_matrix(
     device = anchors.device
 
     # ---------------- l2 norms ----------------
-    norm_a = torch.norm(anchors,   p=2, dim=1, keepdim=True)    # (B,1)
-    norm_p = torch.norm(positives, p=2, dim=1, keepdim=True)    # (B·Kₚ,1) or (B,1)
-    norm_n = torch.norm(negatives, p=2, dim=1, keepdim=True)    # (B·Kₙ,1) or (M,1)
+    norm_a = torch.norm(anchors,   p=2, dim=1, keepdim=True).clamp_min(epsilon)    # (B,1)
+    norm_p = torch.norm(positives, p=2, dim=1, keepdim=True).clamp_min(epsilon)    # (B·Kₚ,1) or (B,1)
+    norm_n = torch.norm(negatives, p=2, dim=1, keepdim=True).clamp_min(epsilon)    # (B·Kₙ,1) or (M,1)
 
     if (norm_a == 0).any() or (norm_p == 0).any() or (norm_n == 0).any():
         warnings.warn("Zero‑norm row(s) detected; cosine similarity undefined there.")
-
-        # Clamp norms to avoid division by zero
-        norm_a = torch.clamp(norm_a, min=epsilon)
-        norm_p = torch.clamp(norm_p, min=epsilon)
-        norm_n = torch.clamp(norm_n, min=epsilon)
 
     # ---------------- cosine similarities ----------------
     sim_p_full = anchors @ positives.t() / (norm_a * norm_p.t() + epsilon)   # (B, B·Kₚ) or (B, B)
@@ -116,19 +111,23 @@ def contrastive_matrix(
         sim_p = sim_p_full.diag().unsqueeze(1)                               # (B,1)
 
     # ----------- extract Kₙ negatives for each anchor ------------
-    if negatives_per_anchor is None:                                         # use ALL negatives
-        # sim_n = sim_n_full                                                   # (B,M)
-        # Kn    = sim_n.shape[1]                                               # M
-        # exclude the “self‐negative” n_i for anchor x_i
-        mask = ~torch.eye(B, dtype=torch.bool, device=device)   # (B,B)
-        sim_n = sim_n_full[mask].view(B, B-1)                   # (B, B−1)
-        Kn    = B - 1
-    else:
-        Kn = negatives_per_anchor
-        row_offset = (torch.arange(B, device=device) * Kn).unsqueeze(1)      # (B,1)
-        col_index  = torch.arange(Kn, device=device).unsqueeze(0)            # (1,Kₙ)
-        idx_n      = row_offset + col_index                                  # (B,Kₙ)
-        sim_n      = sim_n_full.gather(1, idx_n)                             # (B,Kₙ)
+    # if negatives_per_anchor is None:                                         # use ALL negatives
+    #     # sim_n = sim_n_full                                                   # (B,M)
+    #     # Kn    = sim_n.shape[1]                                               # M
+    #     # exclude the “self‐negative” n_i for anchor x_i
+    #     mask = ~torch.eye(B, dtype=torch.bool, device=device)   # (B,B)
+    #     sim_n = sim_n_full[mask].view(B, B-1)                   # (B, B−1)
+    #     Kn    = B - 1
+    # else:
+    #     Kn = negatives_per_anchor
+    #     row_offset = (torch.arange(B, device=device) * Kn).unsqueeze(1)      # (B,1)
+    #     col_index  = torch.arange(Kn, device=device).unsqueeze(0)            # (1,Kₙ)
+    #     idx_n      = row_offset + col_index                                  # (B,Kₙ)
+    #     sim_n      = sim_n_full.gather(1, idx_n)                             # (B,Kₙ)
+
+    # default: pick exactly the matching negative n_i for x_i
+    sim_n = sim_n_full.diag().unsqueeze(1)  # (B,1)
+    Kn    = 1
 
     # ---------------- denominator ----------------
     denom = (
