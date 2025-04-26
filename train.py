@@ -80,32 +80,74 @@ def parsing():
     return args
 
 
-def eigenspectrum(train_loader, train_positives_loader, train_negetives_loader, model, args):
-    model.eval()
-    all_feats = []
-    with torch.no_grad():
-        for n, (normal, p_data, n_data) in tqdm(enumerate(zip(train_loader, train_positives_loader[0], train_negetives_loader[0]))):
-            imgs, _ = normal
-            p_imgs, _ = p_data
-            n_imgs, _ = n_data
-            imgs = imgs.to(args.device)
-            p_imgs = p_imgs.to(args.device)
-            n_imgs = n_imgs.to(args.device)
-        
-            _, z = model(imgs)
-            all_feats.append(z[-1])
-            _, z = model(p_imgs)
-            all_feats.append(z[-1])
-            _, z = model(n_imgs)
-            all_feats.append(z[-1])
 
-        z = torch.cat(all_feats, dim=0)
-        z = F.normalize(z, dim=1)
-        sigma  = (z.t() @ z) / z.size(0)
-        eigvals = torch.linalg.eigvals(sigma).real
-        collapse_ratio = eigvals.max()/eigvals.sum()
-    
-    return collapse_ratio
+def compute_collapse_metrics(model, batch, device):
+    """
+    batch = (x_anchor, x_pos, x_neg), each [B, C, H, W]
+    Returns:
+      - effective_rank: effective dimensionality of embeddings
+      - norm_mean, norm_var: stats of ||z||
+      - pos_alignment: mean ||z_anchor - z_pos||^2
+      - neg_alignment: mean ||z_anchor - z_neg||^2
+      - uniformity: log E[e^{-2 ||zi - zj||^2}] over all 3B embeddings
+    """
+    model.eval()
+    x_a, x_p, x_n = batch
+    x_a, _ = x_a
+    x_p, _ = x_p
+    x_n, _ = x_n
+    x_a, x_p, x_n = x_a.to(device), x_p.to(device), x_n.to(device)
+
+    with torch.no_grad():
+        _, z_a = model(x_a)  # [B, d]
+        _, z_p = model(x_p)
+        _, z_n = model(x_n)
+
+    z_a = z_a[-1].detach().cpu()
+    z_p = z_p[-1].detach().cpu()
+    z_n = z_n[-1].detach().cpu()
+
+    # normalize to unit sphere
+    z_a = F.normalize(z_a, dim=1)
+    z_p = F.normalize(z_p, dim=1)
+    z_n = F.normalize(z_n, dim=1)
+
+    # stack all embeddings: [3B, d]
+    Z = torch.cat([z_a, z_p, z_n], dim=0)
+    B3, d = Z.shape
+
+    # --- 1) Effective rank via covariance spectrum ---
+    C = Z.t() @ Z / B3                # d×d covariance
+    eigs = torch.linalg.eigvalsh(C)   # sorted ascending
+    eigs = eigs.flip(0)               # now descending
+    eff_rank = (eigs.sum()**2) / (eigs.pow(2).sum() + 1e-12)
+
+    # --- 2) Norm statistics ---
+    norms     = Z.norm(dim=1)         # length of each embedding
+    norm_mean = norms.mean().item()
+    norm_var  = norms.var(unbiased=False).item()
+
+    # --- 3) Alignment & repulsion ---
+    pos_alignment = (z_a - z_p).pow(2).sum(dim=1).mean().item()
+    neg_alignment = (z_a - z_n).pow(2).sum(dim=1).mean().item()
+
+    # --- 4) Uniformity across all 3B points ---
+    with torch.no_grad():
+        # compute squared pairwise distances
+        dists = torch.cdist(Z, Z, p=2).pow(2)       # [3B,3B]
+        mask  = ~torch.eye(B3).bool()
+        uniformity = torch.log(torch.exp(-2 * dists[mask]).mean()).item()
+
+    return {
+        'effective_rank':  eff_rank.item(),
+        'norm_mean':       norm_mean,
+        'norm_var':        norm_var,
+        'pos_alignment':   pos_alignment,
+        'neg_alignment':   neg_alignment,
+        'uniformity':      uniformity,
+    }
+
+
 
 
 
@@ -136,8 +178,6 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
     
     if args.k_pairs == 1:
         for n, (normal, p_data, n_data) in tqdm(enumerate(zip(train_loader, train_positives_loader[0], train_negetives_loader[0]))):
-            sanity_sim_p = []
-            sanity_sim_n = []
             imgs, labels = normal
             p_imgs, p_label = p_data
             n_imgs, n_label = n_data
@@ -160,19 +200,6 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
                 normal_feat = normal_features[-1]
                 p_feat = p_features[-1]
                 n_feat = n_features[-1]
-
-            with torch.no_grad():
-                z1 = F.normalize(p_features[-1], dim=1)
-                z2 = F.normalize(n_features[-1], dim=1)
-                # ——— SANITY CHECK ———
-                S = z1 @ z2.T
-                diag = torch.diag(S).mean().item()
-                offdiag = (S[~torch.eye(S.size(0),dtype=bool)]).abs().mean().item()
-
-                sanity_sim_p.append(diag)
-                sanity_sim_n.append(offdiag)
-                sanity['sim_p'].append(diag)
-                sanity['sim_n'].append(offdiag)
 
             # loss_contrastive = torch.tensor(0.0, requires_grad=True)
             loss_contrastive, sim_p, sim_n, data_norm, negative_norms, positive_norms = contrastive_matrix(normal_feat, p_feat, n_feat, temperature=args.temperature)
@@ -199,15 +226,9 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             writer.add_scalar("Train/norm_p", torch.mean(data_norm).detach().cpu().numpy(), train_global_iter)
             writer.add_scalar("Train/norm_n", torch.mean(negative_norms).detach().cpu().numpy(), train_global_iter)
             writer.add_scalar("Train/norm_d", torch.mean(positive_norms).detach().cpu().numpy(), train_global_iter)
-            
-            writer.add_scalar("Train/sanity_p", torch.mean(torch.tensor(sanity_sim_p)).detach().cpu().numpy(), train_global_iter)
-            writer.add_scalar("Train/sanity_n", torch.mean(torch.tensor(sanity_sim_n)).detach().cpu().numpy(), train_global_iter)
-
 
             loss.backward()
-            assert imgs.grad is not None
-            assert p_imgs.grad is not None
-            assert n_imgs.grad is not None
+
             pp = []
             for param in model.parameters():
                 if param.grad is not None:
@@ -223,6 +244,11 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             scheduler.step(epoch - 1 + n / len(train_loader))
             args.last_lr = optimizer.param_groups[0]['lr']
             writer.add_scalar("Train/lr", args.last_lr, epoch)
+
+        # once per epoch, grab a single batch and run collapse diagnostics
+        batch = next(iter(zip(train_loader, train_positives_loader[0], train_negetives_loader[0])))  # (x1, x2)
+        colapse_metrics = compute_collapse_metrics(model, batch, args.device)
+
 
     elif args.k_pairs == 2:
         for n, (normal, p1_data, n1_data, p2_data, n2_data) in tqdm(enumerate(zip(train_loader, train_positives_loader[0], train_negetives_loader[0], train_positives_loader[1], train_negetives_loader[1]))):
@@ -370,7 +396,7 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
         # writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, train_global_iter)
         # writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, train_global_iter)
 
-    return train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, sanity
+    return train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, colapse_metrics
 
 
 def calculate_accuracy(model_output, true_labels):
@@ -659,6 +685,12 @@ if __name__ == "__main__":
     writer = SummaryWriter(save_path)
     args.save_path = save_path
 
+    transform = transforms.Compose([
+                        transforms.ToTensor(), 
+                        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                        std=[0.229, 0.224, 0.225])
+                    
+        ])
     train_loader, test_loader, train_positives_loader, train_negetives_loader,\
         test_positives_loader, test_negetives_loader = loading_datasets(args, data_path, imagenet_path)
 
@@ -679,14 +711,18 @@ if __name__ == "__main__":
     for epoch in range(args.from_epoch, args.epochs):
         print('epoch', epoch, '/', args.epochs)
         args.e_holder = str(epoch)
-        train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, sanity =\
+        train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, colapse_metrics =\
             train_one_class(train_loader, train_positives_loader, train_negetives_loader, \
                             model, train_global_iter, BCELoss, optimizer, args, writer, epoch, scheduler)
         
         writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, epoch)
         writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, epoch)
-        writer.add_scalar("AVG_Train/sanity_p", np.mean(sanity['sim_p']), epoch)
-        writer.add_scalar("AVG_Train/sanity_n", np.mean(sanity['sim_n']), epoch)
+        writer.add_scalar("colapse_metrics/effective_rank", colapse_metrics['effective_rank'], epoch)
+        writer.add_scalar("colapse_metrics/norm_mean", colapse_metrics['norm_mean'], epoch)
+        writer.add_scalar("colapse_metrics/norm_var", colapse_metrics['norm_var'], epoch)
+        writer.add_scalar("colapse_metrics/pos_alignment", colapse_metrics['pos_alignment'], epoch)
+        writer.add_scalar("colapse_metrics/neg_alignment", colapse_metrics['neg_alignment'], epoch)
+        writer.add_scalar("colapse_metrics/uniformity", colapse_metrics['uniformity'], epoch)
 
         writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
         writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
