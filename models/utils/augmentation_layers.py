@@ -310,10 +310,14 @@ def clipped_zoom(img, zoom_factor):
 
 class Rotate90(nn.Module):
     """Applies a 90-degree clockwise rotation (equivalent to 270 degrees counter-clockwise)."""
-    def __init__(self):
+    def __init__(self, p=0.5):
         super().__init__()
         # torchvision.transforms.functional.rotate expects counter-clockwise degrees
         self.angle = -90 # Corresponds to 270 degrees counter-clockwise
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
 
     def forward(self, x):
         # Input validation
@@ -324,6 +328,10 @@ class Rotate90(nn.Module):
         # Value range check might be less critical for geometric transforms but good practice
         # if x.min() < 0.0 or x.max() > 1.0:
         #     warnings.warn(f"Input tensor values outside range [0.0, 1.0], got [{x.min():.3f}, {x.max():.3f}]")
+
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
 
         try:
             # TF.rotate works on batches directly
@@ -337,10 +345,14 @@ class Rotate90(nn.Module):
 
 class Rotate270(nn.Module):
     """Applies a 270-degree clockwise rotation (equivalent to 90 degrees counter-clockwise)."""
-    def __init__(self):
+    def __init__(self, p=0.5):
         super().__init__()
         # torchvision.transforms.functional.rotate expects counter-clockwise degrees
         self.angle = 90 # Corresponds to 90 degrees counter-clockwise
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
 
     def forward(self, x):
         # Input validation
@@ -348,6 +360,10 @@ class Rotate270(nn.Module):
             raise TypeError(f"Input must be a torch.Tensor, got {type(x)}")
         if x.ndim != 4:
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
+
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
 
         try:
             # TF.rotate works on batches directly
@@ -361,8 +377,13 @@ class Rotate270(nn.Module):
 
 class HorizontalFlip(nn.Module):
     """Applies a horizontal flip with probability 1.0."""
-    def __init__(self):
+    def __init__(self, p=0.5):
         super().__init__()
+        
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
 
     def forward(self, x):
         # Input validation
@@ -370,6 +391,10 @@ class HorizontalFlip(nn.Module):
             raise TypeError(f"Input must be a torch.Tensor, got {type(x)}")
         if x.ndim != 4:
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
+
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
 
         try:
             # TF.hflip works on batches directly
@@ -383,11 +408,15 @@ class HorizontalFlip(nn.Module):
 
 class RandomCropResize(nn.Module):
     """Applies a random crop (scaling factor 0.75) and resizes back to original size."""
-    def __init__(self, scale_factor=0.75):
+    def __init__(self, scale_factor=0.75, p=0.5):
         super().__init__()
         if not isinstance(scale_factor, (float, int)) or not 0 < scale_factor <= 1:
              raise ValueError(f"scale_factor must be a number between 0 and 1, got {scale_factor}")
         self.scale_factor = scale_factor
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
 
     def forward(self, x):
         # Input validation
@@ -395,6 +424,10 @@ class RandomCropResize(nn.Module):
             raise TypeError(f"Input must be a torch.Tensor, got {type(x)}")
         if x.ndim != 4:
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
+
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
 
         try:
             b, c, h, w = x.shape
@@ -436,7 +469,7 @@ class RandomCropResize(nn.Module):
 
 class ColorJitterLayer(nn.Module):
     """Applies ColorJitter transformation."""
-    def __init__(self, brightness=0.5, contrast=0.5, saturation=0.5, hue=0.5):
+    def __init__(self, brightness=0.5, contrast=0.5, saturation=0.5, hue=0.5, p=0.5):
         super().__init__()
         # Store parameters for repr
         self.brightness = brightness
@@ -446,6 +479,11 @@ class ColorJitterLayer(nn.Module):
         # Initialize the transform
         self.jitter = T.ColorJitter(brightness=brightness, contrast=contrast, saturation=saturation, hue=hue)
 
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
+
     def forward(self, x):
         # Input validation
         if not isinstance(x, torch.Tensor):
@@ -454,6 +492,10 @@ class ColorJitterLayer(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
              warnings.warn(f"Input tensor values outside range [0.0, 1.0], got [{x.min():.3f}, {x.max():.3f}]. ColorJitter might behave unexpectedly.", UserWarning)
+
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
 
         try:
             # Apply jitter. T.ColorJitter handles batches.
@@ -468,14 +510,18 @@ class ColorJitterLayer(nn.Module):
 
 
 class GaussianNoise(nn.Module):
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity level
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
+  
         self.severity = severity
         self.c = [0.04, 0.06, .08, .09, .10][self.severity - 1]
 
@@ -489,7 +535,11 @@ class GaussianNoise(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+ 
         try:
             # Generate and apply noise
             noise = torch.randn_like(x) * self.c
@@ -506,14 +556,17 @@ class GaussianNoise(nn.Module):
 
 
 class ShotNoise(nn.Module):
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity level
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
         self.severity = severity
         # Original parameter 'c' represents the scaling factor applied *before* Poisson.
         # In torch.poisson, the input rate is lambda. rate = input * c.
@@ -530,7 +583,10 @@ class ShotNoise(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+    
         try:
             # Calculate lambda = x * c. Ensure lambda >= 0.
             rate = torch.clamp(x * self.c, min=0)
@@ -548,14 +604,18 @@ class ShotNoise(nn.Module):
 
 
 class ImpulseNoise(nn.Module):
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity level
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
+    
         self.severity = severity
         self.c = [.01, .02, .03, .05, .07][self.severity - 1] # proportion of pixels to replace
 
@@ -569,7 +629,11 @@ class ImpulseNoise(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+   
         try:
             B, C, H, W = x.shape
             # Create masks for salt and pepper noise
@@ -619,14 +683,18 @@ class ImpulseNoise(nn.Module):
 
 
 class SpeckleNoise(nn.Module):
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity level
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
         self.severity = severity
         self.c = [.06, .1, .12, .16, .2][self.severity - 1]
 
@@ -640,7 +708,11 @@ class SpeckleNoise(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+    
         try:
             # Generate and apply multiplicative noise
             noise = torch.randn_like(x) * self.c
@@ -657,14 +729,17 @@ class SpeckleNoise(nn.Module):
 
 
 class GaussianBlur(nn.Module):
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity input
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p 
         self.severity = severity
         # Map severity to sigma. Kernel size is determined automatically in TF.gaussian_blur
         self.sigma = [0.4, 0.6, 0.7, 0.8, 1.0][self.severity - 1]
@@ -687,7 +762,11 @@ class GaussianBlur(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+    
         try:
             # TF.gaussian_blur expects a list of sigmas or a float sigma
             # It applies the same blur to all images in the batch
@@ -706,14 +785,17 @@ class GlassBlur(nn.Module):
     Wraps the original glass_blur function.
     Requires scikit-image. Operates on CPU via NumPy conversion.
     """
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
         self.severity = severity
         # sigma, max_delta, iterations
         self.params = [(0.05,1,1), (0.25,1,1), (0.4,1,1), (0.25,1,2), (0.4,1,2)][severity - 1]
@@ -774,6 +856,10 @@ class GlassBlur(nn.Module):
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
 
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+
         try:
             device = x.device
             dtype = x.dtype
@@ -807,14 +893,18 @@ class DefocusBlur(nn.Module):
     Applies defocus blur using a disk kernel.
     Requires OpenCV (cv2). Operates on CPU via NumPy conversion.
     """
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
+    
         self.severity = severity
         # radius, alias_blur
         self.params = [(0.3, 0.4), (0.4, 0.5), (0.5, 0.6), (1, 0.2), (1.5, 0.1)][severity - 1]
@@ -868,7 +958,11 @@ class DefocusBlur(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+    
         try:
             device = x.device
             dtype = x.dtype
@@ -903,7 +997,7 @@ class MotionBlur(nn.Module):
     Applies motion blur using the Wand library.
     Requires Wand and ImageMagick. Operates on CPU via PIL conversion.
     """
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Check if Wand library is available
         if not _wand_available:
@@ -914,7 +1008,11 @@ class MotionBlur(nn.Module):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
+    
         self.severity = severity
         # radius, sigma
         self.params = [(6,1), (6,1.5), (6,2), (8,2), (9,2.5)][severity - 1]
@@ -984,6 +1082,10 @@ class MotionBlur(nn.Module):
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
 
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+
         device = x.device
         dtype = x.dtype
         processed_batch = []
@@ -1012,14 +1114,18 @@ class ZoomBlur(nn.Module):
     Applies zoom blur by averaging multiple zoomed versions.
     Requires SciPy (for zoom). Operates on CPU via NumPy conversion.
     """
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
+    
         self.severity = severity
         # zoom factors
         self.zoom_factors = [np.arange(1, 1.06, 0.01),
@@ -1075,7 +1181,11 @@ class ZoomBlur(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+    
         try:
             device = x.device
             dtype = x.dtype
@@ -1110,14 +1220,18 @@ class Fog(nn.Module):
     Adds fog effect using plasma fractal noise.
     Requires NumPy. Operates on CPU via NumPy conversion.
     """
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
+    
         self.severity = severity
         # fog_amount, wibbledecay
         self.params = [(.2,3), (.5,3), (0.75,2.5), (1,2), (1.5,1.75)][severity - 1]
@@ -1173,6 +1287,10 @@ class Fog(nn.Module):
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
 
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+
         try:
             device = x.device
             dtype = x.dtype
@@ -1206,169 +1324,12 @@ class Fog(nn.Module):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
 
 
-class Frost(nn.Module):
-    """
-    Adds frost effect by blending with a frost image.
-    Requires OpenCV (cv2) and frost image files. Operates on CPU.
-    NOTE: Assumes frost images are in a 'frosts/' subdirectory.
-    """
-    def __init__(self, severity=1, frost_dir='frosts'):
-        super().__init__()
-        # Validate severity
-        if not isinstance(severity, int):
-            raise TypeError(f"Severity must be an integer, got {type(severity)}")
-        if severity < 1 or severity > 5:
-            raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
-        # Validate frost_dir
-        if not isinstance(frost_dir, str):
-            raise TypeError(f"frost_dir must be a string, got {type(frost_dir)}")
-            
-        self.severity = severity
-        self.frost_dir = frost_dir
-        # image_weight, frost_weight
-        self.params = [(1, 0.2), (1, 0.3), (0.9, 0.4), (0.85, 0.4), (0.75, 0.45)][severity - 1]
-        self.frost_filenames = [
-            'frost1.png', 'frost2.png', 'frost3.png',
-            'frost4.jpg', 'frost5.jpg', 'frost6.jpg'
-        ]
-
-    def _load_random_frost_img(self, target_h, target_w):
-        """Load and process a random frost image to match target dimensions."""
-        # Validate input dimensions
-        if not isinstance(target_h, int) or not isinstance(target_w, int):
-            raise TypeError(f"Target dimensions must be integers, got h:{type(target_h)}, w:{type(target_w)}")
-        if target_h <= 0 or target_w <= 0:
-            raise ValueError(f"Target dimensions must be positive, got h:{target_h}, w:{target_w}")
-            
-        import os
-        try:
-            # Validate frost files list
-            if not self.frost_filenames:
-                raise ValueError("No frost filenames provided")
-                
-            idx = np.random.randint(len(self.frost_filenames))
-            frost_path = os.path.join(self.frost_dir, self.frost_filenames[idx])
-            
-            # Check if frost directory exists
-            if not os.path.exists(self.frost_dir):
-                raise FileNotFoundError(f"Frost directory not found: {self.frost_dir}")
-                
-            # Load frost image
-            frost = cv2.imread(frost_path)
-            if frost is None:
-                raise FileNotFoundError(f"Could not load frost image: {frost_path}")
-
-            # Resize frost image
-            try:
-                frost_resized = cv2.resize(frost, (0, 0), fx=0.2, fy=0.2)
-            except Exception as e:
-                raise RuntimeError(f"Failed to resize frost image: {str(e)}")
-
-            # Handle cropping
-            fh, fw = frost_resized.shape[:2]
-            if fh < target_h or fw < target_w:
-                try:
-                    frost_resized = cv2.resize(frost_resized, (target_w, target_h))
-                    x_start, y_start = 0, 0
-                except Exception as e:
-                    raise RuntimeError(f"Failed to resize small frost image: {str(e)}")
-            else:
-                try:
-                    x_start = np.random.randint(0, fw - target_w + 1)
-                    y_start = np.random.randint(0, fh - target_h + 1)
-                except Exception as e:
-                    raise RuntimeError(f"Failed to calculate crop coordinates: {str(e)}")
-
-            try:
-                frost_cropped = frost_resized[y_start:y_start + target_h, x_start:x_start + target_w]
-                return cv2.cvtColor(frost_cropped, cv2.COLOR_BGR2RGB)
-            except Exception as e:
-                raise RuntimeError(f"Failed to crop or convert frost image: {str(e)}")
-
-        except Exception as e:
-            warnings.warn(f"Could not load or process frost image: {e}. Returning None.")
-            return None
-
-    def _frost_single(self, np_img):
-        """Apply frost effect to a single image."""
-        # Validate input image
-        if not isinstance(np_img, np.ndarray):
-            raise TypeError(f"Input must be a numpy array, got {type(np_img)}")
-        if np_img.dtype != np.uint8:
-            raise TypeError(f"Input must be uint8, got {np_img.dtype}")
-        if np_img.ndim != 3:
-            raise ValueError(f"Input must have 3 dimensions, got shape {np_img.shape}")
-            
-        img_weight, frost_weight = self.params
-        h, w = np_img.shape[:2]
-
-        try:
-            frost_overlay = self._load_random_frost_img(h, w)
-
-            if frost_overlay is not None:
-                # Validate frost overlay dimensions
-                if frost_overlay.shape != np_img.shape:
-                    raise ValueError(f"Frost overlay shape {frost_overlay.shape} does not match input shape {np_img.shape}")
-                    
-                # Blend images
-                try:
-                    frosted_img = img_weight * np_img + frost_weight * frost_overlay
-                    return np.clip(frosted_img, 0, 255).astype(np.uint8)
-                except Exception as e:
-                    raise RuntimeError(f"Failed to blend images: {str(e)}")
-            else:
-                return np_img
-
-        except Exception as e:
-            warnings.warn(f"Error in frost effect application: {e}. Returning original image.")
-            return np_img
-
-    def forward(self, x):
-        """Apply frost effect to a batch of images."""
-        # Validate input tensor
-        if not isinstance(x, torch.Tensor):
-            raise TypeError(f"Input must be a torch.Tensor, got {type(x)}")
-        if x.ndim != 4:
-            raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
-        if x.min() < 0.0 or x.max() > 1.0:
-            raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
-        device = x.device
-        dtype = x.dtype
-        processed_batch = []
-        
-        try:
-            for i in range(x.shape[0]):
-                try:
-                    img_np = tensor_to_numpy_uint8(x[i])
-                    
-                    # Handle grayscale conversion
-                    if img_np.ndim == 2 or img_np.shape[2] == 1:
-                        img_np = cv2.cvtColor(img_np, cv2.COLOR_GRAY2RGB)
-
-                    corrupted_np = self._frost_single(img_np)
-                    processed_batch.append(numpy_uint8_to_tensor(corrupted_np))
-                    
-                except Exception as e:
-                    warnings.warn(f"Error processing image {i} in batch: {e}. Skipping.")
-                    processed_batch.append(x[i])  # Use original image on failure
-
-            return torch.stack(processed_batch).to(device=device, dtype=dtype)
-            
-        except Exception as e:
-            raise RuntimeError(f"Failed to process batch: {str(e)}")
-
-    def __repr__(self):
-        return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
-
-
 class Snow(nn.Module):
     """
     Adds snow effect using noise, zoom, and motion blur.
     Requires SciPy, PIL, OpenCV, Wand. Operates on CPU.
     """
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity
         if not isinstance(severity, int):
@@ -1378,7 +1339,11 @@ class Snow(nn.Module):
             
         if not _wand_available:
             raise ImportError("Wand library is required for Snow augmentation but not found.")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
+   
         self.severity = severity
         # loc, scale, zoom, threshold, mb_radius, mb_sigma, blend_factor
         self.params = [(0.1,0.2,1,0.6,8,3,0.95),
@@ -1465,7 +1430,11 @@ class Snow(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+    
         try:
             device = x.device
             dtype = x.dtype
@@ -1501,14 +1470,18 @@ class Spatter(nn.Module):
     Adds spatter effect (water or mud).
     Requires Scikit-Image, OpenCV. Operates on CPU.
     """
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
+    
         self.severity = severity
         # loc, scale, sigma, threshold, intensity_multiplier, mud_flag(0=water, 1=mud)
         self.params = [(0.62,0.1,0.7,0.7,0.5,0),
@@ -1596,7 +1569,11 @@ class Spatter(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+    
         try:
             device = x.device
             dtype = x.dtype
@@ -1627,14 +1604,18 @@ class Spatter(nn.Module):
 
 
 class Contrast(nn.Module):
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity level
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
+    
         self.severity = severity
         # Contrast factor
         self.c = [.75, .5, .4, .3, 0.15][self.severity - 1]
@@ -1651,7 +1632,11 @@ class Contrast(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+    
         try:
             return TF.adjust_contrast(x, contrast_factor=self.c)
         except RuntimeError as e:
@@ -1664,14 +1649,17 @@ class Contrast(nn.Module):
 
 
 class Brightness(nn.Module):
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity level
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
         self.severity = severity
         # Brightness adjustment value (added in HSV's V channel)
         self.c = [.05, .1, .15, .2, .3][self.severity - 1]
@@ -1692,7 +1680,11 @@ class Brightness(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+    
         try:
             # Using TF.adjust_brightness with the calculated factor
             # Note: This might not perfectly match the original HSV manipulation.
@@ -1724,14 +1716,18 @@ class Brightness(nn.Module):
 
 
 class Saturate(nn.Module):
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity level
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
+    
         self.severity = severity
         # Saturation multiplication factor, additive factor
         self.params = [(0.3, 0), (0.1, 0), (1.5, 0), (2, 0.1), (2.5, 0.2)][self.severity - 1]
@@ -1751,7 +1747,11 @@ class Saturate(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+    
         try:
             # Using TF.adjust_saturation with the multiplicative factor.
             # Note: Ignores the additive component from the original code.
@@ -1788,14 +1788,18 @@ class JpegCompression(nn.Module):
     Applies JPEG compression artifact.
     Requires PIL/Pillow. Operates on CPU via PIL conversion.
     """
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity level
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
+    
         self.severity = severity
         # JPEG quality factor
         self.quality = [80, 65, 58, 50, 40][self.severity - 1]
@@ -1821,7 +1825,11 @@ class JpegCompression(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+    
         try:
             device = x.device
             dtype = x.dtype
@@ -1866,14 +1874,17 @@ class Pixelate(nn.Module):
     Applies pixelation effect by downsampling and upsampling.
     Uses torch.nn.functional.interpolate.
     """
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity level
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p    
         self.severity = severity
         # Resizing factor (inverse of pixelation amount)
         self.c = [0.95, 0.9, 0.85, 0.75, 0.65][self.severity - 1]
@@ -1888,7 +1899,11 @@ class Pixelate(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+   
         try:
             B, C, H, W = x.shape
             
@@ -1927,14 +1942,18 @@ class ElasticTransform(nn.Module):
     Applies elastic transformation.
     Requires OpenCV, SciPy, Scikit-Image. Operates on CPU.
     """
-    def __init__(self, severity=1):
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
         # Validate severity
         if not isinstance(severity, int):
             raise TypeError(f"Severity must be an integer, got {type(severity)}")
         if severity < 1 or severity > 5:
             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-            
+        # Validate probability
+        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+        self.p = p
+    
         self.severity = severity
         # alpha_scale, sigma, affine_scale_multiplier (derived from original IMSIZE-based params)
         # Assuming IMSIZE=32 for CIFAR-like images as a reference point
@@ -2019,7 +2038,11 @@ class ElasticTransform(nn.Module):
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
         if x.min() < 0.0 or x.max() > 1.0:
             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
-            
+        
+        # >>> Probabilistic check <<<
+        if torch.rand(1).item() >= self.p:
+            return x # Skip augmentation
+    
         try:
             device = x.device
             dtype = x.dtype
