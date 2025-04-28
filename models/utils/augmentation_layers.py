@@ -305,6 +305,168 @@ def clipped_zoom(img, zoom_factor):
 # --- Augmentation Layers ---
 
 
+
+# --- Geometric Augmentations as Layers ---
+
+class Rotate90(nn.Module):
+    """Applies a 90-degree clockwise rotation (equivalent to 270 degrees counter-clockwise)."""
+    def __init__(self):
+        super().__init__()
+        # torchvision.transforms.functional.rotate expects counter-clockwise degrees
+        self.angle = -90 # Corresponds to 270 degrees counter-clockwise
+
+    def forward(self, x):
+        # Input validation
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(f"Input must be a torch.Tensor, got {type(x)}")
+        if x.ndim != 4:
+            raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
+        # Value range check might be less critical for geometric transforms but good practice
+        # if x.min() < 0.0 or x.max() > 1.0:
+        #     warnings.warn(f"Input tensor values outside range [0.0, 1.0], got [{x.min():.3f}, {x.max():.3f}]")
+
+        try:
+            # TF.rotate works on batches directly
+            return TF.rotate(x, self.angle)
+        except Exception as e:
+            raise RuntimeError(f"Error applying Rotate90: {str(e)}")
+
+    def __repr__(self):
+        return self.__class__.__name__ + f'(angle={self.angle})'
+
+
+class Rotate270(nn.Module):
+    """Applies a 270-degree clockwise rotation (equivalent to 90 degrees counter-clockwise)."""
+    def __init__(self):
+        super().__init__()
+        # torchvision.transforms.functional.rotate expects counter-clockwise degrees
+        self.angle = 90 # Corresponds to 90 degrees counter-clockwise
+
+    def forward(self, x):
+        # Input validation
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(f"Input must be a torch.Tensor, got {type(x)}")
+        if x.ndim != 4:
+            raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
+
+        try:
+            # TF.rotate works on batches directly
+            return TF.rotate(x, self.angle)
+        except Exception as e:
+            raise RuntimeError(f"Error applying Rotate270: {str(e)}")
+
+    def __repr__(self):
+        return self.__class__.__name__ + f'(angle={self.angle})'
+
+
+class HorizontalFlip(nn.Module):
+    """Applies a horizontal flip with probability 1.0."""
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        # Input validation
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(f"Input must be a torch.Tensor, got {type(x)}")
+        if x.ndim != 4:
+            raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
+
+        try:
+            # TF.hflip works on batches directly
+            return TF.hflip(x)
+        except Exception as e:
+            raise RuntimeError(f"Error applying HorizontalFlip: {str(e)}")
+
+    def __repr__(self):
+        return self.__class__.__name__ + '()'
+
+
+class RandomCropResize(nn.Module):
+    """Applies a random crop (scaling factor 0.75) and resizes back to original size."""
+    def __init__(self, scale_factor=0.75):
+        super().__init__()
+        if not isinstance(scale_factor, (float, int)) or not 0 < scale_factor <= 1:
+             raise ValueError(f"scale_factor must be a number between 0 and 1, got {scale_factor}")
+        self.scale_factor = scale_factor
+
+    def forward(self, x):
+        # Input validation
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(f"Input must be a torch.Tensor, got {type(x)}")
+        if x.ndim != 4:
+            raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
+
+        try:
+            b, c, h, w = x.shape
+            original_size = (h, w)
+            crop_h = int(h * self.scale_factor)
+            crop_w = int(w * self.scale_factor)
+            if crop_h == 0 or crop_w == 0:
+                warnings.warn(f"Calculated crop size is zero ({crop_h}x{crop_w}) for input size {h}x{w} and scale {self.scale_factor}. Skipping crop.", UserWarning)
+                return x
+
+            # Get random crop parameters for the batch
+            # Note: This applies the *same* crop to all images in the batch.
+            # If you need a *different* random crop per image, you'll need to loop.
+            # top = torch.randint(0, h - crop_h + 1, size=(1,), device=x.device).item()
+            # left = torch.randint(0, w - crop_w + 1, size=(1,), device=x.device).item()
+            # cropped = TF.crop(x, top, left, crop_h, crop_w)
+
+            # Alternative: Apply different crop per image using a loop (slower)
+            cropped_resized_batch = []
+            for img in x: # Iterate through batch dimension
+                 top = torch.randint(0, h - crop_h + 1, size=(1,)).item()
+                 left = torch.randint(0, w - crop_w + 1, size=(1,)).item()
+                 cropped_img = TF.crop(img, top, left, crop_h, crop_w)
+                 resized_img = TF.resize(cropped_img, original_size, interpolation=TF.InterpolationMode.BILINEAR)
+                 cropped_resized_batch.append(resized_img)
+            
+            return torch.stack(cropped_resized_batch)
+
+            # Resize back to original size
+            # resized = TF.resize(cropped, original_size, interpolation=TF.InterpolationMode.BILINEAR)
+            # return resized
+
+        except Exception as e:
+            raise RuntimeError(f"Error applying RandomCropResize: {str(e)}")
+
+    def __repr__(self):
+        return self.__class__.__name__ + f'(scale_factor={self.scale_factor})'
+
+
+class ColorJitterLayer(nn.Module):
+    """Applies ColorJitter transformation."""
+    def __init__(self, brightness=0.5, contrast=0.5, saturation=0.5, hue=0.5):
+        super().__init__()
+        # Store parameters for repr
+        self.brightness = brightness
+        self.contrast = contrast
+        self.saturation = saturation
+        self.hue = hue
+        # Initialize the transform
+        self.jitter = T.ColorJitter(brightness=brightness, contrast=contrast, saturation=saturation, hue=hue)
+
+    def forward(self, x):
+        # Input validation
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(f"Input must be a torch.Tensor, got {type(x)}")
+        if x.ndim != 4:
+            raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
+        if x.min() < 0.0 or x.max() > 1.0:
+             warnings.warn(f"Input tensor values outside range [0.0, 1.0], got [{x.min():.3f}, {x.max():.3f}]. ColorJitter might behave unexpectedly.", UserWarning)
+
+        try:
+            # Apply jitter. T.ColorJitter handles batches.
+            return self.jitter(x)
+        except Exception as e:
+            raise RuntimeError(f"Error applying ColorJitterLayer: {str(e)}")
+
+    def __repr__(self):
+        return (f"{self.__class__.__name__}("
+                f"brightness={self.brightness}, contrast={self.contrast}, "
+                f"saturation={self.saturation}, hue={self.hue})")
+
+
 class GaussianNoise(nn.Module):
     def __init__(self, severity=1):
         super().__init__()
@@ -735,6 +897,7 @@ class DefocusBlur(nn.Module):
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
 
+
 class MotionBlur(nn.Module):
     """
     Applies motion blur using the Wand library.
@@ -1042,6 +1205,7 @@ class Fog(nn.Module):
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
 
+
 class Frost(nn.Module):
     """
     Adds frost effect by blending with a frost image.
@@ -1197,6 +1361,7 @@ class Frost(nn.Module):
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
+
 
 class Snow(nn.Module):
     """
@@ -1460,6 +1625,7 @@ class Spatter(nn.Module):
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
 
+
 class Contrast(nn.Module):
     def __init__(self, severity=1):
         super().__init__()
@@ -1495,6 +1661,7 @@ class Contrast(nn.Module):
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, contrast_factor={self.c})'
+
 
 class Brightness(nn.Module):
     def __init__(self, severity=1):
@@ -1555,6 +1722,7 @@ class Brightness(nn.Module):
         # Show both c and the derived factor if using TF.adjust_brightness
         return self.__class__.__name__ + f'(severity={self.severity}, c={self.c}, brightness_factor={self.brightness_factor})'
 
+
 class Saturate(nn.Module):
     def __init__(self, severity=1):
         super().__init__()
@@ -1613,6 +1781,7 @@ class Saturate(nn.Module):
     def __repr__(self):
         # Show original params and the factor used if using TF.adjust_saturation
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params}, saturation_factor={self.saturation_factor})'
+
 
 class JpegCompression(nn.Module):
     """
