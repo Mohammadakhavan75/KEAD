@@ -81,7 +81,7 @@ except ImportError as e:
     functions_imported = False
 
 # --- Configuration ---
-SEED = 123
+SEED = 1
 OUTPUT_DIR = 'augmentation_verification_output'
 TEST_IMAGE_SIZE = 64 # Smaller size for faster testing
 PASS_THRESHOLD_MEAN = 15.0 # Max average pixel difference (0-255 scale)
