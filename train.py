@@ -152,7 +152,7 @@ def compute_collapse_metrics(model, batch, device):
 
 
 def train_one_class(train_loader, train_positives_loader, train_negetives_loader,
-                     model, train_global_iter, BCELoss, optimizer, args, writer, epoch, scheduler):
+                     model, train_global_iter, BCELoss, optimizer, args, writer, epoch, scheduler, augmentation_pipeline):
 
     # Enter model into train mode
     model.train()
@@ -186,7 +186,7 @@ def train_one_class(train_loader, train_positives_loader, train_negetives_loader
             imgs, labels = imgs.to(args.device), labels.to(args.device)
             p_imgs = p_imgs.to(args.device)
             n_imgs = n_imgs.to(args.device)
-        
+            imgs = augmentation_pipeline(imgs)
             optimizer.zero_grad()
             pred_d, normal_features = model(imgs)
             pred_p, p_features = model(p_imgs)
@@ -691,6 +691,15 @@ if __name__ == "__main__":
                                         std=[0.229, 0.224, 0.225])
                     
         ])
+
+    from models.utils.augmentation_layers import HorizontalFlip, RandomCropResize, ColorJitterLayer
+    # Example: Combine multiple layers
+    augmentation_pipeline = torch.nn.Sequential(
+        HorizontalFlip(p=0.5),
+        RandomCropResize(p=0.5),
+        ColorJitterLayer(p=0.5)
+    ).to(args.device)
+
     train_loader, test_loader, train_positives_loader, train_negetives_loader,\
         test_positives_loader, test_negetives_loader = loading_datasets(args, data_path, imagenet_path)
 
@@ -713,7 +722,7 @@ if __name__ == "__main__":
         args.e_holder = str(epoch)
         train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, colapse_metrics =\
             train_one_class(train_loader, train_positives_loader, train_negetives_loader, \
-                            model, train_global_iter, BCELoss, optimizer, args, writer, epoch, scheduler)
+                            model, train_global_iter, BCELoss, optimizer, args, writer, epoch, scheduler, augmentation_pipeline)
         
         writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, epoch)
         writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, epoch)
