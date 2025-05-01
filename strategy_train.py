@@ -1,4 +1,4 @@
-import argparse
+from utils.parser import args_parser
 import numpy as np
 from tqdm import tqdm
 
@@ -12,6 +12,9 @@ from torchvision.models import resnet18
 
 from sklearn.svm import OneClassSVM
 from sklearn.metrics import roc_auc_score
+
+from dataset_loader import noise_loader, load_cifar10,\
+     load_svhn, load_cifar100, load_imagenet, load_mvtec_ad, load_visa
 
 # -------------------------------
 # Dataset with per-image K transforms
@@ -208,21 +211,150 @@ def test_novelty(backbone, args):
     print(f"Test AUROC: {auc:.4f}")
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--normal_class', type=int, default=0, help='Index of normal class in CIFAR-10')
-    parser.add_argument('--epochs', type=int, default=20)
-    parser.add_argument('--batch_size', type=int, default=128)
-    parser.add_argument('--K', type=int, default=4, help='Number of stochastic views')
-    parser.add_argument('--lr', type=float, default=0.01)
-    parser.add_argument('--alpha', type=float, default=0.5)
-    parser.add_argument('--tau', type=float, default=0.2)
-    args = parser.parse_args()
+def loading_datasets(args, data_path, imagenet_path):
+    if args.dataset == 'cifar10':
+        args.num_classes = 10
+        train_loader, test_loader = load_cifar10(data_path, 
+                                            batch_size=args.batch_size,
+                                            one_class_idx=args.one_class_idx,
+                                            seed=args.seed)
+    elif args.dataset == 'svhn':
+        args.num_classes = 10
+        train_loader, test_loader = load_svhn(data_path, 
+                                            batch_size=args.batch_size,
+                                            one_class_idx=args.one_class_idx,
+                                            seed=args.seed)
+    elif args.dataset == 'cifar100':
+        args.num_classes = 20
+        train_loader, test_loader = load_cifar100(data_path, 
+                                                batch_size=args.batch_size,
+                                                one_class_idx=args.one_class_idx,
+                                                seed=args.seed)
+    elif args.dataset == 'imagenet30':
+        args.num_classes = 30
+        train_loader, test_loader = load_imagenet(imagenet_path, 
+                                                batch_size=args.batch_size,
+                                                one_class_idx=args.one_class_idx,
+                                                seed=args.seed)
+    elif args.dataset == 'mvtec_ad':
+        args.num_classes = 15
+        train_loader, test_loader = load_mvtec_ad(data_path, 
+                                                resize=args.img_size,
+                                                batch_size=args.batch_size,
+                                                one_class_idx=args.one_class_idx,
+                                                seed=args.seed)
 
+    elif args.dataset == 'visa':
+        args.num_classes = 12
+        train_loader, test_loader = load_visa(data_path, 
+                                                resize=args.img_size,
+                                                batch_size=args.batch_size,
+                                                one_class_idx=args.one_class_idx,
+                                                seed=args.seed)
+    
+    return train_loader, test_loader
+
+
+
+
+
+def set_seed(seed_nu):
+    torch.manual_seed(seed_nu)
+    random.seed(seed_nu)
+    np.random.seed(seed_nu)
+
+
+def main():
+    with open('config.json', 'r') as config_file:
+        config = json.load(config_file)
+
+    args = args_parser()
+
+    root_path = config['root_path']
+    data_path = config['data_path']
+    imagenet_path = config['imagenet_path']
+    args.config = config
+    best_loss = torch.inf
     args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    set_seed(args.seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+    os.environ['CUDA_VISIBLE_DEVICES']='0,1'
+    args.device=f'cuda:{args.gpu}'
+    train_global_iter = 0
+    args.last_lr = args.learning_rate
+
+
+    model_save_path, save_path = create_path(args)
+    writer = SummaryWriter(save_path)
+    args.save_path = save_path
+
+
+
+    train_loader, test_loader = loading_datasets(args, data_path, imagenet_path)
+    model, BCELoss, optimizer, scheduler = load_model(args)
+
+    model = model.to(args.device)
+
+    transform = transforms.Compose([
+                        transforms.ToTensor(), 
+                        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                            std=[0.229, 0.224, 0.225])                    
+        ])
+
+
+
+    
 
     backbone = train_contrastive(args)
     test_novelty(backbone, args)
+
+
+
+
+
+    for epoch in range(args.from_epoch, args.epochs):
+        print('epoch', epoch, '/', args.epochs)
+        args.e_holder = str(epoch)
+        train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, colapse_metrics =\
+            train_one_class(train_loader, train_positives_loader, train_negetives_loader, \
+                            model, train_global_iter, BCELoss, optimizer, args, writer, epoch, scheduler, augmentation_pipeline)
+        
+        writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, epoch)
+        writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, epoch)
+        writer.add_scalar("colapse_metrics/effective_rank", colapse_metrics['effective_rank'], epoch)
+        writer.add_scalar("colapse_metrics/norm_mean", colapse_metrics['norm_mean'], epoch)
+        writer.add_scalar("colapse_metrics/norm_var", colapse_metrics['norm_var'], epoch)
+        writer.add_scalar("colapse_metrics/pos_alignment", colapse_metrics['pos_alignment'], epoch)
+        writer.add_scalar("colapse_metrics/neg_alignment", colapse_metrics['neg_alignment'], epoch)
+        writer.add_scalar("colapse_metrics/uniformity", colapse_metrics['uniformity'], epoch)
+
+        writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
+        writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
+        writer.add_scalar("Train/lr", args.last_lr, epoch)
+
+        # accuracy = evaluate(test_loader, test_positives_loader, test_negetives_loader, model, args)
+        # print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}, Eval/avg_acc: {accuracy}")
+        print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}")
+        if epoch % 10 == 9:
+            avg_auc = eval_cifar10_novelity(model, args, root_path)
+            writer.add_scalar("Eval/avg_auc", avg_auc, epoch)
+
+        if (epoch) % (args.epochs / 10) == 0:
+            torch.save(model.state_dict(), os.path.join(model_save_path, f'model_params_epoch_{epoch}.pt'))
+
+
+        if np.mean(epoch_loss['loss']) < best_loss:
+            torch.save(model.state_dict(), os.path.join(save_path, 'best_params.pt'))
+            best_loss = np.mean(epoch_loss['loss'])
+
+        last_sim_ps = avg_sim_ps
+        last_sim_ns = avg_sim_ns
+        # args.seed += epoch
+        # set_seed(args.seed)
+
+    torch.save(model.state_dict(), os.path.join(save_path, 'last_params.pt'))
 
 if __name__ == '__main__':
     main()
