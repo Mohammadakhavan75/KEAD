@@ -177,6 +177,7 @@ def disk(radius, alias_blur=0.1, dtype=np.float32):
         print(f"Error creating disk kernel: {e}")
         raise e
 
+
 def plasma_fractal(mapsize=32, wibbledecay=3):
     """Generate a heightmap using diamond-square algorithm."""
     # Input validation
@@ -247,6 +248,7 @@ def plasma_fractal(mapsize=32, wibbledecay=3):
 
     except Exception as e:
         raise RuntimeError(f"Error generating plasma fractal: {str(e)}")
+
 
 def clipped_zoom(img, zoom_factor):
     """Zooms into the center of an image and crops back to original size."""
@@ -340,6 +342,9 @@ class Rotate90(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error applying Rotate90: {str(e)}")
 
+    def __call__(self, x):
+        return self.forward(x)
+
     def __repr__(self):
         return self.__class__.__name__ + f'(angle={self.angle})'
 
@@ -372,6 +377,9 @@ class Rotate270(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error applying Rotate270: {str(e)}")
 
+    def __call__(self, x):
+        return self.forward(x)
+
     def __repr__(self):
         return self.__class__.__name__ + f'(angle={self.angle})'
 
@@ -402,6 +410,9 @@ class HorizontalFlip(nn.Module):
             return TF.hflip(x)
         except Exception as e:
             raise RuntimeError(f"Error applying HorizontalFlip: {str(e)}")
+
+    def __call__(self, x):
+        return self.forward(x)
 
     def __repr__(self):
         return self.__class__.__name__ + '()'
@@ -464,6 +475,9 @@ class RandomCropResize(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error applying RandomCropResize: {str(e)}")
 
+    def __call__(self, x):
+        return self.forward(x)
+
     def __repr__(self):
         return self.__class__.__name__ + f'(scale_factor={self.scale_factor})'
 
@@ -503,6 +517,9 @@ class ColorJitterLayer(nn.Module):
             return self.jitter(x)
         except Exception as e:
             raise RuntimeError(f"Error applying ColorJitterLayer: {str(e)}")
+
+    def __call__(self, x):
+        return self.forward(x)
 
     def __repr__(self):
         return (f"{self.__class__.__name__}("
@@ -552,6 +569,9 @@ class GaussianNoise(nn.Module):
         except Exception as e:
             raise Exception(f"Unexpected error in GaussianNoise forward pass: {str(e)}")
 
+    def __call__(self, x):
+        return self.forward(x)
+
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, c={self.c})'
 
@@ -599,6 +619,9 @@ class ShotNoise(nn.Module):
             raise RuntimeError(f"Error applying shot noise: {str(e)}")
         except Exception as e:
             raise Exception(f"Unexpected error in ShotNoise forward pass: {str(e)}")
+
+    def __call__(self, x):
+        return self.forward(x)
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, c={self.c})'
@@ -679,6 +702,9 @@ class ImpulseNoise(nn.Module):
         except Exception as e:
             raise Exception(f"Unexpected error in ImpulseNoise forward pass: {str(e)}")
 
+    def __call__(self, x):
+        return self.forward(x)
+
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, c={self.c})'
 
@@ -724,6 +750,9 @@ class SpeckleNoise(nn.Module):
             raise RuntimeError(f"Error applying speckle noise: {str(e)}")
         except Exception as e:
             raise Exception(f"Unexpected error in SpeckleNoise forward pass: {str(e)}")
+
+    def __call__(self, x):
+        return self.forward(x)
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, c={self.c})'
@@ -776,6 +805,9 @@ class GaussianBlur(nn.Module):
             raise RuntimeError(f"Error applying Gaussian blur: {str(e)}")
         except Exception as e:
             raise Exception(f"Unexpected error in GaussianBlur forward pass: {str(e)}")
+
+    def __call__(self, x):
+        return self.forward(x)
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, sigma={self.sigma}, kernel_size={self.kernel_size})'
@@ -885,6 +917,9 @@ class GlassBlur(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error in GlassBlur forward pass: {str(e)}")
 
+    def __call__(self, x):
+        return self.forward(x)
+
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
 
@@ -988,6 +1023,9 @@ class DefocusBlur(nn.Module):
             
         except Exception as e:
             raise RuntimeError(f"Error in DefocusBlur forward pass: {str(e)}")
+
+    def __call__(self, x):
+        return self.forward(x)
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
@@ -1106,6 +1144,9 @@ class MotionBlur(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Failed to process batch: {str(e)}")
 
+    def __call__(self, x):
+        return self.forward(x)
+
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
 
@@ -1211,6 +1252,9 @@ class ZoomBlur(nn.Module):
             
         except Exception as e:
             raise RuntimeError(f"Error in ZoomBlur forward pass: {str(e)}")
+
+    def __call__(self, x):
+        return self.forward(x)
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity})'
@@ -1320,6 +1364,9 @@ class Fog(nn.Module):
             
         except Exception as e:
             raise RuntimeError(f"Error in fog forward pass: {str(e)}")
+
+    def __call__(self, x):
+        return self.forward(x)
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
@@ -1462,6 +1509,9 @@ class Snow(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error in Snow forward pass: {str(e)}")
 
+    def __call__(self, x):
+        return self.forward(x)
+
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
 
@@ -1600,6 +1650,9 @@ class Spatter(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error in forward pass: {str(e)}")
 
+    def __call__(self, x):
+        return self.forward(x)
+
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
 
@@ -1644,6 +1697,9 @@ class Contrast(nn.Module):
             raise RuntimeError(f"Error adjusting contrast: {str(e)}")
         except Exception as e:
             raise Exception(f"Unexpected error in contrast adjustment: {str(e)}")
+
+    def __call__(self, x):
+        return self.forward(x)
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, contrast_factor={self.c})'
@@ -1710,6 +1766,9 @@ class Brightness(nn.Module):
         #     processed_batch.append(numpy_uint8_to_tensor(corrupted_np))
         # return torch.stack(processed_batch).to(device=device, dtype=dtype)
         # --- End Alternative ---
+
+    def __call__(self, x):
+        return self.forward(x)
 
     def __repr__(self):
         # Show both c and the derived factor if using TF.adjust_brightness
@@ -1778,6 +1837,9 @@ class Saturate(nn.Module):
         #     processed_batch.append(numpy_uint8_to_tensor(corrupted_np))
         # return torch.stack(processed_batch).to(device=device, dtype=dtype)
         # --- End Alternative ---
+
+    def __call__(self, x):
+        return self.forward(x)
 
     def __repr__(self):
         # Show original params and the factor used if using TF.adjust_saturation
@@ -1866,6 +1928,9 @@ class JpegCompression(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error in JPEG compression forward pass: {str(e)}")
 
+    def __call__(self, x):
+        return self.forward(x)
+
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, quality={self.quality})'
 
@@ -1933,6 +1998,9 @@ class Pixelate(nn.Module):
                 
         except Exception as e:
             raise Exception(f"Unexpected error in Pixelate forward pass: {str(e)}")
+
+    def __call__(self, x):
+        return self.forward(x)
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, factor={self.c})'
@@ -2069,8 +2137,61 @@ class ElasticTransform(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error in forward pass: {str(e)}")
 
+    def __call__(self, x):
+        return self.forward(x)
+
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
 
 def get_augmentation_list():
-    return ["ZoomBlur", "Fog", "Snow", "Spatter", "Contrast", "Brightness", "Saturate", "JpegCompression", "Pixelate", "ElasticTransform"]
+    return ["Rotate90", "Rotate270",  "HorizontalFlip",  "RandomCropResize",  "ColorJitterLayer",\
+            "GaussianNoise",  "ShotNoise",  "ImpulseNoise",  "SpeckleNoise",  "GaussianBlur",  "GlassBlur",\
+            "DefocusBlur",  "MotionBlur", "ZoomBlur", "Fog", "Snow", "Spatter", "Contrast", "Brightness",\
+            "Saturate", "JpegCompression", "Pixelate", "ElasticTransform"]
+
+def get_augmentation_pool(num_augs=4):
+    import random
+    augmentation_pool = get_augmentation_list()
+    selected_names = random.sample(augmentation_pool, num_augs)
+    
+    # Map augmentation names to their classes
+    augmentation_classes = {
+        "Rotate90" : Rotate90,
+        "Rotate270" : Rotate270,
+        "HorizontalFlip" : HorizontalFlip,
+        "RandomCropResize" : RandomCropResize,
+        "ColorJitterLayer" : ColorJitterLayer,
+        "GaussianNoise" : GaussianNoise,
+        "ShotNoise" : ShotNoise,
+        "ImpulseNoise" : ImpulseNoise,
+        "SpeckleNoise" : SpeckleNoise,
+        "GaussianBlur" : GaussianBlur,
+        "GlassBlur" : GlassBlur,
+        "DefocusBlur" : DefocusBlur,
+        "MotionBlur" : MotionBlur,
+        "ZoomBlur": ZoomBlur,
+        "Fog": Fog,
+        "Snow": Snow,
+        "Spatter": Spatter,
+        "Contrast": Contrast,
+        "Brightness": Brightness,
+        "Saturate": Saturate,
+        "JpegCompression": JpegCompression,
+        "Pixelate": Pixelate,
+        "ElasticTransform": ElasticTransform
+    }
+    
+    return [augmentation_classes[name](p=0.1) for name in selected_names]
+
+
+
+
+
+
+
+
+
+
+
+
+
