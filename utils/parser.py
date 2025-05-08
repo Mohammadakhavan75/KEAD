@@ -50,6 +50,9 @@ def args_parser():
                         help='Number of stochastic views')
     parser.add_argument('--alpha', type=float, default=0.5)
 
+    parser.add_argument('--exp_idx', default=0, type=int,
+                        help='run index')
+
     args = parser.parse_args()
 
     return args
