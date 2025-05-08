@@ -2072,3 +2072,5 @@ class ElasticTransform(nn.Module):
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
 
+def get_augmentation_list():
+    return ["ZoomBlur", "Fog", "Snow", "Spatter", "Contrast", "Brightness", "Saturate", "JpegCompression", "Pixelate", "ElasticTransform"]
