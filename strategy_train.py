@@ -29,32 +29,6 @@ import torchvision
 from dataset_loader import noise_loader, load_cifar10,\
      load_svhn, load_cifar100, load_imagenet, load_mvtec_ad, load_visa
 
-# -------------------------------
-# Dataset with per-image K transforms
-# -------------------------------
-class KEPerImageDataset(Dataset):
-    def __init__(self, dataset, K, transform_pool, base_preprocess):
-        self.dataset = dataset          # torchvision dataset
-        self.K = K                      # number of stochastic views
-        self.transform_pool = transform_pool
-        self.base_preprocess = base_preprocess
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def __getitem__(self, idx):
-        x, y = self.dataset[idx]
-        # clean anchor
-        anchor = self.base_preprocess(x)
-        views = []
-        ids = []
-        for _ in range(self.K):
-            t_idx = np.random.randint(len(self.transform_pool))
-            views.append(self.transform_pool[t_idx](x))
-            ids.append(t_idx)
-        views = torch.stack(views)
-        ids = torch.tensor(ids, dtype=torch.long)
-        return anchor, views, ids, y
 
 # -------------------------------
 # Running stats strategy for pos/neg masks
