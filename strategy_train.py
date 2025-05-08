@@ -29,6 +29,32 @@ import torchvision
 from dataset_loader import noise_loader, load_cifar10,\
      load_svhn, load_cifar100, load_imagenet, load_mvtec_ad, load_visa
 
+# -------------------------------
+# Dataset with per-image K transforms
+# -------------------------------
+class KEPerImageDataset(Dataset):
+    def __init__(self, dataset, K, transform_pool, base_preprocess):
+        self.dataset = dataset          # torchvision dataset
+        self.K = K                      # number of stochastic views
+        self.transform_pool = transform_pool
+        self.base_preprocess = base_preprocess
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        x, y = self.dataset[idx]
+        # clean anchor
+        anchor = self.base_preprocess(x)
+        views = []
+        ids = []
+        for _ in range(self.K):
+            t_idx = np.random.randint(len(self.transform_pool))
+            views.append(self.transform_pool[t_idx](x))
+            ids.append(t_idx)
+        views = torch.stack(views)
+        ids = torch.tensor(ids, dtype=torch.long)
+        return anchor, views, ids, y
 
 # -------------------------------
 # Running stats strategy for pos/neg masks
@@ -99,21 +125,15 @@ def get_backbone_embedding(model, x):
 # -------------------------------
 def train_contrastive(stats, model, train_loader, optimizer, transform_pool, epoch, scheduler, args, train_global_iter, writer):
     device = args.device
-    N = len(transform_pool)
+
     # training
     model.train()
     pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
     for anchor, _ in pbar:
         anchor = anchor.to(device)
         B = anchor.size(0)
-        ids = torch.randint(0, N, size=(args.k_view,))
         
-        t_pool = transform_pool[ids]
-        views = []
-        for t in t_pool:
-            view = t.to(device)(anchor.to(device))
-            views.append(view)
-        views = torch.vstack(views)
+        views = torch.vstack([transform_pool.to(device)(anchor)])
         views = views.to(device).view(-1, 3, 32, 32)
 
         optimizer.zero_grad()
@@ -330,6 +350,8 @@ def main():
     model = model.to(args.device)
 
     transform_pool = augl.get_augmentation_list()
+    ids = torch.randint(0, len(transform_pool), size=(args.k_view,))
+    transform_pool = transform_pool[ids]
 
     stats = RunningStatsStrategy(n_transforms=len(transform_pool), alpha=args.alpha)
 
