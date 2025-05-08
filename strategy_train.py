@@ -134,7 +134,12 @@ def train_contrastive(stats, model, train_loader, optimizer, transform_pool, epo
         B = anchor.size(0)
         ids = torch.randint(0, N, size=(args.k_view,))
         
-        views = torch.vstack([transform_pool[ids].to(device)(anchor)])
+        t_pool = transform_pool[ids]
+        views = []
+        for t in t_pool:
+            view = t.to(device)(anchor.to(device))
+            views.append(view)
+        views = torch.vstack(views)
         views = views.to(device).view(-1, 3, 32, 32)
 
         optimizer.zero_grad()
