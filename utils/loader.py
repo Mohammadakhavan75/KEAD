@@ -20,11 +20,11 @@ def load_model(args):
     else:
         raise NotImplementedError("Not implemented optimizer!")
 
-    if args.resume:
-        model_folder = args.save_path + 'models/'
-        model_name = natsorted(os.listdir(model_folder))[-1]
-        args.from_epoch = int(model_name.split('_')[-1].split('.')[0])
-        model.load_state_dict(torch.load(os.path.join(model_folder, model_name), weights_only=True))
+    # if args.resume:
+    #     model_folder = args.save_path + 'models/'
+    #     model_name = natsorted(os.listdir(model_folder))[-1]
+    #     args.from_epoch = int(model_name.split('_')[-1].split('.')[0])
+    #     model.load_state_dict(torch.load(os.path.join(model_folder, model_name), weights_only=True))
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
