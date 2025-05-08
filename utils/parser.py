@@ -34,9 +34,16 @@ def args_parser():
     parser.add_argument('--decay', '-d', type=float, default=1e-6,
                         help='Weight decay (L2 penalty).')
 
+    # Model Configuration
     parser.add_argument('--projection_head', default=0, type=int,
                         help='Weight of Contrastive loss')
-    
+    parser.add_argument('--fc_available', default=0, type=int,
+                        help='Weight of Contrastive loss')
+    parser.add_argument('--img_size', default=32, type=int,
+                        help='image size selection')
+    parser.add_argument('--model', default='resnet18', type=str,
+                        help='resnet model selection')
+
     parser.add_argument('--temperature', '--tau', default=0.5, type=float,
                         help='chaning temperature of contrastive loss')
     parser.add_argument('--k_view', '-K', type=int, default=4,
