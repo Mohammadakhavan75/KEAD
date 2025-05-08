@@ -1,17 +1,30 @@
 from utils.parser import args_parser
+from utils.paths import create_path
+from utils.loader import load_model
 import numpy as np
 from tqdm import tqdm
+import random
+import json
+import os
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-import torchvision
-import torchvision.transforms as transforms
-from torchvision.models import resnet18
+from torch.utils.tensorboard import SummaryWriter
+from models.utils import augmentation_layers as augl
 
-from sklearn.svm import OneClassSVM
 from sklearn.metrics import roc_auc_score
+
+
+##########################
+import faiss
+from sklearn.metrics import roc_auc_score
+from torch.utils.data import DataLoader
+from dataset_loader import load_np_dataset, get_subclass_dataset
+from torchvision.transforms import transforms
+import torchvision
+
+
 
 from dataset_loader import noise_loader, load_cifar10,\
      load_svhn, load_cifar100, load_imagenet, load_mvtec_ad, load_visa
@@ -110,66 +123,48 @@ def get_backbone_embedding(model, x):
 # -------------------------------
 # Main training & test routines
 # -------------------------------
-def train_contrastive(args):
+def train_contrastive(stats, model, train_loader, optimizer, transform_pool, epoch, scheduler, args, train_global_iter, writer):
     device = args.device
-    # base preprocess for anchor
-    base_preprocess = transforms.Compose([
-        transforms.Resize(32),
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))
-    ])
-    # transform pool for views
-    transform_pool = [
-        transforms.Compose([transforms.Resize(32), transforms.RandomHorizontalFlip(), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]),
-        transforms.Compose([transforms.Resize(32), transforms.RandomRotation(90), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]),
-        transforms.Compose([transforms.Resize(32), transforms.RandomResizedCrop(32, scale=(0.7, 1.0)), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]),
-        transforms.Compose([transforms.Resize(32), transforms.ColorJitter(0.4,0.4,0.4), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]),
-        transforms.Compose([transforms.Resize(32), transforms.GaussianBlur(kernel_size=5), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
-    ]
-
-    # CIFAR-10 train: only normal class
-    train_full = torchvision.datasets.CIFAR10(root='./data', train=True, download=True)
-    normal_class = args.normal_class
-    train_subset = [ (img, label) for img, label in train_full if label == normal_class ]
-    # wrap in custom dataset
-    train_dataset = KEPerImageDataset(train_subset, args.K, transform_pool, base_preprocess)
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
-
-    # define encoder: ResNet18 without classifier head
-    backbone = resnet18(pretrained=False)
-    backbone.fc = nn.Identity()
-    backbone = backbone.to(device)
-
-    optimizer = torch.optim.SGD(backbone.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
-    stats = RunningStatsStrategy(n_transforms=len(transform_pool), alpha=args.alpha)
-
+    N = len(transform_pool)
     # training
-    for epoch in range(args.epochs):
-        backbone.train()
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
-        for anchor, views, ids, _ in pbar:
-            anchor = anchor.to(device)
-            B = anchor.size(0)
-            views = views.to(device).view(-1, 3, 32, 32)
-            ids = ids.to(device).view(-1)
+    model.train()
+    pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
+    for anchor, _ in pbar:
+        anchor = anchor.to(device)
+        B = anchor.size(0)
+        ids = torch.randint(0, N, size=(args.k_view,))
+        
+        views = torch.vstack([transform_pool[ids].to(device)(anchor)])
+        views = views.to(device).view(-1, 3, 32, 32)
 
-            # get embeddings
-            z_a = F.normalize(backbone(anchor), dim=1)            # (B,D)
-            z_v = F.normalize(backbone(views), dim=1).view(B, args.K, -1)  # (B,K,D)
+        optimizer.zero_grad()
+        # get embeddings
+        z_a = F.normalize(model(anchor), dim=1)            # (B,D)
+        z_v = F.normalize(model(views), dim=1).view(B, args.K, -1)  # (B,K,D)
 
-            # cosine similarities
-            sim = torch.einsum('bd,bkd->bk', z_a, z_v)
+        # cosine similarities
+        sim = torch.einsum('bd,bkd->bk', z_a, z_v)
 
-            # get pos mask
-            pos_mask = stats.update_and_get_mask(sim.cpu(), ids.cpu()).to(device)
+        # get pos mask
+        pos_mask = stats.update_and_get_mask(sim.cpu(), ids.cpu()).to(device)
 
-            # compute loss
-            loss = info_nce_multi(z_a, z_v, pos_mask, tau=args.tau)
+        # compute loss
+        loss = info_nce_multi(z_a, z_v, pos_mask, tau=args.tau)
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            pbar.set_postfix(loss=loss.item())
+        
+        loss.backward()
+        optimizer.step()
+        pbar.set_postfix(loss=loss.item())
+
+
+        # writer.add_scalar("Train/loss", loss.item(), train_global_iter)
+        # writer.add_scalar("Train/sim_p", torch.mean(sim_p).detach().cpu().numpy(), train_global_iter)
+        # writer.add_scalar("Train/sim_n", torch.mean(sim_n).detach().cpu().numpy(), train_global_iter)
+        # writer.add_scalar("Train/norm_p", torch.mean(data_norm).detach().cpu().numpy(), train_global_iter)
+        # writer.add_scalar("Train/norm_n", torch.mean(negative_norms).detach().cpu().numpy(), train_global_iter)
+        # writer.add_scalar("Train/norm_d", torch.mean(positive_norms).detach().cpu().numpy(), train_global_iter)
+        train_global_iter += 1
+
 
     return backbone
 
@@ -255,13 +250,73 @@ def loading_datasets(args, data_path, imagenet_path):
     return train_loader, test_loader
 
 
-
-
-
 def set_seed(seed_nu):
     torch.manual_seed(seed_nu)
     random.seed(seed_nu)
     np.random.seed(seed_nu)
+
+
+def novelty_detection(eval_in, eval_out, train_features_in, net, args):
+    net = net.to(args.device)
+    net.eval()  # enter valid mode
+
+    in_features_list = []
+    out_features_list = []
+    
+    model_preds = []
+    trues = []
+    with torch.no_grad():
+        for data_in, data_out in zip(eval_in, eval_out):
+            inputs_in, targets_in = data_in
+            inputs_out, targets_out = data_out
+            
+            inputs_in , inputs_out = inputs_in.to(args.device) , inputs_out.to(args.device)
+
+            preds_in, normal_features = net(inputs_in)
+            preds_out, out_features = net(inputs_out)
+            
+            in_features_list.extend(normal_features[-1].detach().cpu().numpy())
+            out_features_list.extend(out_features[-1].detach().cpu().numpy())
+
+            
+        in_features_list = torch.tensor(np.array(in_features_list))
+        out_features_list = torch.tensor(np.array(out_features_list))
+        l1 = torch.zeros(in_features_list.shape[0])
+        l2 = torch.ones(out_features_list.shape[0])
+        targets = torch.cat([l1, l2], dim=0)
+    
+        f_list = torch.cat([in_features_list, out_features_list], dim=0)
+        distances = knn_score(to_np(train_features_in), to_np(f_list))
+        auc = roc_auc_score(targets, distances)
+    return auc
+
+
+def eval_cifar10_novelity(model, args, root_path):
+    np_test_img_path = root_path + f'/generalization_repo_dataset/cifar10_Test_s5/rot270.npy'
+    np_test_target_path = root_path + '/generalization_repo_dataset/cifar10_Test_s5/labels.npy'
+    
+    test_transform = transforms.Compose([transforms.ToTensor()])
+    train_data = torchvision.datasets.CIFAR10(root_path, train=True, transform=test_transform, download=True)
+    test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10')
+    train_data_in = get_subclass_dataset(train_data, args.one_class_idx)
+    test_data_in = get_subclass_dataset(test_data, args.one_class_idx)
+    train_data_in_loader = DataLoader(train_data_in, shuffle=True, batch_size=args.batch_size, num_workers=args.num_workers)
+    test_data_in_loader = DataLoader(test_data_in, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+    train_features_in = feature_extraction(train_data_in_loader, model)
+
+    aucs = []
+    for id in range(10):
+        if id == args.one_class_idx:
+            continue
+
+        test_data_out = get_subclass_dataset(test_data, id)
+        test_data_out_loader = DataLoader(test_data_out, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+        auc = novelty_detection(test_data_in_loader, test_data_out_loader, train_features_in, model, args)
+        aucs.append(auc)
+        print(f"Evaluation distance on class {id}: auc: {auc}")
+
+    print(f"Average auc is: {np.mean(aucs)}")
+    return np.mean(aucs)
 
 
 def main():
@@ -280,7 +335,7 @@ def main():
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-    os.environ['CUDA_VISIBLE_DEVICES']='0,1'
+    # os.environ['CUDA_VISIBLE_DEVICES']='0,1'
     args.device=f'cuda:{args.gpu}'
     train_global_iter = 0
     args.last_lr = args.learning_rate
@@ -290,56 +345,40 @@ def main():
     writer = SummaryWriter(save_path)
     args.save_path = save_path
 
-
-
     train_loader, test_loader = loading_datasets(args, data_path, imagenet_path)
-    model, BCELoss, optimizer, scheduler = load_model(args)
+    model, optimizer, scheduler = load_model(args)
 
     model = model.to(args.device)
 
-    transform = transforms.Compose([
-                        transforms.ToTensor(), 
-                        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                            std=[0.229, 0.224, 0.225])                    
-        ])
+    transform_pool = augl.get_augmentation_list()
 
+    stats = RunningStatsStrategy(n_transforms=len(transform_pool), alpha=args.alpha)
 
-
-    
-
-    backbone = train_contrastive(args)
-    test_novelty(backbone, args)
-
-
-
-
-
-    for epoch in range(args.from_epoch, args.epochs):
+    train_global_iter = 0
+    for epoch in range(0, args.epochs):
         print('epoch', epoch, '/', args.epochs)
-        args.e_holder = str(epoch)
         train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, colapse_metrics =\
-            train_one_class(train_loader, train_positives_loader, train_negetives_loader, \
-                            model, train_global_iter, BCELoss, optimizer, args, writer, epoch, scheduler, augmentation_pipeline)
+            train_contrastive(stats, model, train_loader, optimizer, transform_pool, epoch, scheduler, args, train_global_iter, writer)
         
-        writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, epoch)
-        writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, epoch)
-        writer.add_scalar("colapse_metrics/effective_rank", colapse_metrics['effective_rank'], epoch)
-        writer.add_scalar("colapse_metrics/norm_mean", colapse_metrics['norm_mean'], epoch)
-        writer.add_scalar("colapse_metrics/norm_var", colapse_metrics['norm_var'], epoch)
-        writer.add_scalar("colapse_metrics/pos_alignment", colapse_metrics['pos_alignment'], epoch)
-        writer.add_scalar("colapse_metrics/neg_alignment", colapse_metrics['neg_alignment'], epoch)
-        writer.add_scalar("colapse_metrics/uniformity", colapse_metrics['uniformity'], epoch)
+        # writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, epoch)
+        # writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, epoch)
+        # writer.add_scalar("colapse_metrics/effective_rank", colapse_metrics['effective_rank'], epoch)
+        # writer.add_scalar("colapse_metrics/norm_mean", colapse_metrics['norm_mean'], epoch)
+        # writer.add_scalar("colapse_metrics/norm_var", colapse_metrics['norm_var'], epoch)
+        # writer.add_scalar("colapse_metrics/pos_alignment", colapse_metrics['pos_alignment'], epoch)
+        # writer.add_scalar("colapse_metrics/neg_alignment", colapse_metrics['neg_alignment'], epoch)
+        # writer.add_scalar("colapse_metrics/uniformity", colapse_metrics['uniformity'], epoch)
 
-        writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
-        writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
-        writer.add_scalar("Train/lr", args.last_lr, epoch)
+        # writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
+        # writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
+        # writer.add_scalar("Train/lr", args.last_lr, epoch)
 
         # accuracy = evaluate(test_loader, test_positives_loader, test_negetives_loader, model, args)
         # print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}, Eval/avg_acc: {accuracy}")
         print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}")
         if epoch % 10 == 9:
             avg_auc = eval_cifar10_novelity(model, args, root_path)
-            writer.add_scalar("Eval/avg_auc", avg_auc, epoch)
+            # writer.add_scalar("Eval/avg_auc", avg_auc, epoch)
 
         if (epoch) % (args.epochs / 10) == 0:
             torch.save(model.state_dict(), os.path.join(model_save_path, f'model_params_epoch_{epoch}.pt'))
@@ -349,8 +388,8 @@ def main():
             torch.save(model.state_dict(), os.path.join(save_path, 'best_params.pt'))
             best_loss = np.mean(epoch_loss['loss'])
 
-        last_sim_ps = avg_sim_ps
-        last_sim_ns = avg_sim_ns
+        # last_sim_ps = avg_sim_ps
+        # last_sim_ns = avg_sim_ns
         # args.seed += epoch
         # set_seed(args.seed)
 
