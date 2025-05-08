@@ -323,9 +323,8 @@ def main():
 
     model = model.to(args.device)
 
-    transform_pool = augl.get_augmentation_list()
-    ids = torch.randint(0, len(transform_pool), size=(args.k_view,))
-    transform_pool = transform_pool[transform_pool[id_] for id_ in ids]
+    
+    transform_pool = augl.get_augmentation_pool(args.k_view)
 
     stats = RunningStatsStrategy(n_transforms=len(transform_pool), alpha=args.alpha)
 
