@@ -39,7 +39,7 @@ def args_parser():
     
     parser.add_argument('--temperature', '--tau', default=0.5, type=float,
                         help='chaning temperature of contrastive loss')
-    parser.add_argument('--K', type=int, default=4,
+    parser.add_argument('--k_view', '-K', type=int, default=4,
                         help='Number of stochastic views')
     parser.add_argument('--alpha', type=float, default=0.5)
 
