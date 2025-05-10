@@ -35,10 +35,12 @@ def args_parser():
                         help='Weight decay (L2 penalty).')
 
     # Model Configuration
-    parser.add_argument('--projection_head', default=0, type=int,
-                        help='Weight of Contrastive loss')
+    parser.add_argument('--proj_head', default=0, type=int,
+                        help='Using projection head fully connected')
+    parser.add_argument('--proj_dim', default=512, type=int,
+                        help='Dimension of projection head')
     parser.add_argument('--fc_available', default=0, type=int,
-                        help='Weight of Contrastive loss')
+                        help='Considering classification head')
     parser.add_argument('--img_size', default=32, type=int,
                         help='image size selection')
     parser.add_argument('--model', default='resnet18', type=str,
