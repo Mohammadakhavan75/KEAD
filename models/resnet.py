@@ -87,9 +87,9 @@ class ResNet(nn.Module):
 
         return out, out_list
 
-def ResNet18(img_size=32, batch_norm=True, fc_available=False, num_classes=10, proj_head=False, proj_dim=2048):
+def ResNet18(img_size=32, batch_norm=True, fc_available=False, num_classes=10, proj_head=False, proj_dim=512):
     return ResNet(BasicBlock, [2, 2, 2, 2], img_size=img_size,  batch_norm=batch_norm, fc_available=fc_available, num_classes=num_classes, proj_head=proj_head, proj_dim=proj_dim)
 
 # Function to instantiate ResNet-50
-def ResNet50(img_size=32, batch_norm=True, fc_available=False, num_classes=10, proj_head=False, proj_dim=2048):
+def ResNet50(img_size=32, batch_norm=True, fc_available=False, num_classes=10, proj_head=False, proj_dim=512):
     return ResNet(Bottleneck, [3, 4, 6, 3], img_size=img_size,  batch_norm=batch_norm, fc_available=fc_available, num_classes=num_classes, proj_head=proj_head, proj_dim=proj_dim)

@@ -5,9 +5,9 @@ from natsort import natsorted
 
 def load_model(args):
     if args.model == 'resnet18':
-        model = ResNet18(img_size=args.img_size, num_classes=1, fc_available=args.fc_available, proj_head=args.projection_head) # num_class is 1 for binary anomaly classification
+        model = ResNet18(img_size=args.img_size, num_classes=1, fc_available=args.fc_available, proj_head=args.proj_head, proj_dim=args.proj_dim) # num_class is 1 for binary anomaly classification
     elif args.model == 'resnet50':
-        model = ResNet50(img_size=args.img_size, num_classes=1, fc_available=args.fc_available, proj_head=args.projection_head)
+        model = ResNet50(img_size=args.img_size, num_classes=1, fc_available=args.fc_available, proj_head=args.proj_head, proj_dim=args.proj_dim)
     else:
         raise NotImplementedError("Not implemented model!")
     
