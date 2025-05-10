@@ -2181,7 +2181,7 @@ def get_augmentation_pool(num_augs=4):
         "ElasticTransform": ElasticTransform
     }
     
-    return [augmentation_classes[name](p=0.1) for name in selected_names]
+    return [augmentation_classes[name](p=1.0) for name in selected_names]
 
 
 
