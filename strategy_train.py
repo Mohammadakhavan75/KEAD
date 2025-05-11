@@ -41,19 +41,16 @@ class RunningStatsStrategy:
         self.momentum = momentum
 
     @torch.no_grad()
-    def update_and_get_mask(self, sim, ids):
-        # sim: (B, K), ids: (B, K)
+    def update_and_get_mask(self, sim):
+        # sim: (B, K)
         B, K = sim.shape
-        mu_t = self.mu[ids]          # (B,K)
-        sigma_t = torch.sqrt(self.var[ids] + 1e-6)
+        mu_t = self.mu       # (B,K)
+        sigma_t = torch.sqrt(self.var + 1e-6)
         # positive mask
-        pos_mask = sim > (mu_t - self.alpha * sigma_t)
+        pos_mask = sim > (mu_t - self.alpha * sigma_t) # (B,K)
         # update stats
-        sim_flat = sim.flatten()
-        ids_flat = ids.flatten()
-        for t in ids_flat.unique():
-            mask = ids_flat == t
-            s_batch = sim_flat[mask]
+        for t in range(K):
+            s_batch = sim[:,t]
             if s_batch.numel() > 0:
                 m_batch = s_batch.mean()
                 v_batch = s_batch.var(unbiased=False)
@@ -67,21 +64,33 @@ class RunningStatsStrategy:
 def info_nce_multi(z_anchor, z_views, pos_mask, tau=0.2):
     # z_anchor: (B, D), z_views: (B, K, D), pos_mask: (B, K)
     B, K, D = z_views.shape
-    loss = 0.0
-    valid = 0
-    for i in range(B):
-        sim = F.cosine_similarity(z_anchor[i].unsqueeze(0), z_views[i], dim=1) / tau
-        pos_inds = pos_mask[i].nonzero(as_tuple=False).flatten()
-        if pos_inds.numel() == 0:
-            continue
-        valid += 1
-        pos_sims = sim[pos_inds]
-        exp_all = torch.exp(sim)
-        denom = exp_all.sum()
-        loss_i = - (1.0 / pos_inds.numel()) * torch.log(torch.exp(pos_sims).sum() / denom)
-        loss += loss_i
-    if valid > 0:
-        loss = loss / valid
+
+    # Compute cosine similarities: (B, K)
+    sim = torch.einsum('bd,bkd->bk', z_anchor, z_views) / tau
+
+    # Mask for valid anchors (at least one positive view)
+    valid_mask = pos_mask.any(dim=1)
+    if valid_mask.sum() == 0:
+        return torch.tensor(0.0, device=z_anchor.device)
+
+    # For numerical stability
+    sim_max = sim.max(dim=1, keepdim=True)[0].detach()
+    sim_exp = torch.exp(sim - sim_max)
+
+    # Compute denominator (B, 1)
+    denom = sim_exp.sum(dim=1, keepdim=True)  # (B, 1)
+
+    # Compute positive similarity sum (B, 1)
+    pos_sim_exp = (sim_exp * pos_mask).sum(dim=1)
+
+    # Count positives per anchor (B,)
+    pos_count = pos_mask.sum(dim=1).float().clamp(min=1.0)
+
+    # Compute log-ratio
+    loss_vec = -torch.log(pos_sim_exp / denom.squeeze(1)) / pos_count
+
+    # Mean over valid samples
+    loss = loss_vec[valid_mask].mean()
     return loss
 
 # -------------------------------
@@ -111,11 +120,11 @@ def train_contrastive(stats, model, train_loader, optimizer, transform_pool, epo
         views = views.to(device).view(-1, 3, 32, 32)
 
         optimizer.zero_grad()
-        # get embeddings
+        # get embeddings and normilize the output
         z_a = F.normalize(model(anchor), dim=1)            # (B,D)
         z_v = F.normalize(model(views), dim=1).view(B, args.K, -1)  # (B,K,D)
 
-        # cosine similarities
+        # calculate cosine similarities
         sim = torch.einsum('bd,bkd->bk', z_a, z_v)
 
         # get pos mask
