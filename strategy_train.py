@@ -78,16 +78,21 @@ def info_nce_multi(z_anchor, z_views, pos_mask, tau=0.2):
     sim_exp = torch.exp(sim - sim_max)
 
     # Compute denominator (B, 1)
-    denom = sim_exp.sum(dim=1, keepdim=True)  # (B, 1)
+    # denom = sim_exp.sum(dim=1, keepdim=True)  # (B, 1)
 
-    # Compute positive similarity sum (B, 1)
-    pos_sim_exp = (sim_exp * pos_mask).sum(dim=1)
+    # # Compute positive similarity sum (B, 1)
+    # pos_sim_exp = (sim_exp * pos_mask).sum(dim=1)
 
     # Count positives per anchor (B,)
     pos_count = pos_mask.sum(dim=1).float().clamp(min=1.0)
 
-    # Compute log-ratio
-    loss_vec = -torch.log(pos_sim_exp / denom.squeeze(1)) / pos_count
+    # # Compute log-ratio
+    # loss_vec = -torch.log(pos_sim_exp / denom.squeeze(1)) / pos_count
+
+    logsumexp_all = torch.logsumexp(sim - sim_max, dim=1)  # log ∑ exp(s - max)
+    logsumexp_pos = torch.logsumexp((sim - sim_max).masked_fill(~pos_mask, -1e7), dim=1)  # only for positives
+
+    loss_vec = -(logsumexp_pos - logsumexp_all) / pos_count
 
     # Mean over valid samples
     loss = loss_vec[valid_mask].mean()
