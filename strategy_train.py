@@ -65,38 +65,53 @@ def info_nce_multi(z_anchor, z_views, pos_mask, tau=0.2):
     # z_anchor: (B, D), z_views: (B, K, D), pos_mask: (B, K)
     B, K, D = z_views.shape
 
-    # Compute cosine similarities: (B, K)
-    sim = torch.einsum('bd,bkd->bk', z_anchor, z_views) / tau
 
-    # Mask for valid anchors (at least one positive view)
-    valid_mask = pos_mask.any(dim=1)
-    if valid_mask.sum() == 0:
-        return torch.tensor(0.0, device=z_anchor.device)
+    if pos_mask.all():
+        sim = torch.einsum('id,jd->ij', z_anchor, z_anchor)
+        pos_mask = sim==1.
+        sim_max = sim.max(dim=1, keepdim=True)[0].detach()
+        logsumexp_all = torch.logsumexp(sim - sim_max, dim=1)  # log ∑ exp(s - max)
+        logsumexp_pos = torch.logsumexp((sim - sim_max).masked_fill(~pos_mask, -1e7), dim=1)  # only for positives
+        pos_count = z_anchor.shape[0]
+        loss_vec = -(logsumexp_pos - logsumexp_all) / pos_count
+        loss = loss_vec.mean()
+        
+        return loss
 
-    # For numerical stability
-    sim_max = sim.max(dim=1, keepdim=True)[0].detach()
-    sim_exp = torch.exp(sim - sim_max)
+    else:
+        # Compute cosine similarities: (B, K)
+        sim = torch.einsum('bd,bkd->bk', z_anchor, z_views) / tau
 
-    # Compute denominator (B, 1)
-    # denom = sim_exp.sum(dim=1, keepdim=True)  # (B, 1)
+        # Mask for valid anchors (at least one positive view)
+        valid_mask = pos_mask.any(dim=1)
 
-    # # Compute positive similarity sum (B, 1)
-    # pos_sim_exp = (sim_exp * pos_mask).sum(dim=1)
+        if valid_mask.sum() == 0:
+            return torch.tensor(0.0, device=z_anchor.device)
 
-    # Count positives per anchor (B,)
-    pos_count = pos_mask.sum(dim=1).float().clamp(min=1.0)
+        # For numerical stability
+        sim_max = sim.max(dim=1, keepdim=True)[0].detach()
+        sim_exp = torch.exp(sim - sim_max)
 
-    # # Compute log-ratio
-    # loss_vec = -torch.log(pos_sim_exp / denom.squeeze(1)) / pos_count
+        # Compute denominator (B, 1)
+        # denom = sim_exp.sum(dim=1, keepdim=True)  # (B, 1)
 
-    logsumexp_all = torch.logsumexp(sim - sim_max, dim=1)  # log ∑ exp(s - max)
-    logsumexp_pos = torch.logsumexp((sim - sim_max).masked_fill(~pos_mask, -1e7), dim=1)  # only for positives
+        # # Compute positive similarity sum (B, 1)
+        # pos_sim_exp = (sim_exp * pos_mask).sum(dim=1)
 
-    loss_vec = -(logsumexp_pos - logsumexp_all) / pos_count
+        # Count positives per anchor (B,)
+        pos_count = pos_mask.sum(dim=1).float().clamp(min=1.0)
 
-    # Mean over valid samples
-    loss = loss_vec[valid_mask].mean()
-    return loss
+        # # Compute log-ratio
+        # loss_vec = -torch.log(pos_sim_exp / denom.squeeze(1)) / pos_count
+
+        logsumexp_all = torch.logsumexp(sim - sim_max, dim=1)  # log ∑ exp(s - max)
+        logsumexp_pos = torch.logsumexp((sim - sim_max).masked_fill(~pos_mask, -1e7), dim=1)  # only for positives
+
+        loss_vec = -(logsumexp_pos - logsumexp_all) / pos_count
+
+        # Mean over valid samples
+        loss = loss_vec[valid_mask].mean()
+        return loss
 
 # -------------------------------
 # Feature extractor wrapper
@@ -111,7 +126,7 @@ def get_backbone_embedding(model, x):
 # -------------------------------
 # Main training & test routines
 # -------------------------------
-def train_contrastive(stats, model, train_loader, optimizer, transform_pool, epoch, scheduler, args, train_global_iter, writer):
+def train_contrastive(stats, model, train_loader, optimizer, transform_sequence, epoch, scheduler, args, train_global_iter, writer):
     device = args.device
 
     # training
@@ -121,22 +136,22 @@ def train_contrastive(stats, model, train_loader, optimizer, transform_pool, epo
         anchor = anchor.to(device)
         B = anchor.size(0)
         
-        views = torch.vstack([transform_pool.to(device)(anchor)])
-        views = views.to(device).view(-1, 3, 32, 32)
+        views = transform_sequence(anchor)
+        # views = views.to(device).view(-1, 3, 32, 32)
 
         optimizer.zero_grad()
         # get embeddings and normilize the output
-        z_a = F.normalize(model(anchor), dim=1)            # (B,D)
-        z_v = F.normalize(model(views), dim=1).view(B, args.K, -1)  # (B,K,D)
+        z_a = F.normalize(model(anchor)[0], dim=1)            # (B,D)
+        z_v = F.normalize(model(views)[0], dim=1).view(B, args.k_view, -1)  # (B,K,D)
 
         # calculate cosine similarities
         sim = torch.einsum('bd,bkd->bk', z_a, z_v)
 
         # get pos mask
-        pos_mask = stats.update_and_get_mask(sim.cpu(), ids.cpu()).to(device)
+        pos_mask = stats.update_and_get_mask(sim.cpu()).to(device)
 
         # compute loss
-        loss = info_nce_multi(z_a, z_v, pos_mask, tau=args.tau)
+        loss = info_nce_multi(z_a, z_v, pos_mask, tau=args.temperature)
 
         
         loss.backward()
@@ -317,13 +332,13 @@ def main():
     imagenet_path = config['imagenet_path']
     args.config = config
     best_loss = torch.inf
-    args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     set_seed(args.seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
     # os.environ['CUDA_VISIBLE_DEVICES']='0,1'
-    args.device=f'cuda:{args.gpu}'
+    # args.device=f'cuda:{args.gpu}'
     train_global_iter = 0
     args.last_lr = args.learning_rate
 
@@ -339,6 +354,7 @@ def main():
 
     
     transform_pool = augl.get_augmentation_pool(args.k_view)
+    transform_sequence = augl.TransformSequence(transform_pool).to(args.device)
 
     stats = RunningStatsStrategy(n_transforms=len(transform_pool), alpha=args.alpha)
 
@@ -346,7 +362,7 @@ def main():
     for epoch in range(0, args.epochs):
         print('epoch', epoch, '/', args.epochs)
         train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, colapse_metrics =\
-            train_contrastive(stats, model, train_loader, optimizer, transform_pool, epoch, scheduler, args, train_global_iter, writer)
+            train_contrastive(stats, model, train_loader, optimizer, transform_sequence, epoch, scheduler, args, train_global_iter, writer)
         
         # writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, epoch)
         # writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, epoch)
