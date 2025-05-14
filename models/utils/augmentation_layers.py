@@ -2184,7 +2184,16 @@ def get_augmentation_pool(num_augs=4):
     return [augmentation_classes[name](p=1.0) for name in selected_names]
 
 
-
+class TransformSequence(nn.Module):
+    def __init__(self, transforms):
+        super().__init__()
+        self.transforms = nn.ModuleList(transforms)
+    
+    def forward(self, x):
+        results = []
+        for transform in self.transforms:
+            results.append(transform(x))
+        return torch.cat(results, dim=0)
 
 
 
