@@ -6,10 +6,8 @@ def args_parser():
                         help='seed for np(tinyimages80M sampling); 1|2|8|100|107')
     parser.add_argument('--save_path', type=str,
                         default=None, help='Path to save files.')
-    parser.add_argument('--device', type=str, 
-                        default="cuda", help='cuda or cpu.')
-    parser.add_argument('--gpu', default=0, type=int,
-                        help='Select gpu number')
+    parser.add_argument('--device', default='cpu', type=str,
+                        help='Select cpu|cuda|mps')
     parser.add_argument('--epochs', '-e', type=int, default=50,
                         help='Number of epochs to train.')
     parser.add_argument('--batch_size', '-b', type=int, default=64,
