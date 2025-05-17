@@ -61,12 +61,13 @@ class RunningStatsStrategy:
 # -------------------------------
 # Multi-positive InfoNCE loss
 # -------------------------------
-def info_nce_multi(z_anchor, z_views, pos_mask, tau=0.2):
+def info_nce_multi(z_anchor, z_views, pos_mask, epoch, tau=0.2):
     # z_anchor: (B, D), z_views: (B, K, D), pos_mask: (B, K)
     B, K, D = z_views.shape
 
 
-    if pos_mask.all():
+    # if pos_mask.all():
+    if epoch < 1:
         sim = torch.einsum('id,jd->ij', z_anchor, z_anchor)
         pos_mask = sim==1.
         sim_max = sim.max(dim=1, keepdim=True)[0].detach()
@@ -151,7 +152,7 @@ def train_contrastive(stats, model, train_loader, optimizer, transform_sequence,
         pos_mask = stats.update_and_get_mask(sim.cpu()).to(device)
 
         # compute loss
-        loss = info_nce_multi(z_a, z_v, pos_mask, tau=args.temperature)
+        loss = info_nce_multi(z_a, z_v, pos_mask, epoch, tau=args.temperature)
 
         
         loss.backward()
@@ -168,7 +169,7 @@ def train_contrastive(stats, model, train_loader, optimizer, transform_sequence,
         train_global_iter += 1
 
 
-    return backbone
+    # return backbone
 
 
 def test_novelty(backbone, args):
@@ -380,8 +381,9 @@ def main():
         # accuracy = evaluate(test_loader, test_positives_loader, test_negetives_loader, model, args)
         # print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}, Eval/avg_acc: {accuracy}")
         print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}")
-        if epoch % 10 == 9:
-            avg_auc = eval_cifar10_novelity(model, args, root_path)
+        # if epoch % 10 == 9:
+        avg_auc = eval_cifar10_novelity(model, args, root_path)
+        print(f"Average AUC: {avg_auc}")
             # writer.add_scalar("Eval/avg_auc", avg_auc, epoch)
 
         if (epoch) % (args.epochs / 10) == 0:
