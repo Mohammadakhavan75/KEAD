@@ -87,7 +87,7 @@ def train_contrastive(stats, model, train_loader, optimizer, transform_sequence,
         
         # get embeddings and normilize the output
         z_a = F.normalize(model(anchor)[0], dim=1)            # (B,D)
-        z_v = F.normalize(model(views)[0].view(B, args.k_view, -1), dim=2)  # (B,K,D)
+        z_v = F.normalize(model(views)[0].view(B, int(views.shape[0]/B), -1), dim=2)  # (B,K,D)
 
         # compute loss
         loss = info_nce_multi(z_a, z_v, tau=args.temperature)
