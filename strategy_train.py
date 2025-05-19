@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from models.utils import augmentation_layers as augl
-
+import torchvision.transforms.v2 as v2
 
 
 
@@ -187,7 +187,14 @@ def main():
     writer = SummaryWriter(save_path)
     args.save_path = save_path
 
-    train_loader, test_loader = get_loader(args, data_path, imagenet_path)
+    transform = v2.Compose([
+        v2.RandomChoice([
+            v2.RandomRotation(degrees=(-5, 5)),
+            v2.RandomGrayscale(p=0.8),
+            v2.RandomHorizontalFlip(p=0.8),
+        ], p=[0.3, 0.3, 0.3]),
+    ])
+    train_loader, test_loader = get_loader(args, data_path, imagenet_path, transform)
     model, optimizer, scheduler = load_model(args)
 
     model = model.to(args.device)

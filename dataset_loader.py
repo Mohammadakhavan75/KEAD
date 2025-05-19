@@ -290,15 +290,15 @@ def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None, transf
     return train_loader, val_loader
 
 
-def load_cifar10(path, transforms=transforms.ToTensor(), batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
+def load_cifar10(path, transform=transforms.ToTensor(), batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
     print('loading cifar10')
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-    transforms = transforms
+    transform = transform
     train_data = torchvision.datasets.CIFAR10(
-        path, train=True, transform=transforms, download=True)
+        path, train=True, transform=transform, download=True)
     test_data = torchvision.datasets.CIFAR10(
-        path, train=False, transform=transforms, download=True)
+        path, train=False, transform=transform, download=True)
 
     if one_class_idx != None:
         train_data = get_subclass_dataset(train_data, one_class_idx)
@@ -310,11 +310,11 @@ def load_cifar10(path, transforms=transforms.ToTensor(), batch_size=64, num_work
     return train_loader, val_loader
 
 
-def load_svhn(path, transforms=transforms.ToTensor(), batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
+def load_svhn(path, transform=transforms.ToTensor(), batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
     print('loading SVHN')
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-    transform = transforms
+    transform = transform
     train_data = SVHN(root=path, split="train", transform=transform)
     test_data = SVHN(root=path, split="test", transform=transform)
 
@@ -328,10 +328,10 @@ def load_svhn(path, transforms=transforms.ToTensor(), batch_size=64, num_workers
     return train_loader, val_loader
 
 
-def load_cifar100(path, transforms=transforms.ToTensor(), batch_size=64, num_workers=0, one_class_idx=None, coarse=True, shuffle=True, seed=1):
+def load_cifar100(path, transform=transforms.ToTensor(), batch_size=64, num_workers=0, one_class_idx=None, coarse=True, shuffle=True, seed=1):
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-    transform = transforms
+    transform = transform
     train_data = torchvision.datasets.CIFAR100(path, train=True, download=True, transform=transform)
     test_data = torchvision.datasets.CIFAR100(path, train=False, download=True, transform=transform)
     
@@ -349,16 +349,16 @@ def load_cifar100(path, transforms=transforms.ToTensor(), batch_size=64, num_wor
     return train_loader, test_loader
 
 
-def load_mvtec_ad(path, transforms=None, resize=224, batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
+def load_mvtec_ad(path, transform=None, resize=224, batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-    if not transforms:
+    if not transform:
         transform = torchvision.transforms.Compose([
                 torchvision.transforms.Resize(math.ceil(resize*1.14)),
                 torchvision.transforms.CenterCrop(resize),
                 torchvision.transforms.ToTensor()])
     else:
-        transform = transforms
+        transform = transform
     
     cc = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
     if one_class_idx != None:
@@ -377,16 +377,16 @@ def load_mvtec_ad(path, transforms=None, resize=224, batch_size=64, num_workers=
     return train_loader, test_loader
 
 
-def load_visa(path, transforms=None, resize=224, batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
+def load_visa(path, transform=None, resize=224, batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-    if not transforms:
+    if not transform:
         transform = torchvision.transforms.Compose([
                 torchvision.transforms.Resize(math.ceil(resize*1.14)),
                 torchvision.transforms.CenterCrop(resize),
                 torchvision.transforms.ToTensor()])
     else:
-        transform = transforms
+        transform = transform
     cc = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']
     if one_class_idx != None:
         print(cc[one_class_idx])
@@ -518,34 +518,39 @@ class batch_dataset(Dataset):
             return torch.tensor(pickle.load(f)).float()
         
 
-def get_loader(args, data_path, imagenet_path):
+def get_loader(args, data_path, imagenet_path, transform):
     if args.dataset == 'cifar10':
         args.num_classes = 10
-        train_loader, test_loader = load_cifar10(data_path, 
+        train_loader, test_loader = load_cifar10(data_path,
+                                            transform=transform,
                                             batch_size=args.batch_size,
                                             one_class_idx=args.one_class_idx,
                                             seed=args.seed)
     elif args.dataset == 'svhn':
         args.num_classes = 10
         train_loader, test_loader = load_svhn(data_path, 
+                                            transform=transform,
                                             batch_size=args.batch_size,
                                             one_class_idx=args.one_class_idx,
                                             seed=args.seed)
     elif args.dataset == 'cifar100':
         args.num_classes = 20
         train_loader, test_loader = load_cifar100(data_path, 
+                                                transform=transform,
                                                 batch_size=args.batch_size,
                                                 one_class_idx=args.one_class_idx,
                                                 seed=args.seed)
     elif args.dataset == 'imagenet30':
         args.num_classes = 30
         train_loader, test_loader = load_imagenet(imagenet_path, 
+                                                transform=transform,
                                                 batch_size=args.batch_size,
                                                 one_class_idx=args.one_class_idx,
                                                 seed=args.seed)
     elif args.dataset == 'mvtec_ad':
         args.num_classes = 15
         train_loader, test_loader = load_mvtec_ad(data_path, 
+                                                transform=transform,
                                                 resize=args.img_size,
                                                 batch_size=args.batch_size,
                                                 one_class_idx=args.one_class_idx,
@@ -554,6 +559,7 @@ def get_loader(args, data_path, imagenet_path):
     elif args.dataset == 'visa':
         args.num_classes = 12
         train_loader, test_loader = load_visa(data_path, 
+                                                transform=transform,
                                                 resize=args.img_size,
                                                 batch_size=args.batch_size,
                                                 one_class_idx=args.one_class_idx,
