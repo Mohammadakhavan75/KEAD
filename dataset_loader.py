@@ -225,8 +225,8 @@ def noise_loader(args, transform=None, batch_size=64, num_workers=0, one_class_i
         
         generator_train_positives.append(torch.Generator().manual_seed(seed))
         generator_test_positives.append(torch.Generator().manual_seed(seed))
-        train_positives_loader.append(DataLoader(all_train_dataset_positives_one_class[k-1], shuffle=shuffle, generator=generator_train_positives[k-1], batch_size=batch_size, num_workers=num_workers))
-        test_positives_loader.append(DataLoader(all_test_dataset_positives_one_class[k-1], shuffle=shuffle, generator=generator_test_positives[k-1], batch_size=batch_size, num_workers=num_workers))
+        train_positives_loader.append(DataLoader(all_train_dataset_positives_one_class[k-1], shuffle=shuffle, generator=generator_train_positives[k-1], batch_size=batch_size, num_workers=num_workers, pin_memory=True))
+        test_positives_loader.append(DataLoader(all_test_dataset_positives_one_class[k-1], shuffle=shuffle, generator=generator_test_positives[k-1], batch_size=batch_size, num_workers=num_workers, pin_memory=True))
         # train_positives_loader.append(DataLoader(all_train_dataset_positives_one_class[k-1], shuffle=False, generator=generator_train_positives[k-1], batch_size=batch_size, num_workers=num_workers))
         # test_positives_loader.append(DataLoader(all_test_dataset_positives_one_class[k-1], shuffle=False, generator=generator_test_positives[k-1], batch_size=batch_size, num_workers=num_workers))
 
@@ -257,8 +257,8 @@ def noise_loader(args, transform=None, batch_size=64, num_workers=0, one_class_i
         
         generator_train_negatives.append(torch.Generator().manual_seed(seed))
         generator_test_negatives.append(torch.Generator().manual_seed(seed))
-        train_negetives_loader.append(DataLoader(all_train_dataset_negetives_one_class[k-1], shuffle=shuffle, generator=generator_train_negatives[k-1], batch_size=batch_size, num_workers=num_workers))
-        test_negetives_loader.append(DataLoader(all_test_dataset_negetives_one_class[k-1], shuffle=shuffle, generator=generator_test_negatives[k-1], batch_size=batch_size, num_workers=num_workers))
+        train_negetives_loader.append(DataLoader(all_train_dataset_negetives_one_class[k-1], shuffle=shuffle, generator=generator_train_negatives[k-1], batch_size=batch_size, num_workers=num_workers, pin_memory=True))
+        test_negetives_loader.append(DataLoader(all_test_dataset_negetives_one_class[k-1], shuffle=shuffle, generator=generator_test_negatives[k-1], batch_size=batch_size, num_workers=num_workers, pin_memory=True))
         # train_negetives_loader.append(DataLoader(all_train_dataset_negetives_one_class[k-1], shuffle=False, generator=generator_train_negatives[k-1], batch_size=batch_size, num_workers=num_workers))
         # test_negetives_loader.append(DataLoader(all_test_dataset_negetives_one_class[k-1], shuffle=False, generator=generator_test_negatives[k-1], batch_size=batch_size, num_workers=num_workers))
 
@@ -284,8 +284,8 @@ def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None, transf
         train_data = get_subclass_dataset(train_data, one_class_idx)
         # val_data = get_subclass_dataset(val_data, one_class_idx)
 
-    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
-    val_loader = DataLoader(val_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
+    val_loader = DataLoader(val_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
 
     return train_loader, val_loader
 
@@ -304,8 +304,8 @@ def load_cifar10(path, transforms=transforms.ToTensor(), batch_size=64, num_work
         train_data = get_subclass_dataset(train_data, one_class_idx)
         # test_data = get_subclass_dataset(test_data, one_class_idx)
 
-    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
-    val_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
+    val_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
 
     return train_loader, val_loader
 
@@ -322,8 +322,8 @@ def load_svhn(path, transforms=transforms.ToTensor(), batch_size=64, num_workers
         train_data = get_subclass_dataset(train_data, one_class_idx)
         # test_data = get_subclass_dataset(test_data, one_class_idx)
 
-    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
-    val_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
+    val_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
 
     return train_loader, val_loader
 
@@ -343,8 +343,8 @@ def load_cifar100(path, transforms=transforms.ToTensor(), batch_size=64, num_wor
         train_data = get_subclass_dataset(train_data, one_class_idx)
         # test_data = get_subclass_dataset(test_data, one_class_idx)
 
-    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
-    test_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
+    test_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
 
     return train_loader, test_loader
 
@@ -371,8 +371,8 @@ def load_mvtec_ad(path, transforms=None, resize=224, batch_size=64, num_workers=
     train_data = MVTecADDataset(path, transform=transform, categories=categories, phase='train')
     test_data = MVTecADDataset(path, transform=transform, categories=categories, phase='test')
     
-    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
-    test_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
+    test_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
 
     return train_loader, test_loader
 
@@ -398,8 +398,8 @@ def load_visa(path, transforms=None, resize=224, batch_size=64, num_workers=0, o
     train_data = VisADataset(path, transform=transform, categories=categories, phase='normal')
     test_data = VisADataset(path, transform=transform, categories=categories, phase='anomaly')
     
-    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers)
-    test_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers)
+    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
+    test_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
 
     return train_loader, test_loader
 
