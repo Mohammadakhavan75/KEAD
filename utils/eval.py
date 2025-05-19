@@ -32,26 +32,27 @@ def novelty_detection(eval_in, eval_out, train_features_in, net, args):
     model_preds = []
     trues = []
     with torch.no_grad():
-        for data_in, data_out in zip(eval_in, eval_out):
-            inputs_in, targets_in = data_in
-            inputs_out, targets_out = data_out
-            
-            inputs_in , inputs_out = inputs_in.to(args.device) , inputs_out.to(args.device)
+        for (inputs_in, _), (inputs_out, _) in zip(eval_in, eval_out):
+            inputs_in = inputs_in.to(args.device)
+            inputs_out = inputs_out.to(args.device)
 
-            preds_in, normal_features = net(inputs_in)
-            preds_out, out_features = net(inputs_out)
+            _, normal_features = net(inputs_in)
+            _, out_features = net(inputs_out)
             
             in_features_list.extend(normal_features[-1].detach().cpu().numpy())
             out_features_list.extend(out_features[-1].detach().cpu().numpy())
 
             
-        in_features_list = torch.tensor(np.array(in_features_list))
-        out_features_list = torch.tensor(np.array(out_features_list))
-        l1 = torch.zeros(in_features_list.shape[0])
-        l2 = torch.ones(out_features_list.shape[0])
-        targets = torch.cat([l1, l2], dim=0)
-    
+        in_features_list = F.Normalize(torch.tensor(np.array(in_features_list)), dim=1)
+        out_features_list = F.Normalize(torch.tensor(np.array(out_features_list)), dim=1)
+        # Prepare labels
+        targets = torch.cat([
+            torch.zeros(in_features_list.shape[0]),
+            torch.ones(out_features_list.shape[0])
+        ], dim=0)
+
         f_list = torch.cat([in_features_list, out_features_list], dim=0)
+        train_features_in = F.Normalize(train_features_in, dim=1)
         distances = knn_score_calculation(to_np(train_features_in), to_np(f_list))
         auc = roc_auc_score(targets, distances)
     return auc
