@@ -294,6 +294,36 @@ def novelty_detection(eval_in, eval_out, train_features_in, net, args):
     return auc
 
 
+def to_np(x):
+    return x.data.cpu().numpy()
+
+
+def knn_score(train_set, test_set, n_neighbours=1):
+    index = faiss.IndexFlatL2(train_set.shape[1])
+    index.add(train_set)
+    D, _ = index.search(test_set, n_neighbours)
+    return np.sum(D, axis=1)
+
+
+def feature_extraction(loader, net, args):
+    print("extracting features...")
+    net = net.to(args.device)
+    net.eval()  # enter train mode
+    
+    features = []
+    with torch.no_grad():
+        for data_in in loader:
+            inputs_in, _ = data_in
+            
+            inputs = inputs_in.to(args.device)
+
+            _, normal_features = net(inputs)            
+            features.append(normal_features[-1])
+    
+    features = torch.cat(features, dim=0)
+    return features
+
+
 def eval_cifar10_novelity(model, args, root_path):
     np_test_img_path = root_path + f'/generalization_repo_dataset/cifar10_Test_s5/rot270.npy'
     np_test_target_path = root_path + '/generalization_repo_dataset/cifar10_Test_s5/labels.npy'
@@ -303,9 +333,9 @@ def eval_cifar10_novelity(model, args, root_path):
     test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10')
     train_data_in = get_subclass_dataset(train_data, args.one_class_idx)
     test_data_in = get_subclass_dataset(test_data, args.one_class_idx)
-    train_data_in_loader = DataLoader(train_data_in, shuffle=True, batch_size=args.batch_size, num_workers=args.num_workers)
-    test_data_in_loader = DataLoader(test_data_in, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
-    train_features_in = feature_extraction(train_data_in_loader, model)
+    train_data_in_loader = DataLoader(train_data_in, shuffle=True, batch_size=args.batch_size)
+    test_data_in_loader = DataLoader(test_data_in, shuffle=False, batch_size=args.batch_size)
+    train_features_in = feature_extraction(train_data_in_loader, model, args)
 
     aucs = []
     for id in range(10):
@@ -313,12 +343,12 @@ def eval_cifar10_novelity(model, args, root_path):
             continue
 
         test_data_out = get_subclass_dataset(test_data, id)
-        test_data_out_loader = DataLoader(test_data_out, shuffle=False, batch_size=args.batch_size, num_workers=args.num_workers)
+        test_data_out_loader = DataLoader(test_data_out, shuffle=False, batch_size=args.batch_size)
         auc = novelty_detection(test_data_in_loader, test_data_out_loader, train_features_in, model, args)
         aucs.append(auc)
         print(f"Evaluation distance on class {id}: auc: {auc}")
 
-    print(f"Average auc is: {np.mean(aucs)}")
+
     return np.mean(aucs)
 
 
@@ -362,8 +392,8 @@ def main():
     train_global_iter = 0
     for epoch in range(0, args.epochs):
         print('epoch', epoch, '/', args.epochs)
-        train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, colapse_metrics =\
-            train_contrastive(stats, model, train_loader, optimizer, transform_sequence, epoch, scheduler, args, train_global_iter, writer)
+        # train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, colapse_metrics =\
+        train_contrastive(stats, model, train_loader, optimizer, transform_sequence, epoch, scheduler, args, train_global_iter, writer)
         
         # writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, epoch)
         # writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, epoch)
@@ -380,19 +410,19 @@ def main():
 
         # accuracy = evaluate(test_loader, test_positives_loader, test_negetives_loader, model, args)
         # print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}, Eval/avg_acc: {accuracy}")
-        print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}")
-        # if epoch % 10 == 9:
-        avg_auc = eval_cifar10_novelity(model, args, root_path)
-        print(f"Average AUC: {avg_auc}")
+        # print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}")
+        if epoch % 10 == 0:
+            avg_auc = eval_cifar10_novelity(model, args, root_path)
+            print(f"Average AUC: {avg_auc}")
             # writer.add_scalar("Eval/avg_auc", avg_auc, epoch)
 
         if (epoch) % (args.epochs / 10) == 0:
             torch.save(model.state_dict(), os.path.join(model_save_path, f'model_params_epoch_{epoch}.pt'))
 
 
-        if np.mean(epoch_loss['loss']) < best_loss:
-            torch.save(model.state_dict(), os.path.join(save_path, 'best_params.pt'))
-            best_loss = np.mean(epoch_loss['loss'])
+        # if np.mean(epoch_loss['loss']) < best_loss:
+        #     torch.save(model.state_dict(), os.path.join(save_path, 'best_params.pt'))
+        #     best_loss = np.mean(epoch_loss['loss'])
 
         # last_sim_ps = avg_sim_ps
         # last_sim_ns = avg_sim_ns
