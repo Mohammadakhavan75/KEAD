@@ -62,10 +62,11 @@ def info_nce_multi(z_anchor, z_views, tau=0.2):
     sim_pos = sim[:, 0]  # (B,)
     sim_neg = sim[:, 1]  # (B,)
 
-    logits = torch.stack([sim_pos, sim_neg], dim=1)  # (B, 2)
-    labels = torch.zeros(z_anchor.size(0), dtype=torch.long, device=z_anchor.device)  # positives are at index 0
+    loss = -torch.log(sim_pos/(sim_pos+sim_neg))
+    # logits = torch.stack([sim_pos, sim_neg], dim=1)  # (B, 2)
+    # labels = torch.zeros(z_anchor.size(0), dtype=torch.long, device=z_anchor.device)  # positives are at index 0
 
-    loss = F.cross_entropy(logits, labels)
+    # loss = F.cross_entropy(logits, labels)
     return loss
 
 
