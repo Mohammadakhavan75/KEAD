@@ -56,8 +56,8 @@ def info_nce_multi(z_anchor, z_views, pos_mask, epoch, tau=0.2):
     B, K, D = z_views.shape
 
 
-    # if pos_mask.all():
-    if epoch < 1:
+    if pos_mask.all():
+    # if epoch < 1:
         sim = torch.einsum('id,jd->ij', z_anchor, z_anchor)
         pos_mask = sim==1.
         sim_max = sim.max(dim=1, keepdim=True)[0].detach()
@@ -67,7 +67,7 @@ def info_nce_multi(z_anchor, z_views, pos_mask, epoch, tau=0.2):
         loss_vec = -(logsumexp_pos - logsumexp_all) / pos_count
         loss = loss_vec.mean()
         
-        return loss
+        return loss/10000
 
     else:
         # Compute cosine similarities: (B, K)
@@ -205,11 +205,12 @@ def main():
     transform_sequence = augl.TransformSequence(transform_pool).to(args.device)
 
     stats = RunningStatsStrategy(n_transforms=len(transform_pool), alpha=args.alpha)
-
     train_global_iter = 0
     for epoch in range(0, args.epochs):
         print('epoch', epoch, '/', args.epochs)
         # train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, colapse_metrics =\
+        if stats.alpha < 1:
+            stats.alpha *= 1.1
         train_contrastive(stats, model, train_loader, optimizer, transform_sequence, epoch, scheduler, args, train_global_iter, writer)
         
         # writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, epoch)
@@ -232,6 +233,7 @@ def main():
             avg_auc = evaluation(model, args, root_path)
             print(f"Average AUC: {avg_auc}")
             # writer.add_scalar("Eval/avg_auc", avg_auc, epoch)
+            print(stats.mu, stats.var)
 
         if (epoch) % (args.epochs / 10) == 0:
             torch.save(model.state_dict(), os.path.join(model_save_path, f'model_params_epoch_{epoch}.pt'))
