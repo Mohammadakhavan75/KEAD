@@ -2149,11 +2149,12 @@ def get_augmentation_list():
             "DefocusBlur",  "MotionBlur", "ZoomBlur", "Fog", "Snow", "Spatter", "Contrast", "Brightness",\
             "Saturate", "JpegCompression", "Pixelate", "ElasticTransform"]
 
-def get_augmentation_pool(num_augs=4):
-    import random
-    augmentation_pool = get_augmentation_list()
-    selected_names = random.sample(augmentation_pool, num_augs)
-    
+def get_augmentation_pool(selected_names=None, num_augs=4):
+    if selected_names:
+        import random
+        augmentation_pool = get_augmentation_list()
+        selected_names = random.sample(augmentation_pool, num_augs)
+
     # Map augmentation names to their classes
     augmentation_classes = {
         "Rotate90" : Rotate90,
