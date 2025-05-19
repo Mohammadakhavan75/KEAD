@@ -1,7 +1,7 @@
 import faiss
 import numpy as np
 import torch
-from dataset_loader import load_np_dataset, get_subclass_dataset
+from dataset_loader import get_dataset, get_subclass_dataset
 import torchvision.transforms.v2 as v2
 from torch.utils.data import DataLoader
 import torchvision
@@ -91,20 +91,16 @@ def feature_extraction(loader, net, args):
 
 def eval_cifar10_novelity(model, args, root_path):
     try:
-        np_test_img_path = root_path + f'/generalization_repo_dataset/cifar10_Test_s5/rot270.npy'
-        np_test_target_path = root_path + '/generalization_repo_dataset/cifar10_Test_s5/labels.npy'
-        
         test_transform = v2.Compose([v2.ToTensor()])
-        train_data = torchvision.datasets.CIFAR10(root_path, train=True, transform=test_transform, download=True)
-        test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10')
+        train_data, test_data = get_dataset(args, root_path, test_transform)
         
         train_data_in = get_subclass_dataset(train_data, args.one_class_idx)
         test_data_in = get_subclass_dataset(test_data, args.one_class_idx)
         
-        train_data_in_loader = DataLoader(train_data_in, shuffle=True, batch_size=args.batch_size, pin_memory=True)
-        test_data_in_loader = DataLoader(test_data_in, shuffle=False, batch_size=args.batch_size, pin_memory=True)
+        train_in_loader = DataLoader(train_data_in, shuffle=True, batch_size=args.batch_size, pin_memory=True)
+        test_in_loader = DataLoader(test_data_in, shuffle=False, batch_size=args.batch_size, pin_memory=True)
         
-        train_features_in = feature_extraction(train_data_in_loader, model, args)
+        train_features_in = feature_extraction(train_in_loader, model, args)
 
         aucs = []
         for id in range(10):
@@ -112,10 +108,10 @@ def eval_cifar10_novelity(model, args, root_path):
                 continue
 
             test_data_out = get_subclass_dataset(test_data, id)
-            test_data_out_loader = DataLoader(test_data_out, shuffle=False, batch_size=args.batch_size, pin_memory=True)
+            test_out_loader = DataLoader(test_data_out, shuffle=False, batch_size=args.batch_size, pin_memory=True)
             
             try:
-                auc = novelty_detection(test_data_in_loader, test_data_out_loader, train_features_in, model, args)
+                auc = novelty_detection(test_in_loader, test_out_loader, train_features_in, model, args)
                 aucs.append(auc)
                 print(f"Evaluation distance on class {id}: auc: {auc}")
             except Exception as e:
@@ -124,7 +120,7 @@ def eval_cifar10_novelity(model, args, root_path):
             finally:
                 # Cleanup after each iteration
                 del test_data_out
-                del test_data_out_loader
+                del test_out_loader
 
         return np.mean(aucs)
     except Exception as e:

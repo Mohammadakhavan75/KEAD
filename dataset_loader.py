@@ -517,3 +517,90 @@ class batch_dataset(Dataset):
         with open(f'{self.path}/batch_{idx}.pkl', 'rb') as f:
             return torch.tensor(pickle.load(f)).float()
         
+
+def get_loader(args, data_path, imagenet_path):
+    if args.dataset == 'cifar10':
+        args.num_classes = 10
+        train_loader, test_loader = load_cifar10(data_path, 
+                                            batch_size=args.batch_size,
+                                            one_class_idx=args.one_class_idx,
+                                            seed=args.seed)
+    elif args.dataset == 'svhn':
+        args.num_classes = 10
+        train_loader, test_loader = load_svhn(data_path, 
+                                            batch_size=args.batch_size,
+                                            one_class_idx=args.one_class_idx,
+                                            seed=args.seed)
+    elif args.dataset == 'cifar100':
+        args.num_classes = 20
+        train_loader, test_loader = load_cifar100(data_path, 
+                                                batch_size=args.batch_size,
+                                                one_class_idx=args.one_class_idx,
+                                                seed=args.seed)
+    elif args.dataset == 'imagenet30':
+        args.num_classes = 30
+        train_loader, test_loader = load_imagenet(imagenet_path, 
+                                                batch_size=args.batch_size,
+                                                one_class_idx=args.one_class_idx,
+                                                seed=args.seed)
+    elif args.dataset == 'mvtec_ad':
+        args.num_classes = 15
+        train_loader, test_loader = load_mvtec_ad(data_path, 
+                                                resize=args.img_size,
+                                                batch_size=args.batch_size,
+                                                one_class_idx=args.one_class_idx,
+                                                seed=args.seed)
+
+    elif args.dataset == 'visa':
+        args.num_classes = 12
+        train_loader, test_loader = load_visa(data_path, 
+                                                resize=args.img_size,
+                                                batch_size=args.batch_size,
+                                                one_class_idx=args.one_class_idx,
+                                                seed=args.seed)
+    
+    return train_loader, test_loader
+
+
+def get_dataset(args, path, transform):
+    if args.dataset == 'cifar10':
+        args.num_classes = 10
+        train_data = torchvision.datasets.CIFAR10(
+            path, train=True, transform=transforms, download=True)
+        test_data = torchvision.datasets.CIFAR10(
+            path, train=False, transform=transforms, download=True)
+
+
+    elif args.dataset == 'svhn':
+        args.num_classes = 10
+        train_data = SVHN(root=path, split="train", transform=transform)
+        test_data = SVHN(root=path, split="test", transform=transform)
+
+    elif args.dataset == 'cifar100':
+        args.num_classes = 20
+        train_data = torchvision.datasets.CIFAR100(path, train=True, download=True, transform=transform)
+        test_data = torchvision.datasets.CIFAR100(path, train=False, download=True, transform=transform)
+        
+        train_data.targets = sparse2coarse(train_data.targets)
+        test_data.targets = sparse2coarse(test_data.targets)
+
+    
+    elif args.dataset == 'imagenet30':
+        args.num_classes = 30
+        train_data = torchvision.datasets.ImageNet(root=path, split='train', transform=transform)
+        test_data = torchvision.datasets.ImageNet(root=path, split='val', transform=transform)
+
+    elif args.dataset == 'mvtec_ad':
+        args.num_classes = 15
+        categories = ['bottle', 'cable', 'capsule', 'carpet', 'grid', 'hazelnut', 'leather', 'metal_nut', 'pill', 'screw', 'tile', 'toothbrush', 'transistor', 'wood', 'zipper']
+        train_data = MVTecADDataset(path, transform=transform, categories=categories, phase='train')
+        test_data = MVTecADDataset(path, transform=transform, categories=categories, phase='test')
+
+    elif args.dataset == 'visa':
+        args.num_classes = 12
+        categories = ['candle', 'capsules', 'cashew', 'chewinggum', 'fryum', 'macaroni1', 'macaroni2', 'pcb1', 'pcb2', 'pcb3', 'pcb4', 'pipe_fryum']
+        train_data = VisADataset(path, transform=transform, categories=categories, phase='normal')
+        test_data = VisADataset(path, transform=transform, categories=categories, phase='anomaly')
+        
+    
+    return train_data, test_data

@@ -17,8 +17,7 @@ from models.utils import augmentation_layers as augl
 
 
 
-from dataset_loader import noise_loader, load_cifar10,\
-     load_svhn, load_cifar100, load_imagenet, load_mvtec_ad, load_visa
+from dataset_loader import get_loader
 
 
 # -------------------------------
@@ -155,51 +154,6 @@ def train_contrastive(stats, model, train_loader, optimizer, transform_sequence,
 
 
 
-
-def loading_datasets(args, data_path, imagenet_path):
-    if args.dataset == 'cifar10':
-        args.num_classes = 10
-        train_loader, test_loader = load_cifar10(data_path, 
-                                            batch_size=args.batch_size,
-                                            one_class_idx=args.one_class_idx,
-                                            seed=args.seed)
-    elif args.dataset == 'svhn':
-        args.num_classes = 10
-        train_loader, test_loader = load_svhn(data_path, 
-                                            batch_size=args.batch_size,
-                                            one_class_idx=args.one_class_idx,
-                                            seed=args.seed)
-    elif args.dataset == 'cifar100':
-        args.num_classes = 20
-        train_loader, test_loader = load_cifar100(data_path, 
-                                                batch_size=args.batch_size,
-                                                one_class_idx=args.one_class_idx,
-                                                seed=args.seed)
-    elif args.dataset == 'imagenet30':
-        args.num_classes = 30
-        train_loader, test_loader = load_imagenet(imagenet_path, 
-                                                batch_size=args.batch_size,
-                                                one_class_idx=args.one_class_idx,
-                                                seed=args.seed)
-    elif args.dataset == 'mvtec_ad':
-        args.num_classes = 15
-        train_loader, test_loader = load_mvtec_ad(data_path, 
-                                                resize=args.img_size,
-                                                batch_size=args.batch_size,
-                                                one_class_idx=args.one_class_idx,
-                                                seed=args.seed)
-
-    elif args.dataset == 'visa':
-        args.num_classes = 12
-        train_loader, test_loader = load_visa(data_path, 
-                                                resize=args.img_size,
-                                                batch_size=args.batch_size,
-                                                one_class_idx=args.one_class_idx,
-                                                seed=args.seed)
-    
-    return train_loader, test_loader
-
-
 def set_seed(seed_nu):
     torch.manual_seed(seed_nu)
     random.seed(seed_nu)
@@ -233,7 +187,7 @@ def main():
     writer = SummaryWriter(save_path)
     args.save_path = save_path
 
-    train_loader, test_loader = loading_datasets(args, data_path, imagenet_path)
+    train_loader, test_loader = get_loader(args, data_path, imagenet_path)
     model, optimizer, scheduler = load_model(args)
 
     model = model.to(args.device)
