@@ -2,8 +2,7 @@ import faiss
 import numpy as np
 import torch
 from dataset_loader import load_np_dataset, get_subclass_dataset
-# import torchvision.transforms.v2 as v2
-import torchvision.transforms as v2
+import torchvision.transforms.v2 as v2
 from torch.utils.data import DataLoader
 import torchvision
 from sklearn.svm import OneClassSVM
@@ -54,7 +53,7 @@ def novelty_detection(eval_in, eval_out, train_features_in, net, args):
     
         f_list = torch.cat([in_features_list, out_features_list], dim=0)
         distances = knn_score_calculation(to_np(train_features_in), to_np(f_list))
-        auc = knn_score_calculation(targets, distances)
+        auc = roc_auc_score(targets, distances)
     return auc
 
 
