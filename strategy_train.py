@@ -1,6 +1,7 @@
 from utils.parser import args_parser
 from utils.paths import create_path
 from utils.loader import load_model
+from utils.eval import eval_cifar10_novelity
 import numpy as np
 from tqdm import tqdm
 import random
@@ -13,16 +14,6 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from models.utils import augmentation_layers as augl
 
-from sklearn.metrics import roc_auc_score
-
-
-##########################
-import faiss
-from sklearn.metrics import roc_auc_score
-from torch.utils.data import DataLoader
-from dataset_loader import load_np_dataset, get_subclass_dataset
-from torchvision.transforms import transforms
-import torchvision
 
 
 
@@ -114,15 +105,6 @@ def info_nce_multi(z_anchor, z_views, pos_mask, epoch, tau=0.2):
         loss = loss_vec[valid_mask].mean()
         return loss
 
-# -------------------------------
-# Feature extractor wrapper
-# -------------------------------
-def get_backbone_embedding(model, x):
-    # returns l2-normalized embedding
-    with torch.no_grad():
-        z = model(x)
-        z = F.normalize(z, dim=1)
-    return z
 
 # -------------------------------
 # Main training & test routines
@@ -172,41 +154,6 @@ def train_contrastive(stats, model, train_loader, optimizer, transform_sequence,
     # return backbone
 
 
-def test_novelty(backbone, args):
-    device = args.device
-    backbone.eval()
-
-    # prepare train embeddings
-    train_full = torchvision.datasets.CIFAR10(root='./data', train=True, download=False)
-    normal_class = args.normal_class
-    train_norm = [ (img, label) for img, label in train_full if label == normal_class]
-    ganchor = torch.stack([ transforms.ToTensor()(img) for img, _ in train_norm ])
-    ganchor = transforms.Normalize((0.5,), (0.5,))(ganchor).to(device)
-    with torch.no_grad():
-        Z_train = F.normalize(backbone(ganchor), dim=1).cpu().numpy()
-
-    # fit one-class SVM
-    oc_svm = OneClassSVM(kernel='rbf', nu=0.1, gamma='auto')
-    oc_svm.fit(Z_train)
-
-    # prepare test set: all classes
-    test_set = torchvision.datasets.CIFAR10(root='./data', train=False, download=False, transform=transforms.Compose([
-        transforms.Resize(32), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))
-    ]))
-    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=4)
-
-    # compute scores
-    y_true, y_scores = [], []
-    for x, y in tqdm(test_loader, desc="Testing"):
-        x = x.to(device)
-        with torch.no_grad():
-            z = F.normalize(backbone(x), dim=1).cpu().numpy()
-        scores = -oc_svm.decision_function(z)  # higher == more anomalous
-        y_true.extend([0 if lbl == normal_class else 1 for lbl in y.numpy()])
-        y_scores.extend(scores)
-
-    auc = roc_auc_score(y_true, y_scores)
-    print(f"Test AUROC: {auc:.4f}")
 
 
 def loading_datasets(args, data_path, imagenet_path):
@@ -258,98 +205,6 @@ def set_seed(seed_nu):
     random.seed(seed_nu)
     np.random.seed(seed_nu)
 
-
-def novelty_detection(eval_in, eval_out, train_features_in, net, args):
-    net = net.to(args.device)
-    net.eval()  # enter valid mode
-
-    in_features_list = []
-    out_features_list = []
-    
-    model_preds = []
-    trues = []
-    with torch.no_grad():
-        for data_in, data_out in zip(eval_in, eval_out):
-            inputs_in, targets_in = data_in
-            inputs_out, targets_out = data_out
-            
-            inputs_in , inputs_out = inputs_in.to(args.device) , inputs_out.to(args.device)
-
-            preds_in, normal_features = net(inputs_in)
-            preds_out, out_features = net(inputs_out)
-            
-            in_features_list.extend(normal_features[-1].detach().cpu().numpy())
-            out_features_list.extend(out_features[-1].detach().cpu().numpy())
-
-            
-        in_features_list = torch.tensor(np.array(in_features_list))
-        out_features_list = torch.tensor(np.array(out_features_list))
-        l1 = torch.zeros(in_features_list.shape[0])
-        l2 = torch.ones(out_features_list.shape[0])
-        targets = torch.cat([l1, l2], dim=0)
-    
-        f_list = torch.cat([in_features_list, out_features_list], dim=0)
-        distances = knn_score(to_np(train_features_in), to_np(f_list))
-        auc = roc_auc_score(targets, distances)
-    return auc
-
-
-def to_np(x):
-    return x.data.cpu().numpy()
-
-
-def knn_score(train_set, test_set, n_neighbours=1):
-    index = faiss.IndexFlatL2(train_set.shape[1])
-    index.add(train_set)
-    D, _ = index.search(test_set, n_neighbours)
-    return np.sum(D, axis=1)
-
-
-def feature_extraction(loader, net, args):
-    print("extracting features...")
-    net = net.to(args.device)
-    net.eval()  # enter train mode
-    
-    features = []
-    with torch.no_grad():
-        for data_in in loader:
-            inputs_in, _ = data_in
-            
-            inputs = inputs_in.to(args.device)
-
-            _, normal_features = net(inputs)            
-            features.append(normal_features[-1])
-    
-    features = torch.cat(features, dim=0)
-    return features
-
-
-def eval_cifar10_novelity(model, args, root_path):
-    np_test_img_path = root_path + f'/generalization_repo_dataset/cifar10_Test_s5/rot270.npy'
-    np_test_target_path = root_path + '/generalization_repo_dataset/cifar10_Test_s5/labels.npy'
-    
-    test_transform = transforms.Compose([transforms.ToTensor()])
-    train_data = torchvision.datasets.CIFAR10(root_path, train=True, transform=test_transform, download=True)
-    test_data = load_np_dataset(np_test_img_path, np_test_target_path, test_transform, dataset='cifar10')
-    train_data_in = get_subclass_dataset(train_data, args.one_class_idx)
-    test_data_in = get_subclass_dataset(test_data, args.one_class_idx)
-    train_data_in_loader = DataLoader(train_data_in, shuffle=True, batch_size=args.batch_size)
-    test_data_in_loader = DataLoader(test_data_in, shuffle=False, batch_size=args.batch_size)
-    train_features_in = feature_extraction(train_data_in_loader, model, args)
-
-    aucs = []
-    for id in range(10):
-        if id == args.one_class_idx:
-            continue
-
-        test_data_out = get_subclass_dataset(test_data, id)
-        test_data_out_loader = DataLoader(test_data_out, shuffle=False, batch_size=args.batch_size)
-        auc = novelty_detection(test_data_in_loader, test_data_out_loader, train_features_in, model, args)
-        aucs.append(auc)
-        print(f"Evaluation distance on class {id}: auc: {auc}")
-
-
-    return np.mean(aucs)
 
 
 def main():
