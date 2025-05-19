@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from models.utils import augmentation_layers as augl
 import torchvision.transforms.v2 as v2
-
+import pickle
 
 
 from dataset_loader import get_loader
@@ -51,58 +51,22 @@ class RunningStatsStrategy:
 # -------------------------------
 # Multi-positive InfoNCE loss
 # -------------------------------
-def info_nce_multi(z_anchor, z_views, pos_mask, epoch, tau=0.2):
-    # z_anchor: (B, D), z_views: (B, K, D), pos_mask: (B, K)
+def info_nce_multi(z_anchor, z_views, tau=0.2):
+    # z_anchor: (B, D), z_views: (B, K, D)
     B, K, D = z_views.shape
 
+    # Compute cosine similarities: (B, K)
+    sim = torch.einsum('bd,bkd->bk', z_anchor, z_views) / tau
+     
+    # InfoNCE loss: -log (exp(sim_pos) / (exp(sim_pos) + exp(sim_neg)))
+    sim_pos = sim[:, 0]  # (B,)
+    sim_neg = sim[:, 1]  # (B,)
 
-    # if pos_mask.all():
-    if epoch < 1:
-        sim = torch.einsum('id,jd->ij', z_anchor, z_anchor)
-        pos_mask = sim==1.
-        sim_max = sim.max(dim=1, keepdim=True)[0].detach()
-        logsumexp_all = torch.logsumexp(sim - sim_max, dim=1)  # log ∑ exp(s - max)
-        logsumexp_pos = torch.logsumexp((sim - sim_max).masked_fill(~pos_mask, -1e7), dim=1)  # only for positives
-        pos_count = z_anchor.shape[0]
-        loss_vec = -(logsumexp_pos - logsumexp_all) / pos_count
-        loss = loss_vec.mean()
-        
-        return loss
+    logits = torch.stack([sim_pos, sim_neg], dim=1)  # (B, 2)
+    labels = torch.zeros(z_anchor.size(0), dtype=torch.long, device=z_anchor.device)  # positives are at index 0
 
-    else:
-        # Compute cosine similarities: (B, K)
-        sim = torch.einsum('bd,bkd->bk', z_anchor, z_views) / tau
-
-        # Mask for valid anchors (at least one positive view)
-        valid_mask = pos_mask.any(dim=1)
-
-        if valid_mask.sum() == 0:
-            return torch.tensor(0.0, device=z_anchor.device)
-
-        # For numerical stability
-        sim_max = sim.max(dim=1, keepdim=True)[0].detach()
-        sim_exp = torch.exp(sim - sim_max)
-
-        # Compute denominator (B, 1)
-        # denom = sim_exp.sum(dim=1, keepdim=True)  # (B, 1)
-
-        # # Compute positive similarity sum (B, 1)
-        # pos_sim_exp = (sim_exp * pos_mask).sum(dim=1)
-
-        # Count positives per anchor (B,)
-        pos_count = pos_mask.sum(dim=1).float().clamp(min=1.0)
-
-        # # Compute log-ratio
-        # loss_vec = -torch.log(pos_sim_exp / denom.squeeze(1)) / pos_count
-
-        logsumexp_all = torch.logsumexp(sim - sim_max, dim=1)  # log ∑ exp(s - max)
-        logsumexp_pos = torch.logsumexp((sim - sim_max).masked_fill(~pos_mask, -1e7), dim=1)  # only for positives
-
-        loss_vec = -(logsumexp_pos - logsumexp_all) / pos_count
-
-        # Mean over valid samples
-        loss = loss_vec[valid_mask].mean()
-        return loss
+    loss = F.cross_entropy(logits, labels)
+    return loss
 
 
 # -------------------------------
@@ -119,21 +83,14 @@ def train_contrastive(stats, model, train_loader, optimizer, transform_sequence,
         B = anchor.size(0)
         
         views = transform_sequence(anchor)
-        # views = views.to(device).view(-1, 3, 32, 32)
-
         optimizer.zero_grad()
+        
         # get embeddings and normilize the output
         z_a = F.normalize(model(anchor)[0], dim=1)            # (B,D)
-        z_v = F.normalize(model(views)[0], dim=1).view(B, args.k_view, -1)  # (B,K,D)
-
-        # calculate cosine similarities
-        sim = torch.einsum('bd,bkd->bk', z_a, z_v)
-
-        # get pos mask
-        pos_mask = stats.update_and_get_mask(sim.cpu()).to(device)
+        z_v = F.normalize(model(views)[0].view(B, args.k_view, -1), dim=2)  # (B,K,D)
 
         # compute loss
-        loss = info_nce_multi(z_a, z_v, pos_mask, epoch, tau=args.temperature)
+        loss = info_nce_multi(z_a, z_v, tau=args.temperature)
 
         
         loss.backward()
@@ -200,11 +157,23 @@ def main():
 
     model = model.to(args.device)
 
-    
-    transform_pool = augl.get_augmentation_pool(args.k_view)
-    transform_sequence = augl.TransformSequence(transform_pool).to(args.device)
 
-    stats = RunningStatsStrategy(n_transforms=len(transform_pool), alpha=args.alpha)
+
+    with open(f'./ranks/clip/{args.dataset}/wasser_dist_softmaxed.pkl', 'rb') as file:
+        probs = pickle.load(file)
+
+    pos_aug = list(probs[args.one_class_idx].keys())[0]
+    neg_aug = list(probs[args.one_class_idx].keys())[-1]
+    t_pool = [pos_aug, neg_aug]
+    aug_list = augl.get_augmentation_list()
+    transform_pool = []
+    for aug in aug_list:
+        for t in t_pool:
+            if aug.lower() == t.lower().replace('_', ''):
+                transform_pool.append(aug)
+    transform_pool = augl.get_augmentation_pool(transform_pool)
+    transform_sequence = augl.TransformSequence(transform_pool).to(args.device)
+    stats = None 
 
     train_global_iter = 0
     for epoch in range(0, args.epochs):
