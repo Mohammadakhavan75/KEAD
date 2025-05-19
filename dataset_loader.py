@@ -566,9 +566,9 @@ def get_dataset(args, path, transform):
     if args.dataset == 'cifar10':
         args.num_classes = 10
         train_data = torchvision.datasets.CIFAR10(
-            path, train=True, transform=transforms, download=True)
+            path, train=True, transform=transform, download=True)
         test_data = torchvision.datasets.CIFAR10(
-            path, train=False, transform=transforms, download=True)
+            path, train=False, transform=transform, download=True)
 
 
     elif args.dataset == 'svhn':
