@@ -89,7 +89,7 @@ def feature_extraction(loader, net, args):
         torch.cuda.empty_cache()
 
 
-def eval_cifar10_novelity(model, args, root_path):
+def evaluation(model, args, root_path):
     try:
         test_transform = v2.Compose([v2.ToTensor()])
         train_data, test_data = get_dataset(args, root_path, test_transform)

@@ -1,7 +1,7 @@
 from utils.parser import args_parser
 from utils.paths import create_path
 from utils.loader import load_model
-from utils.eval import eval_cifar10_novelity
+from utils.eval import evaluation
 import numpy as np
 from tqdm import tqdm
 import random
@@ -221,7 +221,7 @@ def main():
         # print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}, Eval/avg_acc: {accuracy}")
         # print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}")
         if epoch % 10 == 0:
-            avg_auc = eval_cifar10_novelity(model, args, root_path)
+            avg_auc = evaluation(model, args, root_path)
             print(f"Average AUC: {avg_auc}")
             # writer.add_scalar("Eval/avg_auc", avg_auc, epoch)
 
