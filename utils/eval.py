@@ -43,8 +43,8 @@ def novelty_detection(eval_in, eval_out, train_features_in, net, args):
             out_features_list.extend(out_features[-1].detach().cpu().numpy())
 
             
-        in_features_list = F.Normalize(torch.tensor(np.array(in_features_list)), dim=1)
-        out_features_list = F.Normalize(torch.tensor(np.array(out_features_list)), dim=1)
+        in_features_list = F.normalize(torch.tensor(np.array(in_features_list)), dim=1)
+        out_features_list = F.normalize(torch.tensor(np.array(out_features_list)), dim=1)
         # Prepare labels
         targets = torch.cat([
             torch.zeros(in_features_list.shape[0]),
@@ -52,7 +52,7 @@ def novelty_detection(eval_in, eval_out, train_features_in, net, args):
         ], dim=0)
 
         f_list = torch.cat([in_features_list, out_features_list], dim=0)
-        train_features_in = F.Normalize(train_features_in, dim=1)
+        train_features_in = F.normalize(train_features_in, dim=1)
         distances = knn_score_calculation(to_np(train_features_in), to_np(f_list))
         auc = roc_auc_score(targets, distances)
     return auc
