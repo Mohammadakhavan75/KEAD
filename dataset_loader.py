@@ -570,7 +570,6 @@ def get_dataset(args, path, transform):
         test_data = torchvision.datasets.CIFAR10(
             path, train=False, transform=transform, download=True)
 
-
     elif args.dataset == 'svhn':
         args.num_classes = 10
         train_data = SVHN(root=path, split="train", transform=transform)
