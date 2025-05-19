@@ -193,6 +193,7 @@ def main():
             v2.RandomGrayscale(p=0.8),
             v2.RandomHorizontalFlip(p=0.8),
         ], p=[0.3, 0.3, 0.3]),
+        v2.ToTensor()
     ])
     train_loader, test_loader = get_loader(args, data_path, imagenet_path, transform)
     model, optimizer, scheduler = load_model(args)
