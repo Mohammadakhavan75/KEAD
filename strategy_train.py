@@ -1,12 +1,9 @@
-from utils.parser import args_parser
-from utils.paths import create_path
-from utils.loader import load_model
-from utils.eval import evaluation
+import os
+import json
+import pickle
+import random
 import numpy as np
 from tqdm import tqdm
-import random
-import json
-import os
 
 import torch
 import torch.nn as nn
@@ -14,11 +11,12 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from models.utils import augmentation_layers as augl
 import torchvision.transforms.v2 as v2
-import pickle
 
-
+from utils.eval import evaluation
+from utils.paths import create_path
+from utils.loader import load_model
+from utils.parser import args_parser
 from dataset_loader import get_loader
-
 
 # -------------------------------
 # Running stats strategy for pos/neg masks
@@ -63,10 +61,10 @@ def info_nce_multi(z_anchor, z_views, tau=0.2):
     sim_neg = sim[:, 1]  # (B,)
 
     loss = -torch.log(sim_pos/(sim_pos+sim_neg))
-    # logits = torch.stack([sim_pos, sim_neg], dim=1)  # (B, 2)
-    # labels = torch.zeros(z_anchor.size(0), dtype=torch.long, device=z_anchor.device)  # positives are at index 0
+    logits = torch.stack([sim_pos, sim_neg], dim=1)  # (B, 2)
+    labels = torch.zeros(z_anchor.size(0), dtype=torch.long, device=z_anchor.device)  # positives are at index 0
 
-    # loss = F.cross_entropy(logits, labels)
+    loss = F.cross_entropy(logits, labels)
     return loss
 
 
@@ -92,32 +90,20 @@ def train_contrastive(stats, model, train_loader, optimizer, transform_sequence,
 
         # compute loss
         loss = info_nce_multi(z_a, z_v, tau=args.temperature)
-
         
         loss.backward()
         optimizer.step()
         pbar.set_postfix(loss=loss.item())
 
-
-        # writer.add_scalar("Train/loss", loss.item(), train_global_iter)
-        # writer.add_scalar("Train/sim_p", torch.mean(sim_p).detach().cpu().numpy(), train_global_iter)
-        # writer.add_scalar("Train/sim_n", torch.mean(sim_n).detach().cpu().numpy(), train_global_iter)
-        # writer.add_scalar("Train/norm_p", torch.mean(data_norm).detach().cpu().numpy(), train_global_iter)
-        # writer.add_scalar("Train/norm_n", torch.mean(negative_norms).detach().cpu().numpy(), train_global_iter)
-        # writer.add_scalar("Train/norm_d", torch.mean(positive_norms).detach().cpu().numpy(), train_global_iter)
         train_global_iter += 1
 
 
     # return backbone
 
-
-
 def set_seed(seed_nu):
     torch.manual_seed(seed_nu)
     random.seed(seed_nu)
     np.random.seed(seed_nu)
-
-
 
 def main():
     with open('config.json', 'r') as config_file:
@@ -130,16 +116,13 @@ def main():
     imagenet_path = config['imagenet_path']
     args.config = config
     best_loss = torch.inf
-    # args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    args.device = torch.device(args.device)
     set_seed(args.seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-    # os.environ['CUDA_VISIBLE_DEVICES']='0,1'
-    # args.device=f'cuda:{args.gpu}'
     train_global_iter = 0
     args.last_lr = args.learning_rate
-
 
     model_save_path, save_path = create_path(args)
     writer = SummaryWriter(save_path)
@@ -157,8 +140,6 @@ def main():
     model, optimizer, scheduler = load_model(args)
 
     model = model.to(args.device)
-
-
 
     with open(f'./ranks/clip/{args.dataset}/wasser_dist_softmaxed.pkl', 'rb') as file:
         probs = pickle.load(file)
