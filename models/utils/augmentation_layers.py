@@ -2150,7 +2150,7 @@ def get_augmentation_list():
             "Saturate", "JpegCompression", "Pixelate", "ElasticTransform"]
 
 def get_augmentation_pool(selected_names=None, num_augs=4):
-    if selected_names:
+    if selected_names is None:
         import random
         augmentation_pool = get_augmentation_list()
         selected_names = random.sample(augmentation_pool, num_augs)
