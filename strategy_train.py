@@ -51,23 +51,72 @@ class RunningStatsStrategy:
 # -------------------------------
 # Multi-positive InfoNCE loss
 # -------------------------------
+
+
+def cosine_similarity(feature_map1, feature_map2):
+    # Flatten the feature maps to treat them as vectors
+    feature_map1_flat = feature_map1.flatten()
+    feature_map2_flat = feature_map2.flatten()
+
+    # Calculate the dot product and norms
+    # dot_product = np.sum(feature_map1_flat * feature_map2_flat)
+    dot_product = torch.dot(feature_map1_flat, feature_map2_flat)
+    norm1 = torch.linalg.norm(feature_map1_flat)
+    norm2 = torch.linalg.norm(feature_map2_flat)
+
+    # Prevent division by zero
+    if norm1 == 0 or norm2 == 0:
+        return torch.tensor(0).to(feature_map1.device)
+
+    # Cosine similarity
+    cosine_similarity_map = dot_product / (norm1 * norm2)
+    return cosine_similarity_map
+
+def contrastive(input, positive, negative, temperature=0.5, epsilon = 1e-12): # epsilon for non getting devided by zero error
+    
+    sim_n = torch.zeros(negative.shape[0]).to(negative.device)
+    sim_p = torch.zeros(positive.shape[0]).to(positive.device)
+    if negative.shape[0] != input.shape[0]:
+        for j, feature in enumerate(negative):
+            sim_n[j] = cosine_similarity(input, feature)
+    else:
+        # sim_n = similarity(input, negative)
+        sim_n = cosine_similarity(input, negative)
+        
+    if positive.shape[0] != input.shape[0]:
+        for j, feature in enumerate(positive):
+            sim_p[j] = cosine_similarity(input, feature)
+    else:
+        # sim_p = similarity(input, positive)
+        sim_p = cosine_similarity(input, positive)
+
+    denom = torch.exp(sim_n/temperature) + torch.exp(sim_p/temperature)
+
+    if positive.shape[0] != input.shape[0]:
+        card = len(positive)
+    else:
+        card = 1
+    
+    return (- 1/card) * torch.log(torch.sum(torch.exp(sim_p/temperature), dim=0)/(torch.sum(denom, dim=0) + epsilon)), sim_p, sim_n # epsilon for non getting devided by zero error
+
+
 def info_nce_multi(z_anchor, z_views, tau=0.2):
     # z_anchor: (B, D), z_views: (B, K, D)
     B, K, D = z_views.shape
 
     # Compute cosine similarities: (B, K)
-    sim = torch.einsum('bd,bkd->bk', z_anchor, z_views) / tau
+    sim = torch.einsum('bd,bkd->bk', z_anchor, z_views)
      
     # InfoNCE loss: -log (exp(sim_pos) / (exp(sim_pos) + exp(sim_neg)))
-    sim_pos = sim[:, 0]  # (B,)
-    sim_neg = sim[:, 1]  # (B,)
-
-    loss = -torch.log(sim_pos/(sim_pos+sim_neg))
+    sim_pos = torch.exp(sim[:, 0] / tau)  # (B,)
+    sim_neg = torch.exp(sim[:, 1] / tau)  # (B,)
+    print(sim_pos.mean(), sim_neg.mean())
+    loss = -torch.log(sim_pos/(sim_pos + sim_neg))
     # logits = torch.stack([sim_pos, sim_neg], dim=1)  # (B, 2)
     # labels = torch.zeros(z_anchor.size(0), dtype=torch.long, device=z_anchor.device)  # positives are at index 0
 
     # loss = F.cross_entropy(logits, labels)
-    return loss
+    return loss.mean()
 
 
 # -------------------------------
@@ -91,7 +140,10 @@ def train_contrastive(stats, model, train_loader, optimizer, transform_sequence,
         z_v = F.normalize(model(views)[0].view(B, int(views.shape[0]/B), -1), dim=2)  # (B,K,D)
 
         # compute loss
-        loss = info_nce_multi(z_a, z_v, tau=args.temperature)
+        # loss = info_nce_multi(z_a, z_v, tau=args.temperature)
+        print(z_a.shape, z_v.shape)
+        loss, simp, simn = contrastive(z_a, z_v[:,0,:], z_v[:,1,:], args.temperature)
+        print(simp.mean(), simn.mean())
 
         
         loss.backward()
@@ -146,11 +198,11 @@ def main():
     args.save_path = save_path
 
     transform = v2.Compose([
-        v2.RandomChoice([
-            v2.RandomRotation(degrees=(-5, 5)),
-            v2.RandomGrayscale(p=0.8),
-            v2.RandomHorizontalFlip(p=0.8),
-        ], p=[0.3, 0.3, 0.3]),
+        # v2.RandomChoice([
+            # v2.RandomRotation(degrees=(-5, 5)),
+            # v2.RandomGrayscale(p=0.8),
+            # v2.RandomHorizontalFlip(p=0.8),
+        # ], p=[0.3, 0.3, 0.3]),
         v2.ToTensor()
     ])
     train_loader, test_loader = get_loader(args, data_path, imagenet_path, transform)
@@ -172,8 +224,15 @@ def main():
         for t in t_pool:
             if aug.lower() == t.lower().replace('_', ''):
                 transform_pool.append(aug)
+    
+    transform_pool = ["ColorJitterLayer", "Rotate90"]
+    print("Transform selection: ", transform_pool)
     transform_pool = augl.get_augmentation_pool(transform_pool)
+    print("Transform selection: ", transform_pool)
     transform_sequence = augl.TransformSequence(transform_pool).to(args.device)
+
+    print("Transform sequence: ", transform_sequence)
+    print("Transform sequence: ", transform_sequence.transforms)
     stats = None 
 
     train_global_iter = 0
