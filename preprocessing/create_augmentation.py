@@ -531,11 +531,11 @@ print(f'Working on {args.dataset}:')
 
 train_loader, test_loader = loading_datasets(args)
 if args.train:
-    saving_path = os.path.join(args.config['generalization_path'], f'{args.dataset}_Train_s{args.severity}_seed_{args.seed}')
+    saving_path = os.path.join(args.config['generalization_path'], f'{args.dataset}_Train_s{args.severity}/seed_{args.seed}')
     os.makedirs(saving_path, exist_ok=True)
     loader = train_loader
 else:
-    saving_path = os.path.join(args.config['generalization_path'], f'{args.dataset}_Test_s{args.severity}_seed_{args.seed}')
+    saving_path = os.path.join(args.config['generalization_path'], f'{args.dataset}_Test_s{args.severity}/seed_{args.seed}')
     os.makedirs(saving_path, exist_ok=True)
     loader = test_loader
 

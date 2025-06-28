@@ -115,8 +115,8 @@ if args.save_rep_aug:
     os.makedirs(rep_aug_path, exist_ok=True)
 
 if args.dataset == 'cifar10':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar10_Train_s1_seed_{args.seed}/{args.aug}.npy')).replace("\r", "")
-    train_aug_targets_path = os.path.join(generalization_path, f'cifar10_Train_s1_seed_{args.seed}/labels.npy').replace("\r", "")
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar10_Train_s1/seed_{args.seed}/{args.aug}.npy')).replace("\r", "")
+    train_aug_targets_path = os.path.join(generalization_path, f'cifar10_Train_s1/seed_{args.seed}/labels.npy').replace("\r", "")
     
     normal_loader, _ = load_cifar10(data_path,
                                     batch_size=args.batch_size,
@@ -125,8 +125,8 @@ if args.dataset == 'cifar10':
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
     
 elif args.dataset == 'svhn':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'svhn_Train_s1/{args.aug}.npy').replace("\r", ""))
-    train_aug_targets_path = os.path.join(generalization_path, 'svhn_Train_s1/labels.npy').replace("\r", "")
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'svhn_Train_s1/seed_{args.seed}/{args.aug}.npy').replace("\r", ""))
+    train_aug_targets_path = os.path.join(generalization_path, f'svhn_Train_s1/seed_{args.seed}/labels.npy').replace("\r", "")
     
     normal_loader, _ = load_svhn(data_path,
                                     batch_size=args.batch_size,
@@ -135,8 +135,8 @@ elif args.dataset == 'svhn':
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset='svhn')
 
 elif args.dataset == 'cifar100':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar100_Train_s1/{args.aug}.npy').replace("\r", ""))
-    train_aug_targets_path = os.path.join(generalization_path, 'cifar100_Train_s1/labels.npy').replace("\r", "")
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar100_Train_s1/seed_{args.seed}/{args.aug}.npy').replace("\r", ""))
+    train_aug_targets_path = os.path.join(generalization_path, f'cifar100_Train_s1/seed_{args.seed}/labels.npy').replace("\r", "")
     
     normal_loader, _ = load_cifar100(data_path,
                                     batch_size=args.batch_size,
@@ -145,8 +145,8 @@ elif args.dataset == 'cifar100':
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
 
 elif args.dataset == 'mvtec_ad':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'mvtec_ad_Train_s1/{args.aug}.npy')).replace("\r", "")
-    train_aug_targets_path = os.path.join(generalization_path, 'mvtec_ad_Train_s1/labels.npy').replace("\r", "")
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'mvtec_ad_Train_s1/seed_{args.seed}/{args.aug}.npy')).replace("\r", "")
+    train_aug_targets_path = os.path.join(generalization_path, f'mvtec_ad_Train_s1/seed_{args.seed}/labels.npy').replace("\r", "")
     
     normal_loader, _ = load_mvtec_ad(data_path,
                                     batch_size=args.batch_size,
@@ -155,8 +155,8 @@ elif args.dataset == 'mvtec_ad':
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
 
 elif args.dataset == 'visa':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'visa_Train_s1/{args.aug}.npy')).replace("\r", "")
-    train_aug_targets_path = os.path.join(generalization_path, 'visa_Train_s1/labels.npy').replace("\r", "")
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'visa_Train_s1/seed_{args.seed}/{args.aug}.npy')).replace("\r", "")
+    train_aug_targets_path = os.path.join(generalization_path, f'visa_Train_s1/seed_{args.seed}/labels.npy').replace("\r", "")
     
     normal_loader, _ = load_visa(data_path,
                                 batch_size=args.batch_size,
@@ -166,8 +166,8 @@ elif args.dataset == 'visa':
 
 elif args.dataset == 'imagenet':
     # imagenet_path = os.path.join(data_path,'ImageNet')
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_Train_s1/{args.aug}.npy')).replace("\r", "")
-    train_aug_targets_path = os.path.join(generalization_path, os.path.normpath('imagenet_Train_s1/labels.npy')).replace("\r", "")
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_Train_s1/seed_{args.seed}/{args.aug}.npy')).replace("\r", "")
+    train_aug_targets_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_Train_s1/seed_{args.seed}/labels.npy')).replace("\r", "")
     
     if args.backbone != 'clip':
         transform = torchvision.transforms.Compose([
@@ -183,8 +183,8 @@ elif args.dataset == 'imagenet':
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
 
 elif args.dataset == 'imagenet_30':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_30_Train_s1/{args.aug}.npy')).replace("\r", "")
-    train_aug_targets_path = os.path.join(generalization_path, os.path.normpath('imagenet_30_Train_s1/labels.npy')).replace("\r", "")
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_30_Train_s1/seed_{args.seed}/{args.aug}.npy')).replace("\r", "")
+    train_aug_targets_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_30_Train_s1/seed_{args.seed}/labels.npy')).replace("\r", "")
     
     if args.backbone != 'clip':
         transform = torchvision.transforms.Compose([
@@ -269,18 +269,18 @@ targets_list = np.asarray(targets_list)
 
 
 
-os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/'.replace("\r", ""), exist_ok=True)
-os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/'.replace("\r", ""), exist_ok=True)
-os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/euclidean_diffs/'.replace("\r", ""), exist_ok=True)
-os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/cosine_pair/'.replace("\r", ""), exist_ok=True)
-os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/wasser_pair/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/euclidean_diffs/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/cosine_pair/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/wasser_pair/'.replace("\r", ""), exist_ok=True)
 
 
-with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
+with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(targets_list, f)
-with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/euclidean_diffs/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
+with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/euclidean_diffs/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(euclidean_diffs, f)
-with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/cosine_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
+with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/cosine_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(cosine_diff, f)
-with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/wasser_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
+with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/wasser_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(wasser_diff, f)
