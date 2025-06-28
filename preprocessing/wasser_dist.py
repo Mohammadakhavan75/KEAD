@@ -64,8 +64,8 @@ imgs_aug_features = []
 generalization_path = os.path.normpath(config['generalization_path'])
 representations_path = os.path.normpath(config['representations_path'])
 
-rep_norm_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/normal/').replace("\r", "")
-rep_aug_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/{args.aug}/').replace("\r", "")
+rep_norm_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/seed_{args.seed}/normal/').replace("\r", "")
+rep_aug_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/seed_{args.seed}/{args.aug}/').replace("\r", "")
 
 
 for i in range(len(os.listdir(rep_norm_path))):
@@ -88,8 +88,8 @@ imgs_n_features, imgs_aug_features = torch.cat(imgs_n_features, dim=0).numpy(), 
 print(len(imgs_n_features))
 print(f'Running on: {args.aug}')
 
-wasser_dist_path = os.path.normpath(f'./wasser_dist/{args.backbone}/{args.dataset}/').replace("\r", "")
-wasser_dist_datasets_path = os.path.normpath(f'./wasser_dist_datasets/{args.backbone}/{args.dataset}/').replace("\r", "")
+wasser_dist_path = os.path.normpath(f'./wasser_dist/{args.backbone}/{args.dataset}/seed_{args.seed}/').replace("\r", "")
+wasser_dist_datasets_path = os.path.normpath(f'./wasser_dist_datasets/{args.backbone}/{args.dataset}/seed_{args.seed}/').replace("\r", "")
 wasser_pickle_path = os.path.normpath(os.path.join(wasser_dist_path, f'{args.aug}.pkl')).replace("\r", "")
 wasser_dataset_pickle_path = os.path.normpath(os.path.join(wasser_dist_datasets_path, f'{args.aug}.pkl')).replace("\r", "")
 os.makedirs(wasser_dist_path, exist_ok=True)
@@ -97,37 +97,37 @@ os.makedirs(wasser_dist_datasets_path, exist_ok=True)
 
 if args.dataset == 'svhn':
     classes = 10    
-    targets_list_loaded = np.load(os.path.join(generalization_path, 'svhn_Train_s1/labels.npy'))
+    targets_list_loaded = np.load(os.path.join(generalization_path, f'svhn_Train_s1/seed_{args.seed}/labels.npy'))
 
 if args.dataset == 'cifar10':
     classes = 10
     # targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar10_Train_s1/labels.npy'))
-    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
         targets_list_loaded = pickle.load(f)
 
 if args.dataset == 'cifar100':
     classes = 100
-    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
         targets_list_loaded = pickle.load(f)
     if args.super_class:
         classes = 20
-        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
             targets_list_loaded = pickle.load(f)
         targets_list_loaded = sparse2coarse(targets_list_loaded)
        
 if args.dataset == 'imagenet_30':
     classes = 30
-    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
         targets_list_loaded = pickle.load(f)
 
 if args.dataset == 'mvtec_ad':
     classes = 15
-    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
         targets_list_loaded = pickle.load(f)
 
 if args.dataset == 'visa':
     classes = 12
-    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
         targets_list_loaded = pickle.load(f)
 print(len(imgs_n_features))
 distances = []
