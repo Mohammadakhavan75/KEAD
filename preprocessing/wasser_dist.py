@@ -66,7 +66,7 @@ representations_path = os.path.normpath(config['representations_path'])
 
 rep_norm_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/seed_{args.seed}/normal/').replace("\r", "")
 rep_aug_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/seed_{args.seed}/{args.aug}/').replace("\r", "")
-
+save_pickles_path = os.path.normpath(f'./{representations_path}/{args.backbone}/{args.dataset}/seed_{args.seed}').replace("\r", "")
 
 for i in range(len(os.listdir(rep_norm_path))):
         try:
@@ -102,32 +102,32 @@ if args.dataset == 'svhn':
 if args.dataset == 'cifar10':
     classes = 10
     # targets_list_loaded = np.load(os.path.join(generalization_path, 'cifar10_Train_s1/labels.npy'))
-    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+    with open(f'{save_pickles_path}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
         targets_list_loaded = pickle.load(f)
 
 if args.dataset == 'cifar100':
     classes = 100
-    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+    with open(f'{save_pickles_path}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
         targets_list_loaded = pickle.load(f)
     if args.super_class:
         classes = 20
-        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+        with open(f'{save_pickles_path}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
             targets_list_loaded = pickle.load(f)
         targets_list_loaded = sparse2coarse(targets_list_loaded)
        
 if args.dataset == 'imagenet_30':
     classes = 30
-    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+    with open(f'{save_pickles_path}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
         targets_list_loaded = pickle.load(f)
 
 if args.dataset == 'mvtec_ad':
     classes = 15
-    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+    with open(f'{save_pickles_path}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
         targets_list_loaded = pickle.load(f)
 
 if args.dataset == 'visa':
     classes = 12
-    with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+    with open(f'{save_pickles_path}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
         targets_list_loaded = pickle.load(f)
 print(len(imgs_n_features))
 distances = []

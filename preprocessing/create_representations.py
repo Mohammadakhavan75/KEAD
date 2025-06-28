@@ -114,6 +114,15 @@ if args.save_rep_aug:
     rep_aug_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/seed_{args.seed}/{args.aug}/').replace("\r", "")
     os.makedirs(rep_aug_path, exist_ok=True)
 
+save_pickles_path = os.path.normpath(f'./{representations_path}/{args.backbone}/{args.dataset}/seed_{args.seed}').replace("\r", "")
+
+os.makedirs(f'{save_pickles_path}/targets/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'{save_pickles_path}/euclidean_diffs/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'{save_pickles_path}/cosine_pair/'.replace("\r", ""), exist_ok=True)
+os.makedirs(f'{save_pickles_path}/wasser_pair/'.replace("\r", ""), exist_ok=True)
+
+
+
 if args.dataset == 'cifar10':
     train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar10_Train_s1/seed_{args.seed}/{args.aug}.npy')).replace("\r", "")
     train_aug_targets_path = os.path.join(generalization_path, f'cifar10_Train_s1/seed_{args.seed}/labels.npy').replace("\r", "")
@@ -269,18 +278,11 @@ targets_list = np.asarray(targets_list)
 
 
 
-os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/'.replace("\r", ""), exist_ok=True)
-os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/'.replace("\r", ""), exist_ok=True)
-os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/euclidean_diffs/'.replace("\r", ""), exist_ok=True)
-os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/cosine_pair/'.replace("\r", ""), exist_ok=True)
-os.makedirs(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/wasser_pair/'.replace("\r", ""), exist_ok=True)
-
-
-with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/targets/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
+with open(f'{save_pickles_path}/targets/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(targets_list, f)
-with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/euclidean_diffs/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
+with open(f'{save_pickles_path}/euclidean_diffs/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(euclidean_diffs, f)
-with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/cosine_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
+with open(f'{save_pickles_path}/cosine_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(cosine_diff, f)
-with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/seed_{args.seed}/wasser_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
+with open(f'{save_pickles_path}/wasser_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(wasser_diff, f)
