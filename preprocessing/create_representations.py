@@ -108,19 +108,19 @@ from dataset_loader import load_cifar10, load_cifar100, load_svhn, load_mvtec_ad
 
 
 if args.save_rep_norm:
-    rep_norm_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/normal/').replace("\r", "")
+    rep_norm_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/seed_{args.seed}/normal/').replace("\r", "")
     os.makedirs(rep_norm_path, exist_ok=True)
 if args.save_rep_aug:
-    rep_aug_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/{args.aug}/').replace("\r", "")
+    rep_aug_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/seed_{args.seed}/{args.aug}/').replace("\r", "")
     os.makedirs(rep_aug_path, exist_ok=True)
 
 if args.dataset == 'cifar10':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar10_Train_s1/{args.aug}.npy')).replace("\r", "")
-    train_aug_targets_path = os.path.join(generalization_path, 'cifar10_Train_s1/labels.npy').replace("\r", "")
+    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar10_Train_s1_seed_{args.seed}/{args.aug}.npy')).replace("\r", "")
+    train_aug_targets_path = os.path.join(generalization_path, f'cifar10_Train_s1_seed_{args.seed}/labels.npy').replace("\r", "")
     
     normal_loader, _ = load_cifar10(data_path,
                                     batch_size=args.batch_size,
-                                    transforms=transform,
+                                    transform=transform,
                                     seed=args.seed)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
     
@@ -130,7 +130,7 @@ elif args.dataset == 'svhn':
     
     normal_loader, _ = load_svhn(data_path,
                                     batch_size=args.batch_size,
-                                    transforms=transform,
+                                    transform=transform,
                                     seed=args.seed)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset='svhn')
 
@@ -140,7 +140,7 @@ elif args.dataset == 'cifar100':
     
     normal_loader, _ = load_cifar100(data_path,
                                     batch_size=args.batch_size,
-                                    transforms=transform,
+                                    transform=transform,
                                     seed=args.seed)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
 
@@ -150,7 +150,7 @@ elif args.dataset == 'mvtec_ad':
     
     normal_loader, _ = load_mvtec_ad(data_path,
                                     batch_size=args.batch_size,
-                                    transforms=transform,
+                                    transform=transform,
                                     seed=args.seed)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
 
