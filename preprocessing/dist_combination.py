@@ -1,9 +1,11 @@
 import os
 import json
 import torch
+import random
 import pickle
 import argparse
 import numpy as np
+from collections import OrderedDict
 
 
 def parsing():
@@ -86,13 +88,21 @@ def get_target_labels(args, generalization_path):
     return targets_list_loaded, classes
 
 args = parsing()
+torch.manual_seed(args.seed)
+random.seed(args.seed)
+np.random.seed(args.seed)
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.deterministic = True
 
 with open(args.config, 'r') as config_file:
     config = json.load(config_file)
 
-target_labels, classes = get_target_labels(args, config['generalization_path'])
+generalization_path = os.path.normpath(config['generalization_path'])
+representations_path = os.path.normpath(config['representations_path'])
 
-root = f'./wasser_dist/{args.backbone}/{args.dataset}/'
+target_labels, classes = get_target_labels(args, generalization_path)
+
+root = f'./wasser_dist/{args.backbone}/{args.dataset}/seed_{args.seed}/'
 loaded_diffs = {}
 for file_name in os.listdir(root):
     with open(os.path.join(root, file_name), 'rb') as f:
@@ -107,22 +117,16 @@ if args.one_class:
         softmax_sorted_preproc[class_idx] = {}
 
     for class_idx in range(classes):
-        indices = [k for k in range(len(target_labels)) if target_labels[k]==class_idx]
         for noise_name in loaded_diffs.keys():
             print(class_idx)
             # this line is useful for cosine similarity and eucladian distance and has no use in wasser distance using POT
-            softmax_sorted_preproc[class_idx][noise_name] = torch.mean(torch.tensor([loaded_diffs[noise_name][class_idx] for idx in indices])).float()
-
-    for i in range(classes):
-        softmaxes = torch.nn.functional.softmax(torch.tensor(list(softmax_sorted_preproc[i].values())), dim=0).numpy()
-        for j, key in enumerate(softmax_sorted_preproc[i].keys()):
-            softmax_sorted[i][key] = softmaxes[j]
-
-        sorted_values = sorted(softmax_sorted[i].items(), key=lambda item: item[1])
-        softmax_sorted[i] = dict(sorted_values)
-
-    os.makedirs(f'./ranks/{args.backbone}/{args.dataset}/', exist_ok=True)
-    with open(f'./ranks/{args.backbone}/{args.dataset}/wasser_dist_softmaxed.pkl', 'wb') as f:
+            sorted_asc = dict(OrderedDict(sorted(loaded_diffs.items(), key=lambda item: item[1])))
+            softmaxes = torch.nn.functional.softmax(torch.tensor(list(sorted_asc.values())), dim=0).numpy()
+            for j, key in enumerate(sorted_asc.keys()):
+                softmax_sorted[class_idx][key] = softmaxes[j]
+             
+    os.makedirs(f'./ranks/{args.backbone}/{args.dataset}/seed_{args.seed}', exist_ok=True)
+    with open(f'./ranks/{args.backbone}/{args.dataset}/seed_{args.seed}/wasser_dist_softmaxed.pkl', 'wb') as f:
         pickle.dump(softmax_sorted, f)
 else:
     softmax_sorted = {}
