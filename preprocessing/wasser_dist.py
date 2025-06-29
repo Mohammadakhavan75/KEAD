@@ -97,7 +97,8 @@ os.makedirs(wasser_dist_datasets_path, exist_ok=True)
 
 if args.dataset == 'svhn':
     classes = 10    
-    targets_list_loaded = np.load(os.path.join(generalization_path, f'svhn_Train_s1/seed_{args.seed}/labels.npy'))
+    with open(f'{save_pickles_path}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
+        targets_list_loaded = pickle.load(f)
 
 if args.dataset == 'cifar10':
     classes = 10
@@ -109,7 +110,7 @@ if args.dataset == 'cifar100':
     classes = 100
     with open(f'{save_pickles_path}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
         targets_list_loaded = pickle.load(f)
-    if args.super_class:
+    if args.super_class: # TODO: Is this sparsification on targets_list_loaded correct ???
         classes = 20
         with open(f'{save_pickles_path}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
             targets_list_loaded = pickle.load(f)
@@ -129,6 +130,7 @@ if args.dataset == 'visa':
     classes = 12
     with open(f'{save_pickles_path}/targets/{args.aug}.pkl'.replace("\r", ""), 'rb') as f:
         targets_list_loaded = pickle.load(f)
+
 print(len(imgs_n_features))
 distances = []
 
