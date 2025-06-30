@@ -110,20 +110,22 @@ for file_name in os.listdir(root):
         loaded_diffs[file_name.split('.')[0]] = loaded
 
 if args.one_class:
-    softmax_sorted = {}
-    softmax_sorted_preproc = {}
+    ranks = {}
     for class_idx in range(classes):
-        softmax_sorted[class_idx] = {}
-        softmax_sorted_preproc[class_idx] = {}
+        ranks[class_idx] = {}
 
-    for class_idx in range(classes):
-        for noise_name in loaded_diffs.keys():
-            print(class_idx)
-            # this line is useful for cosine similarity and eucladian distance and has no use in wasser distance using POT
-            sorted_asc = dict(OrderedDict(sorted(loaded_diffs.items(), key=lambda item: item[1])))
-            softmaxes = torch.nn.functional.softmax(torch.tensor(list(sorted_asc.values())), dim=0).numpy()
-            for j, key in enumerate(sorted_asc.keys()):
-                softmax_sorted[class_idx][key] = softmaxes[j]
+    for noise , dict_values in loaded_diffs.items():
+        for class_num, value in dict_values.items():
+            ranks[class_num][noise] = value
+
+
+    softmax_sorted = {}
+    for epoch, scores in ranks.items():
+        names, raw_scores = zip(*scores.items())
+        tensor = torch.tensor(raw_scores, dtype=torch.float32)
+        probs = torch.nn.functional.softmax(tensor, dim=0).tolist()
+        pairs = list(zip(names, probs))
+        softmax_sorted[epoch] = dict(sorted(pairs, key=lambda x: x[1]))
              
     os.makedirs(f'./ranks/{args.backbone}/{args.dataset}/seed_{args.seed}', exist_ok=True)
     with open(f'./ranks/{args.backbone}/{args.dataset}/seed_{args.seed}/wasser_dist_softmaxed.pkl', 'wb') as f:
