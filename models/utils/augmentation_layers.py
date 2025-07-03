@@ -37,33 +37,6 @@ except ImportError:
 warnings.simplefilter("ignore", UserWarning)
 
 
-# Map augmentation names to their classes
-augmentation_classes = {
-    "Rotate90" : Rotate90,
-    "Rotate270" : Rotate270,
-    "HorizontalFlip" : HorizontalFlip,
-    "RandomCropResize" : RandomCropResize,
-    "ColorJitterLayer" : ColorJitterLayer,
-    "GaussianNoise" : GaussianNoise,
-    "ShotNoise" : ShotNoise,
-    "ImpulseNoise" : ImpulseNoise,
-    "SpeckleNoise" : SpeckleNoise,
-    "GaussianBlur" : GaussianBlur,
-    "GlassBlur" : GlassBlur,
-    "DefocusBlur" : DefocusBlur,
-    "MotionBlur" : MotionBlur,
-    "ZoomBlur": ZoomBlur,
-    "Fog": Fog,
-    "Snow": Snow,
-    "Spatter": Spatter,
-    "Contrast": Contrast,
-    "Brightness": Brightness,
-    "Saturate": Saturate,
-    "JpegCompression": JpegCompression,
-    "Pixelate": Pixelate,
-    "ElasticTransform": ElasticTransform
-}
-
 # Helper function to convert tensor to PIL Image
 def tensor_to_pil(img_tensor):
     """Converts a [C, H, W] tensor (0-1 range) to a PIL Image."""
@@ -2198,3 +2171,31 @@ class TransformSequence(nn.Module):
         for transform in self.transforms:
             results.append(transform(x))
         return torch.cat(results, dim=0)
+
+
+# Map augmentation names to their classes
+augmentation_classes = {
+    "Rotate90" : Rotate90,
+    "Rotate270" : Rotate270,
+    "HorizontalFlip" : HorizontalFlip,
+    "RandomCropResize" : RandomCropResize,
+    "ColorJitterLayer" : ColorJitterLayer,
+    "GaussianNoise" : GaussianNoise,
+    "ShotNoise" : ShotNoise,
+    "ImpulseNoise" : ImpulseNoise,
+    "SpeckleNoise" : SpeckleNoise,
+    "GaussianBlur" : GaussianBlur,
+    "GlassBlur" : GlassBlur,
+    "DefocusBlur" : DefocusBlur,
+    "MotionBlur" : MotionBlur,
+    "ZoomBlur": ZoomBlur,
+    "Fog": Fog,
+    "Snow": Snow,
+    "Spatter": Spatter,
+    "Contrast": Contrast,
+    "Brightness": Brightness,
+    "Saturate": Saturate,
+    "JpegCompression": JpegCompression,
+    "Pixelate": Pixelate,
+    "ElasticTransform": ElasticTransform
+}
