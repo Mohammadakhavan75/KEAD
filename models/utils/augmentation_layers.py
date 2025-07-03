@@ -36,6 +36,34 @@ except ImportError:
 
 warnings.simplefilter("ignore", UserWarning)
 
+
+# Map augmentation names to their classes
+augmentation_classes = {
+    "Rotate90" : Rotate90,
+    "Rotate270" : Rotate270,
+    "HorizontalFlip" : HorizontalFlip,
+    "RandomCropResize" : RandomCropResize,
+    "ColorJitterLayer" : ColorJitterLayer,
+    "GaussianNoise" : GaussianNoise,
+    "ShotNoise" : ShotNoise,
+    "ImpulseNoise" : ImpulseNoise,
+    "SpeckleNoise" : SpeckleNoise,
+    "GaussianBlur" : GaussianBlur,
+    "GlassBlur" : GlassBlur,
+    "DefocusBlur" : DefocusBlur,
+    "MotionBlur" : MotionBlur,
+    "ZoomBlur": ZoomBlur,
+    "Fog": Fog,
+    "Snow": Snow,
+    "Spatter": Spatter,
+    "Contrast": Contrast,
+    "Brightness": Brightness,
+    "Saturate": Saturate,
+    "JpegCompression": JpegCompression,
+    "Pixelate": Pixelate,
+    "ElasticTransform": ElasticTransform
+}
+
 # Helper function to convert tensor to PIL Image
 def tensor_to_pil(img_tensor):
     """Converts a [C, H, W] tensor (0-1 range) to a PIL Image."""
@@ -2155,35 +2183,10 @@ def get_augmentation_pool(selected_names=None, num_augs=4):
         augmentation_pool = get_augmentation_list()
         selected_names = random.sample(augmentation_pool, num_augs)
 
-    # Map augmentation names to their classes
-    augmentation_classes = {
-        "Rotate90" : Rotate90,
-        "Rotate270" : Rotate270,
-        "HorizontalFlip" : HorizontalFlip,
-        "RandomCropResize" : RandomCropResize,
-        "ColorJitterLayer" : ColorJitterLayer,
-        "GaussianNoise" : GaussianNoise,
-        "ShotNoise" : ShotNoise,
-        "ImpulseNoise" : ImpulseNoise,
-        "SpeckleNoise" : SpeckleNoise,
-        "GaussianBlur" : GaussianBlur,
-        "GlassBlur" : GlassBlur,
-        "DefocusBlur" : DefocusBlur,
-        "MotionBlur" : MotionBlur,
-        "ZoomBlur": ZoomBlur,
-        "Fog": Fog,
-        "Snow": Snow,
-        "Spatter": Spatter,
-        "Contrast": Contrast,
-        "Brightness": Brightness,
-        "Saturate": Saturate,
-        "JpegCompression": JpegCompression,
-        "Pixelate": Pixelate,
-        "ElasticTransform": ElasticTransform
-    }
-    
     return [augmentation_classes[name](p=1.0) for name in selected_names]
 
+def return_aug(aug_name=None):
+    return augmentation_classes[aug_name](p=1.0)
 
 class TransformSequence(nn.Module):
     def __init__(self, transforms):
@@ -2195,13 +2198,3 @@ class TransformSequence(nn.Module):
         for transform in self.transforms:
             results.append(transform(x))
         return torch.cat(results, dim=0)
-
-
-
-
-
-
-
-
-
-
