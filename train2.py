@@ -39,10 +39,9 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         neg_views = neg_transform_layer(anchor)
         optimizer.zero_grad()
         
-        model_input = torch.stack([anchor, pos_views, neg_views], dim=0)
-        model_output = model(model_input)
-        rep_a, rep_p, rep_n = model_output[:B], model_output[B:2*B], model_output[2*B:]
-        
+        model_input = torch.cat([anchor, pos_views, neg_views], dim=0)
+        preds, reps_list = model(model_input)
+        rep_a, rep_p, rep_n = preds[:B], preds[B:2*B], preds[2*B:]
         loss, sim_p, sim_n, norm_a, norm_n, norm_p = contrastive_matrix(rep_a, rep_p, rep_n, args.temperature)
 
         loss.backward()
