@@ -53,6 +53,8 @@ def args_parser():
     parser.add_argument('--exp_idx', default=0, type=int,
                         help='run index')
 
+    parser.add_argument('--gpu', default=0, type=int,
+                        help='gpu number')
     args = parser.parse_args()
 
     return args
