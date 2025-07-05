@@ -92,7 +92,10 @@ def main():
     imagenet_path = config['imagenet_path']
     args.config = config
     best_loss = torch.inf
-    args.device = torch.device(args.device)
+    if args.device == 'cuda':
+        args.device = torch.device(f'cuda:{args.gpu}')
+    else:
+        args.device = torch.device(args.device)
     set_seed(args.seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
