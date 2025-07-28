@@ -39,8 +39,8 @@ def novelty_detection(eval_in, eval_out, train_features_in, net, args):
             _, normal_features = net(inputs_in)
             _, out_features = net(inputs_out)
             
-            in_features_list.extend(normal_features[-1].detach().cpu().numpy())
-            out_features_list.extend(out_features[-1].detach().cpu().numpy())
+            in_features_list.extend(normal_features.detach().cpu().numpy())
+            out_features_list.extend(out_features.detach().cpu().numpy())
 
             
         in_features_list = F.normalize(torch.tensor(np.array(in_features_list)), dim=1)
@@ -72,7 +72,7 @@ def feature_extraction(loader, net, args):
                 
                 _, normal_features = net(inputs)            
                 # Move features to CPU immediately to free GPU memory
-                features.append(normal_features[-1].cpu())
+                features.append(normal_features.cpu())
                 
                 # Clear any unused memory
                 del inputs
