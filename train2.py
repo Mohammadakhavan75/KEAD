@@ -68,10 +68,6 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         writer.add_scalar("Train/norm_p", torch.mean(norm_p).detach().cpu().numpy(), train_global_iter)
 
 
-        scheduler.step()
-        args.last_lr = optimizer.param_groups[0]['lr']
-        writer.add_scalar("Train/lr", args.last_lr, epoch)
-
         train_global_iter += 1
 
     return train_global_iter
@@ -152,6 +148,11 @@ def main():
         # train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, colapse_metrics =\
         train_global_iter = train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer, neg_transform_layer, epoch, scheduler, args, train_global_iter, writer)
         
+        scheduler.step()
+        args.last_lr = optimizer.param_groups[0]['lr']
+        writer.add_scalar("Train/lr", args.last_lr, epoch)
+
+
         # writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, epoch)
         # writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, epoch)
         # writer.add_scalar("colapse_metrics/effective_rank", colapse_metrics['effective_rank'], epoch)
