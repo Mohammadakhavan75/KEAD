@@ -33,7 +33,7 @@ def args_parser():
                         help='Weight decay (L2 penalty).')
 
     # Model Configuration
-    parser.add_argument('--proj_head', default=0, type=int,
+    parser.add_argument('--proj_head', default=1, type=int,
                         help='Using projection head fully connected')
     parser.add_argument('--proj_dim', default=512, type=int,
                         help='Dimension of projection head')
