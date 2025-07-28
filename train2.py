@@ -124,9 +124,11 @@ def main():
     with open(f'./ranks/clip/{args.dataset}/wasser_dist_softmaxed.pkl', 'rb') as file:
         probs = pickle.load(file)
 
-    pos_aug = list(probs[args.one_class_idx].keys())[0]
-    neg_aug = list(probs[args.one_class_idx].keys())[-1]
-    
+    # pos_aug = list(probs[args.one_class_idx].keys())[0]
+    # neg_aug = list(probs[args.one_class_idx].keys())[-1]
+    pos_aug = 'flip'
+    neg_aug = 'rot90'
+
     aug_list = augl.get_augmentation_list()
     pos_transform_layer = None
     neg_transform_layer = None
