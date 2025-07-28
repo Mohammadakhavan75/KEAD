@@ -106,9 +106,16 @@ def main():
     transform = v2.Compose([
         v2.RandomChoice([
             v2.RandomRotation(degrees=(-5, 5)),
-            v2.RandomGrayscale(p=0.8),
-            v2.RandomHorizontalFlip(p=0.8),
-        ], p=[0.3, 0.3, 0.3]),
+            v2.RandomGrayscale(p=1),
+            v2.RandomHorizontalFlip(p=1),
+            # 3) Mild color jitter
+            v2.ColorJitter(
+                brightness=0.1,   # ±10%
+                contrast=0.1,     # ±10%
+                saturation=0.1,   # ±10%
+                hue=0.02          # ±2% of 360°
+            ),
+        ], p=[0.5, 0.5, 0.5, 0.5]),
         v2.ToTensor()
     ])
     train_loader, test_loader = get_loader(args, data_path, imagenet_path, transform)
