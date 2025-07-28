@@ -135,8 +135,10 @@ def main():
     
     for aug in aug_list:
         if aug.lower() == pos_aug.lower().replace('_', ''):
+            print(f"Using {aug} as positive augmentation")
             pos_transform_layer = augl.return_aug(aug).to(args.device)
         elif aug.lower() == neg_aug.lower().replace('_', ''):
+            print(f"Using {aug} as negative augmentation")
             neg_transform_layer = augl.return_aug(aug).to(args.device)
 
     assert pos_transform_layer is not None, "pos_transform_layer is None"
