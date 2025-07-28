@@ -117,7 +117,7 @@ def main():
     ])
     train_loader, test_loader = get_loader(args, data_path, imagenet_path, transform)
     model, optimizer, scheduler = load_model(args)
-    model = SimCLRModel(base_model=args.model)
+    # model = SimCLRModel(base_model=args.model)
 
     model = model.to(args.device)
 
