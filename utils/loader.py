@@ -26,6 +26,6 @@ def load_model(args):
     #     args.from_epoch = int(model_name.split('_')[-1].split('.')[0])
     #     model.load_state_dict(torch.load(os.path.join(model_folder, model_name), weights_only=True))
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=0.)
 
     return model, optimizer, scheduler
