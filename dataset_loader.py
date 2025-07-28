@@ -304,8 +304,8 @@ def load_cifar10(path, transform=transforms.ToTensor(), batch_size=64, num_worke
         train_data = get_subclass_dataset(train_data, one_class_idx)
         # test_data = get_subclass_dataset(test_data, one_class_idx)
 
-    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
-    val_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
+    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers, pin_memory=True, drop_last=True)
+    val_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers, pin_memory=True, drop_last=True)
 
     return train_loader, val_loader
 
