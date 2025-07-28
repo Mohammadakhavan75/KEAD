@@ -385,7 +385,7 @@ class Rotate270(nn.Module):
         return self.__class__.__name__ + f'(angle={self.angle})'
 
 
-class HorizontalFlip(nn.Module):
+class Flip(nn.Module):
     """Applies a horizontal flip with probability 1.0."""
     def __init__(self, p=0.5):
         super().__init__()
@@ -2177,7 +2177,7 @@ class TransformSequence(nn.Module):
 augmentation_classes = {
     "Rotate90" : Rotate90,
     "Rotate270" : Rotate270,
-    "HorizontalFlip" : HorizontalFlip,
+    "Flip" : Flip,
     "RandomCropResize" : RandomCropResize,
     "ColorJitterLayer" : ColorJitterLayer,
     "GaussianNoise" : GaussianNoise,
