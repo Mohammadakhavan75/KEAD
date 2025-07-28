@@ -5,10 +5,10 @@ from models.bottel_neck import Bottleneck
 
 # Define the ResNet model
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, img_size=32, batch_norm=True, fc_available=False, num_classes=10, proj_head=False, proj_dim=512):
+    def __init__(self, block, num_blocks, img_size=32, batch_norm=True, classification_head=False, num_classes=10, proj_head=False, proj_dim=128):
         super(ResNet, self).__init__()
         self.in_channels = 64
-        self.fc_available = fc_available
+        self.classification_head = classification_head
         self.batch_norm = batch_norm
         self.img_size = img_size
         self.proj_dim = proj_dim
@@ -35,14 +35,14 @@ class ResNet(nn.Module):
         self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 
-        if self.fc_available:
+        if self.classification_head:
             self.fc = nn.Linear(512 * block.expansion, num_classes)
 
         if self.proj_head:
             self.projection_head = nn.Sequential(
             nn.Linear(512 * block.expansion, proj_dim),
-            # nn.ReLU(inplace=True),
-            # nn.Linear(proj_dim, proj_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(proj_dim, proj_dim),
         )
 
 
@@ -55,41 +55,35 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        out_list = []
         out = self.conv1(x)
-        out_list.append(out)
         if self.batch_norm:
             out = self.bn1(out)
-            out_list.append(out)
         if self.img_size==224:
             out = self.maxpool(out)
-            out_list.append(out)
         out = torch.relu(out)
-        out_list.append(out)
         out = self.layer1(out)
-        out_list.append(out)
         out = self.layer2(out)
-        out_list.append(out)
         out = self.layer3(out)
-        out_list.append(out)
         out = self.layer4(out)
-        out_list.append(out)
         out = self.avgpool(out)
-        out_list.append(out)
-        out = out.view(out.size(0), -1)
-        out_list.append(out)
-
-        if self.fc_available:
-            out = self.fc(out)
+        
+        feat = out.view(out.size(0), -1)
 
         if self.proj_head:
-            out = self.projection_head(out)
+            proj_out = self.projection_head(feat)
+            
+            return proj_out, feat
 
-        return out, out_list
+        if self.classification_head:
+            cls_pred = self.fc(feat)
+            
+            return cls_pred, feat
 
-def ResNet18(img_size=32, batch_norm=True, fc_available=False, num_classes=10, proj_head=False, proj_dim=512):
-    return ResNet(BasicBlock, [2, 2, 2, 2], img_size=img_size,  batch_norm=batch_norm, fc_available=fc_available, num_classes=num_classes, proj_head=proj_head, proj_dim=proj_dim)
+        return feat, None
+
+def ResNet18(img_size=32, batch_norm=True, classification_head=False, num_classes=10, proj_head=False, proj_dim=128):
+    return ResNet(BasicBlock, [2, 2, 2, 2], img_size=img_size,  batch_norm=batch_norm, classification_head=classification_head, num_classes=num_classes, proj_head=proj_head, proj_dim=proj_dim)
 
 # Function to instantiate ResNet-50
-def ResNet50(img_size=32, batch_norm=True, fc_available=False, num_classes=10, proj_head=False, proj_dim=512):
-    return ResNet(Bottleneck, [3, 4, 6, 3], img_size=img_size,  batch_norm=batch_norm, fc_available=fc_available, num_classes=num_classes, proj_head=proj_head, proj_dim=proj_dim)
+def ResNet50(img_size=32, batch_norm=True, classification_head=False, num_classes=10, proj_head=False, proj_dim=128):
+    return ResNet(Bottleneck, [3, 4, 6, 3], img_size=img_size,  batch_norm=batch_norm, classification_head=classification_head, num_classes=num_classes, proj_head=proj_head, proj_dim=proj_dim)
