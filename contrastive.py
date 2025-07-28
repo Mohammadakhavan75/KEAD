@@ -126,8 +126,13 @@ def contrastive_matrix(
     #     sim_n      = sim_n_full.gather(1, idx_n)                             # (B,Kₙ)
 
     # default: pick exactly the matching negative n_i for x_i
-    sim_n = sim_n_full.diag().unsqueeze(1)  # (B,1)
-    Kn    = 1
+    # sim_n = sim_n_full.diag().unsqueeze(1)  # (B,1)
+    # Kn    = 1
+    # Negative similarities are all off-diagonal elements
+    # Create a mask to select off-diagonal elements
+    mask = ~torch.eye(B, dtype=torch.bool, device=device)
+    sim_n = sim_p_full[mask].view(B, B - 1) # (B, B-1)
+    Kn = B - 1
 
     # ---------------- denominator ----------------
     denom = (
