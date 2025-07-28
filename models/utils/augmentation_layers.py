@@ -2145,7 +2145,7 @@ class ElasticTransform(nn.Module):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
 
 def get_augmentation_list():
-    return ["Rotate90", "Rotate270",  "HorizontalFlip",  "RandomCropResize",  "ColorJitterLayer",\
+    return ["Rotate90", "Rotate270",  "Flip",  "RandomCropResize",  "ColorJitterLayer",\
             "GaussianNoise",  "ShotNoise",  "ImpulseNoise",  "SpeckleNoise",  "GaussianBlur",  "GlassBlur",\
             "DefocusBlur",  "MotionBlur", "ZoomBlur", "Fog", "Snow", "Spatter", "Contrast", "Brightness",\
             "Saturate", "JpegCompression", "Pixelate", "ElasticTransform"]
