@@ -58,7 +58,7 @@ class ResNet(nn.Module):
         out = self.conv1(x)
         if self.batch_norm:
             out = self.bn1(out)
-        if self.img_size==224:
+        if self.img_size == 224:
             out = self.maxpool(out)
         out = torch.relu(out)
         out = self.layer1(out)
