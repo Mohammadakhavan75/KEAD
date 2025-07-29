@@ -179,9 +179,9 @@ def main():
         if epoch % 10 == 0:
             avg_auc = evaluation(model, args, root_path)
             print(f"Average AUC: {avg_auc}")
-            # writer.add_scalar("Eval/avg_auc", avg_auc, epoch)
+            writer.add_scalar("Eval/avg_auc", avg_auc, epoch)
 
-        if (epoch) % (args.epochs / 10) == 0:
+        if (epoch) % (args.epochs / 100) == 0:
             torch.save(model.state_dict(), os.path.join(model_save_path, f'model_params_epoch_{epoch}.pt'))
 
 
