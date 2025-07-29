@@ -149,6 +149,13 @@ def main():
 
     stats = None
 
+     # Store the arguments in a json file
+    config_file_path = os.path.join(args.save_path, 'config_args.json')
+    with open(config_file_path, 'w') as f:
+        json.dump(vars(args), f, indent=4)
+    print(f"All config arguments saved to {config_file_path}")
+
+
     train_global_iter = 0
     for epoch in range(0, args.epochs):
         print('epoch', epoch, '/', args.epochs)
