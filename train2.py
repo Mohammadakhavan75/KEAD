@@ -88,6 +88,7 @@ def main():
     imagenet_path = config['imagenet_path']
     args.config = config
     best_loss = torch.inf
+
     if args.device == 'cuda':
         args.device = torch.device(f'cuda:{args.gpu}')
     else:
@@ -102,6 +103,15 @@ def main():
     model_save_path, save_path = create_path(args)
     writer = SummaryWriter(save_path)
     args.save_path = save_path
+
+        # Store the arguments in a json file
+    config_file_path = os.path.join(args.save_path, 'config_args.json')
+    args_dict = vars(args).copy()
+    args_dict['device'] = str(args_dict['device'])
+    with open(config_file_path, 'w') as f:
+        json.dump(args_dict, f, indent=4)
+    print(f"All config arguments saved to {config_file_path}")
+
 
     transform = v2.Compose([
         v2.RandomChoice([
@@ -148,13 +158,6 @@ def main():
     assert neg_transform_layer is not None, "neg_transform_layer is None"
 
     stats = None
-
-     # Store the arguments in a json file
-    config_file_path = os.path.join(args.save_path, 'config_args.json')
-    with open(config_file_path, 'w') as f:
-        json.dump(vars(args), f, indent=4)
-    print(f"All config arguments saved to {config_file_path}")
-
 
     train_global_iter = 0
     for epoch in range(0, args.epochs):
