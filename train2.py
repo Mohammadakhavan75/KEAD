@@ -21,13 +21,18 @@ from utils.parser import args_parser
 from utils.simclr_model import SimCLRModel
 from dataset_loader import get_loader
 
+from utils.monitoring import compute_per_dim_std
+
 
 # -------------------------------
 # Main training & test routines
 # -------------------------------
 def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer, neg_transform_layer, epoch, scheduler, args, train_global_iter, writer):
     device = args.device
-
+    losses = {
+        'var_loss': [],
+        'con_loss': [],
+    }
     # training
     model.train()
     pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
@@ -43,8 +48,15 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         preds, reps_list = model(model_input)
         rep_a, rep_p, rep_n = preds[:B], preds[B:2*B], preds[2*B:]
         con_loss, sim_p, sim_n, norm_a, norm_n, norm_p = contrastive_matrix(rep_a, rep_p, rep_n, args.temperature)
-        
-        var_loss = variance_floor(rep_a, rep_p)
+
+        rep_align = torch.cat([rep_a, rep_a], dim=0)
+
+        var_loss = variance_floor(rep_align)
+        std_dev = compute_per_dim_std(rep_align)
+
+        losses['con_loss'].append(con_loss.item())
+        losses['var_loss'].append(var_loss.item())
+
         loss = con_loss + var_loss
         loss.backward()
         pp = []
@@ -58,7 +70,6 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         writer.add_scalar("Train/params", torch.mean(torch.tensor(pd)).detach().cpu().numpy(), train_global_iter)
         writer.add_scalar("Train/grads", torch.mean(torch.tensor(pp)).detach().cpu().numpy(), train_global_iter)
 
-
         optimizer.step()
         pbar.set_postfix(loss=loss.item())
 
@@ -68,11 +79,12 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         writer.add_scalar("Train/norm_a", torch.mean(norm_a).detach().cpu().numpy(), train_global_iter)
         writer.add_scalar("Train/norm_n", torch.mean(norm_n).detach().cpu().numpy(), train_global_iter)
         writer.add_scalar("Train/norm_p", torch.mean(norm_p).detach().cpu().numpy(), train_global_iter)
-
+        writer.add_scalar("Train/std_min", std_dev.min().item(), train_global_iter)
+        writer.add_scalar("Train/std_max", std_dev.max().item(), train_global_iter)
 
         train_global_iter += 1
 
-    return train_global_iter
+    return train_global_iter, losses
 
 def set_seed(seed_nu):
     torch.manual_seed(seed_nu)
@@ -116,18 +128,18 @@ def main():
 
 
     transform = v2.Compose([
-        v2.RandomChoice([
-            v2.RandomRotation(degrees=(-5, 5)),
+            v2.RandomAffine(degrees=5, translate=(0.1,0.1), shear=5),
             v2.RandomGrayscale(p=1),
             v2.RandomHorizontalFlip(p=1),
+            v2.RandomGrayscale(p=0.2),
+            v2.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
             # 3) Mild color jitter
             v2.ColorJitter(
-                brightness=0.1,   # ±10%
-                contrast=0.1,     # ±10%
-                saturation=0.1,   # ±10%
-                hue=0.02          # ±2% of 360°
+                brightness=0.4,   # ±10%
+                contrast=0.4,     # ±10%
+                saturation=0.2,   # ±10%
+                hue=0.1          # ±2% of 360°
             ),
-        ], p=[0.5, 0.5, 0.5, 0.5]),
         v2.ToTensor()
     ])
     train_loader, test_loader = get_loader(args, data_path, imagenet_path, transform)
@@ -165,11 +177,13 @@ def main():
     for epoch in range(0, args.epochs):
         print('epoch', epoch, '/', args.epochs)
         # train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, colapse_metrics =\
-        train_global_iter = train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer, neg_transform_layer, epoch, scheduler, args, train_global_iter, writer)
+        train_global_iter, losses = train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer, neg_transform_layer, epoch, scheduler, args, train_global_iter, writer)
         
         scheduler.step()
         args.last_lr = optimizer.param_groups[0]['lr']
         writer.add_scalar("Train/lr", args.last_lr, epoch)
+        writer.add_scalar("Train/con_loss", torch.mean(torch.tensor(losses['con_loss'])), epoch)
+        writer.add_scalar("Train/var_loss", torch.mean(torch.tensor(losses['var_loss'])), epoch)
 
 
         # writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, epoch)
