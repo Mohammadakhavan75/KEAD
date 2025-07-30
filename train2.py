@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 from models.utils import augmentation_layers as augl
 import torchvision.transforms.v2 as v2
 
-from contrastive import contrastive_matrix
+from contrastive import contrastive_matrix, variance_floor
 
 from utils.eval import evaluation
 from utils.paths import create_path
@@ -42,8 +42,10 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         model_input = torch.cat([anchor, pos_views, neg_views], dim=0)
         preds, reps_list = model(model_input)
         rep_a, rep_p, rep_n = preds[:B], preds[B:2*B], preds[2*B:]
-        loss, sim_p, sim_n, norm_a, norm_n, norm_p = contrastive_matrix(rep_a, rep_p, rep_n, args.temperature)
-
+        con_loss, sim_p, sim_n, norm_a, norm_n, norm_p = contrastive_matrix(rep_a, rep_p, rep_n, args.temperature)
+        
+        var_loss = variance_floor(rep_a, rep_p)
+        loss = con_loss + var_loss
         loss.backward()
         pp = []
         for param in model.parameters():
