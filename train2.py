@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 from models.utils import augmentation_layers as augl
 import torchvision.transforms.v2 as v2
 
-from contrastive import contrastive_matrix, variance_floor
+from contrastive import contrastive_matrix
 
 from utils.eval import evaluation
 from utils.paths import create_path
@@ -21,7 +21,7 @@ from utils.parser import args_parser
 from utils.simclr_model import SimCLRModel
 from dataset_loader import get_loader
 
-from utils.monitoring import compute_per_dim_std
+from utils.monitoring import variance_floor
 
 
 # -------------------------------
@@ -129,14 +129,14 @@ def main():
     transform = v2.Compose([
             v2.RandomAffine(degrees=5, translate=(0.1,0.1), shear=5),
             v2.RandomHorizontalFlip(p=0.5),
-            v2.RandomGrayscale(p=0.2),
+            v2.RandomGrayscale(p=0.3),
             v2.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
             # 3) Mild color jitter
             v2.ColorJitter(
-                brightness=0.4,   # ±10%
-                contrast=0.4,     # ±10%
-                saturation=0.2,   # ±10%
-                hue=0.1          # ±2% of 360°
+                brightness=0.2,   # ±10%
+                contrast=0.2,     # ±10%
+                saturation=0.1,   # ±10%
+                hue=0.05          # ±2% of 360°
             ),
         v2.ToTensor()
     ])
