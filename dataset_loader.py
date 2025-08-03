@@ -290,7 +290,7 @@ def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None, transf
     return train_loader, val_loader
 
 
-def load_cifar10(path, transform=transforms.ToTensor(), batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1):
+def load_cifar10(path, transform=transforms.ToTensor(), batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1, drop_last=True):
     print('loading cifar10')
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
@@ -304,8 +304,8 @@ def load_cifar10(path, transform=transforms.ToTensor(), batch_size=64, num_worke
         train_data = get_subclass_dataset(train_data, one_class_idx)
         # test_data = get_subclass_dataset(test_data, one_class_idx)
 
-    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers, pin_memory=True, drop_last=True)
-    val_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers, pin_memory=True, drop_last=True)
+    train_loader = DataLoader(train_data, shuffle=shuffle, generator=generator_train, batch_size=batch_size, num_workers=num_workers, pin_memory=True, drop_last=drop_last)
+    val_loader = DataLoader(test_data, shuffle=shuffle, generator=generator_test, batch_size=batch_size, num_workers=num_workers, pin_memory=True, drop_last=drop_last)
 
     return train_loader, val_loader
 

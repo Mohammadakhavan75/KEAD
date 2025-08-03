@@ -130,7 +130,8 @@ if args.dataset == 'cifar10':
     normal_loader, _ = load_cifar10(data_path,
                                     batch_size=args.batch_size,
                                     transform=transform,
-                                    seed=args.seed)
+                                    seed=args.seed,
+                                    drop_last=False)
     aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
     
 elif args.dataset == 'svhn':
@@ -266,9 +267,9 @@ for i, data in tqdm(enumerate(loader)):
         with open(os.path.join(rep_aug_path, f'batch_{i}.pkl').replace("\r", ""), 'wb') as f:
             pickle.dump(imgs_aug_features.detach().cpu().numpy(), f)
 
-    for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
-        cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
-        wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
+    # for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
+    #     cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
+        # wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
 
     euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
     targets_list.extend(n_targets.detach().cpu().numpy())
@@ -282,7 +283,7 @@ with open(f'{save_pickles_path}/targets/{args.aug}.pkl'.replace("\r", ""), 'wb')
     pickle.dump(targets_list, f)
 with open(f'{save_pickles_path}/euclidean_diffs/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(euclidean_diffs, f)
-with open(f'{save_pickles_path}/cosine_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
-    pickle.dump(cosine_diff, f)
-with open(f'{save_pickles_path}/wasser_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
-    pickle.dump(wasser_diff, f)
+# with open(f'{save_pickles_path}/cosine_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
+#     pickle.dump(cosine_diff, f)
+# with open(f'{save_pickles_path}/wasser_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
+#     pickle.dump(wasser_diff, f)
