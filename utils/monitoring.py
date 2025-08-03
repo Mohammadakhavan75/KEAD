@@ -1,17 +1,23 @@
 import torch
+import torch.nn.functional as F
 
-def compute_per_dim_std(embeddings: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+def variance_floor(z: torch.Tensor, gamma: float = 1.0, eps: float = 1e-4) -> torch.Tensor:
     """
-    Compute per-dimension standard deviation of the given embeddings.
+    VICReg-style variance floor: encourages each embedding dimension to have
+    standard deviation at least gamma, preventing collapse of the upright cloud.
 
     Args:
-        embeddings: Tensor of shape (N, D) where N = # upright samples, D = embedding dim.
-        eps: small value to avoid sqrt of zero.
+        z: Tensor of shape (N, D) -- raw embeddings (will be normalized internally).
+        gamma: target minimum std per dimension (after normalization, 1.0 is typical).
+        eps: small constant added inside sqrt for numerical stability.
 
     Returns:
-        std: Tensor of shape (D,) containing σ_d for each embedding dimension.
+        scalar loss: mean over dimensions of max(0, gamma - std_d)^2
     """
-    # Use the population variance (unbiased=False) for stability
-    var = embeddings.var(dim=0, unbiased=False)  # shape (D,)
-    std = torch.sqrt(var + eps)
-    return std
+    # Normalize each vector to unit length so that target gamma=1.0 makes sense.
+    z = F.normalize(z, dim=1)                     # (N, D)
+    # Per-dimension standard deviation across the batch
+    std = torch.sqrt(z.var(dim=0, unbiased=False) + eps)  # (D,)
+    # Penalize only if std < gamma
+    loss = torch.mean(torch.relu(gamma - std) ** 2)
+    return loss, std  # return std for logging/diagnostics

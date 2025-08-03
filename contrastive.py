@@ -147,8 +147,3 @@ def contrastive_matrix(
 
     return loss, sim_p, sim_n, norm_a, norm_n, norm_p
 
-
-def variance_floor(z, gamma=1.0, epsilon=1e-9):
-    z = torch.norm(z, p=2, dim=1, keepdim=True).clamp_min(epsilon)
-    std = torch.sqrt(z.var(dim=0) + 1e-4)          # per-dim σ_d
-    return torch.mean(torch.relu(gamma - std) ** 2)

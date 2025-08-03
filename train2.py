@@ -49,10 +49,9 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         rep_a, rep_p, rep_n = preds[:B], preds[B:2*B], preds[2*B:]
         con_loss, sim_p, sim_n, norm_a, norm_n, norm_p = contrastive_matrix(rep_a, rep_p, rep_n, args.temperature)
 
-        rep_align = torch.cat([rep_a, rep_a], dim=0)
+        rep_align = torch.cat([rep_a, rep_p], dim=0)
 
-        var_loss = variance_floor(rep_align)
-        std_dev = compute_per_dim_std(rep_align)
+        var_loss, std_dev = variance_floor(rep_align, gamma=1.0)
 
         losses['con_loss'].append(con_loss.item())
         losses['var_loss'].append(var_loss.item())
@@ -129,8 +128,7 @@ def main():
 
     transform = v2.Compose([
             v2.RandomAffine(degrees=5, translate=(0.1,0.1), shear=5),
-            v2.RandomGrayscale(p=1),
-            v2.RandomHorizontalFlip(p=1),
+            v2.RandomHorizontalFlip(p=0.5),
             v2.RandomGrayscale(p=0.2),
             v2.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
             # 3) Mild color jitter
