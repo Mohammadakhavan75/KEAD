@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 from models.utils import augmentation_layers as augl
 import torchvision.transforms.v2 as v2
 
-from contrastive import contrastive_matrix, variance_floor
+from contrastive import contrastive_matrix
 
 from utils.eval import evaluation
 from utils.paths import create_path
@@ -21,7 +21,7 @@ from utils.parser import args_parser
 from utils.simclr_model import SimCLRModel
 from dataset_loader import get_loader
 
-from utils.monitoring import compute_per_dim_std
+from utils.monitoring import variance_floor
 
 
 # -------------------------------
