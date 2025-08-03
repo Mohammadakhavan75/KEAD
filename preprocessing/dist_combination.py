@@ -47,45 +47,45 @@ def sparse2coarse(targets):
     return coarse_labels[targets]
 
 
-def get_target_labels(args, generalization_path):
+def get_target_labels(args):
     
     if args.dataset == 'svhn':
         classes = 10
-        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
-            targets_list_loaded = pickle.load(f)
+        # with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
+        #     targets_list_loaded = pickle.load(f)
 
     if args.dataset == 'cifar10':
         classes = 10
-        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
-            targets_list_loaded = pickle.load(f)
+        # with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
+        #     targets_list_loaded = pickle.load(f)
 
 
     if args.dataset == 'cifar100':
         classes = 20
-        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
-            targets_list_loaded = pickle.load(f)
+        # with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
+        #     targets_list_loaded = pickle.load(f)
 
         targets_list_loaded = sparse2coarse(targets_list_loaded)
         
     if args.dataset == 'imagenet_30':
         classes = 30
-        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
-            targets_list_loaded = pickle.load(f)
+        # with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
+        #     targets_list_loaded = pickle.load(f)
 
     
     if args.dataset == 'mvtec_ad':
         classes = 15
-        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
-            targets_list_loaded = pickle.load(f)
+        # with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
+        #     targets_list_loaded = pickle.load(f)
 
     
     if args.dataset == 'visa':
         classes = 12
-        with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
-            targets_list_loaded = pickle.load(f)
+        # with open(f'./preproc_pickles/{args.backbone}/{args.dataset}/targets/flip.pkl'.replace("\r", ""), 'rb') as f:
+        #     targets_list_loaded = pickle.load(f)
 
 
-    return targets_list_loaded, classes
+    return classes
 
 args = parsing()
 torch.manual_seed(args.seed)
@@ -100,7 +100,7 @@ with open(args.config, 'r') as config_file:
 generalization_path = os.path.normpath(config['generalization_path'])
 representations_path = os.path.normpath(config['representations_path'])
 
-target_labels, classes = get_target_labels(args, generalization_path)
+classes = get_target_labels(args)
 
 root = f'./wasser_dist/{args.backbone}/{args.dataset}/seed_{args.seed}/'
 loaded_diffs = {}
