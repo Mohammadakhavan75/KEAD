@@ -107,7 +107,7 @@ loaded_diffs = {}
 for file_name in os.listdir(root):
     with open(os.path.join(root, file_name), 'rb') as f:
         loaded = pickle.load(f)
-        loaded_diffs[file_name.split('.')[0]] = loaded
+        loaded_diffs[file_name.split('.')[0]] = {}
         for i, value in enumerate(loaded):
             loaded_diffs[file_name.split('.')[0]][i] = value
 
