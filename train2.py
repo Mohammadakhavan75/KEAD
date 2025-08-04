@@ -50,9 +50,10 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         feats_a, feats_p, feats_n = feats[:B], feats[B:2*B], feats[2*B:]
         con_loss, sim_p, sim_n, norm_a, norm_n, norm_p = contrastive_matrix(rep_a, rep_p, rep_n, args.temperature)
 
-        rep_align = torch.cat([feats_a, feats_p], dim=0)
-
-        var_loss, std_dev = variance_floor(rep_align, gamma=1.0)
+        # Applying the variance floor on backbone output instead of proj head.
+        # So the head can then focus on alignment but the cloud volume is guaranteed upstream.
+        feat_align = torch.cat([feats_a, feats_p], dim=0)
+        var_loss, std_dev = variance_floor(feat_align, gamma=1.0)
 
         losses['con_loss'].append(con_loss.item())
         losses['var_loss'].append(var_loss.item())
