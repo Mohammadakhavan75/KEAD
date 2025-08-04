@@ -45,11 +45,12 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         optimizer.zero_grad()
         
         model_input = torch.cat([anchor, pos_views, neg_views], dim=0)
-        preds, reps_list = model(model_input)
+        preds, feats = model(model_input)
         rep_a, rep_p, rep_n = preds[:B], preds[B:2*B], preds[2*B:]
+        feats_a, feats_p, feats_n = feats[:B], feats[B:2*B], feats[2*B:]
         con_loss, sim_p, sim_n, norm_a, norm_n, norm_p = contrastive_matrix(rep_a, rep_p, rep_n, args.temperature)
 
-        rep_align = torch.cat([rep_a, rep_p], dim=0)
+        rep_align = torch.cat([feats_a, feats_p], dim=0)
 
         var_loss, std_dev = variance_floor(rep_align, gamma=1.0)
 
