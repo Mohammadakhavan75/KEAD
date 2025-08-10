@@ -27,12 +27,15 @@ from utils.monitoring import variance_floor
 # -------------------------------
 # Main training & test routines
 # -------------------------------
-def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer, neg_transform_layer, epoch, scheduler, args, train_global_iter, writer):
+def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layers, neg_transform_layers, epoch, scheduler, args, train_global_iter, writer):
     device = args.device
     losses = {
         'var_loss': [],
         'con_loss': [],
     }
+    n_pos = len(pos_transform_layers)
+    n_neg = len(neg_transform_layers)
+
     # training
     model.train()
     pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
@@ -40,15 +43,24 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         anchor = anchor.to(device)
         B = anchor.size(0)
         
-        pos_views = pos_transform_layer(anchor)
-        neg_views = neg_transform_layer(anchor)
+        pos_views = torch.cat([pos_transform_layer(anchor) for pos_transform_layer in pos_transform_layers], dim=0)
+        neg_views = torch.cat([neg_transform_layer(anchor) for neg_transform_layer in neg_transform_layers], dim=0)
+        
         optimizer.zero_grad()
         
         model_input = torch.cat([anchor, pos_views, neg_views], dim=0)
         preds, feats = model(model_input)
-        rep_a, rep_p, rep_n = preds[:B], preds[B:2*B], preds[2*B:]
-        feats_a, feats_p, feats_n = feats[:B], feats[B:2*B], feats[2*B:]
-        con_loss, sim_p, sim_n, norm_a, norm_n, norm_p = contrastive_matrix(rep_a, rep_p, rep_n, args.temperature)
+        
+        rep_a = preds[:B]
+        rep_p = preds[B:B * (1 + n_pos)]
+        rep_n = preds[B * (1 + n_pos):]
+        
+        feats_a = feats[:B]
+        feats_p = feats[B:B * (1 + n_pos)]
+        
+        con_loss, sim_p, sim_n, norm_a, norm_n, norm_p = contrastive_matrix(
+            rep_a, rep_p, rep_n, args.temperature, positives_per_anchor=n_pos
+        )
 
         # Applying the variance floor on backbone output instead of proj head.
         # So the head can then focus on alignment but the cloud volume is guaranteed upstream.
@@ -151,33 +163,37 @@ def main():
     with open(f'./ranks/clip/{args.dataset}/wasser_dist_softmaxed.pkl', 'rb') as file:
         probs = pickle.load(file)
 
-    # pos_aug = list(probs[args.one_class_idx].keys())[0]
-    # neg_aug = list(probs[args.one_class_idx].keys())[-1]
-    pos_aug = 'flip'
-    neg_aug = 'rot90'
+    sorted_augs = sorted(probs[args.one_class_idx].items(), key=lambda item: item[1])
+    pos_augs = [aug for aug, score in sorted_augs[:args.n_pos]]
+    neg_augs = [aug for aug, score in sorted_augs[-args.n_neg:]]
+
 
     aug_list = augl.get_augmentation_list()
-    pos_transform_layer = None
-    neg_transform_layer = None
+    pos_transform_layers = []
+    neg_transform_layers = []
     
-    for aug in aug_list:
-        if aug.lower() == pos_aug.lower().replace('_', ''):
-            print(f"Using {aug} as positive augmentation")
-            pos_transform_layer = augl.return_aug(aug).to(args.device)
-        elif aug.lower() == neg_aug.lower().replace('_', ''):
-            print(f"Using {aug} as negative augmentation")
-            neg_transform_layer = augl.return_aug(aug).to(args.device)
+    for aug_name in pos_augs:
+        for aug in aug_list:
+            if aug.lower() == aug_name.lower().replace('_', ''):
+                print(f"Using {aug} as positive augmentation")
+                pos_transform_layers.append(augl.return_aug(aug).to(args.device))
 
-    assert pos_transform_layer is not None, "pos_transform_layer is None"
-    assert neg_transform_layer is not None, "neg_transform_layer is None"
+    for aug_name in neg_augs:
+        for aug in aug_list:
+            if aug.lower() == aug_name.lower().replace('_', ''):
+                print(f"Using {aug} as negative augmentation")
+                neg_transform_layers.append(augl.return_aug(aug).to(args.device))
+
+
+    assert len(pos_transform_layers) == args.n_pos, f"Expected {args.n_pos} positive augmentations, but found {len(pos_transform_layers)}"
+    assert len(neg_transform_layers) == args.n_neg, f"Expected {args.n_neg} negative augmentations, but found {len(neg_transform_layers)}"
 
     stats = None
 
     train_global_iter = 0
     for epoch in range(0, args.epochs):
         print('epoch', epoch, '/', args.epochs)
-        # train_global_iter, epoch_loss, epoch_accuracies, avg_sim_ps, avg_sim_ns, colapse_metrics =\
-        train_global_iter, losses = train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer, neg_transform_layer, epoch, scheduler, args, train_global_iter, writer)
+        train_global_iter, losses = train_contrastive(stats, model, train_loader, optimizer, pos_transform_layers, neg_transform_layers, epoch, scheduler, args, train_global_iter, writer)
         
         scheduler.step()
         args.last_lr = optimizer.param_groups[0]['lr']
@@ -185,23 +201,6 @@ def main():
         writer.add_scalar("Train/con_loss", torch.mean(torch.tensor(losses['con_loss'])), epoch)
         writer.add_scalar("Train/var_loss", torch.mean(torch.tensor(losses['var_loss'])), epoch)
 
-
-        # writer.add_scalar("AVG_Train/sim_p", avg_sim_ps, epoch)
-        # writer.add_scalar("AVG_Train/sim_n", avg_sim_ns, epoch)
-        # writer.add_scalar("colapse_metrics/effective_rank", colapse_metrics['effective_rank'], epoch)
-        # writer.add_scalar("colapse_metrics/norm_mean", colapse_metrics['norm_mean'], epoch)
-        # writer.add_scalar("colapse_metrics/norm_var", colapse_metrics['norm_var'], epoch)
-        # writer.add_scalar("colapse_metrics/pos_alignment", colapse_metrics['pos_alignment'], epoch)
-        # writer.add_scalar("colapse_metrics/neg_alignment", colapse_metrics['neg_alignment'], epoch)
-        # writer.add_scalar("colapse_metrics/uniformity", colapse_metrics['uniformity'], epoch)
-
-        # writer.add_scalar("AVG_Train/avg_loss", np.mean(epoch_loss['loss']), epoch)
-        # writer.add_scalar("AVG_Train/avg_loss_contrastive", np.mean(epoch_loss['contrastive']), epoch)
-        # writer.add_scalar("Train/lr", args.last_lr, epoch)
-
-        # accuracy = evaluate(test_loader, test_positives_loader, test_negetives_loader, model, args)
-        # print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}, Eval/avg_acc: {accuracy}")
-        # print(f"Train/avg_loss: {np.mean(epoch_loss['loss'])}")
         if epoch % 10 == 0:
             avg_auc = evaluation(model, args, root_path)
             print(f"Average AUC: {avg_auc}")
@@ -209,16 +208,6 @@ def main():
 
         if (epoch) % (args.epochs / 100) == 0:
             torch.save(model.state_dict(), os.path.join(model_save_path, f'model_params_epoch_{epoch}.pt'))
-
-
-        # if np.mean(epoch_loss['loss']) < best_loss:
-        #     torch.save(model.state_dict(), os.path.join(save_path, 'best_params.pt'))
-        #     best_loss = np.mean(epoch_loss['loss'])
-
-        # last_sim_ps = avg_sim_ps
-        # last_sim_ns = avg_sim_ns
-        # args.seed += epoch
-        # set_seed(args.seed)
 
     torch.save(model.state_dict(), os.path.join(save_path, 'last_params.pt'))
 

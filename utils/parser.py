@@ -55,6 +55,10 @@ def args_parser():
 
     parser.add_argument('--gpu', default=0, type=int,
                         help='gpu number')
+    parser.add_argument('--n_pos', default=1, type=int,
+                        help='number of positive augmentations')
+    parser.add_argument('--n_neg', default=1, type=int,
+                        help='number of negative augmentations')
     args = parser.parse_args()
 
     return args
