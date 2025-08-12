@@ -141,14 +141,19 @@ def main():
 
 
     transform = v2.Compose([
-            v2.RandomAffine(degrees=5, translate=(0.1,0.1), shear=5),
-            v2.ColorJitter(
-                brightness=0.2,   # ±10%
-                contrast=0.2,     # ±10%
-                saturation=0.1,   # ±10%
-                hue=0.05          # ±2% of 360°
-            ),
-        v2.ToTensor()
+                # Geometric (light): keep horizon horizontal
+                v2.RandomResizedCrop(args.img_size, scale=(0.7, 1.0), ratio=(0.85, 1.18)),
+                v2.RandomHorizontalFlip(p=0.5),
+                v2.RandomAffine(degrees=5, translate=(0.10, 0.10), shear=5),
+                # Photometric
+                v2.RandomApply([v2.ColorJitter(0.4, 0.4, 0.2, 0.1)], p=0.8),
+                v2.RandomGrayscale(p=0.2),
+                v2.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
+                # Tensor + cutout last
+                v2.ToTensor(),
+                v2.RandomErasing(p=0.25, scale=(0.02, 0.15), ratio=(0.3, 3.3), value='random'),
+                # (optional) Normalize with CIFAR-10 mean/std
+                v2.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2470, 0.2435, 0.2616)),
     ])
     train_loader, test_loader = get_loader(args, data_path, imagenet_path, transform)
     model, optimizer, scheduler = load_model(args)
