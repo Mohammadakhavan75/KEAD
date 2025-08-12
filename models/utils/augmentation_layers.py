@@ -820,7 +820,7 @@ class GlassBlur(nn.Module):
     Device-agnostic, loop-free glass blur:
       pre-Gaussian -> (optional) uint8 mid-quantize -> local random-neighbor shuffle -> post-Gaussian.
     """
-    def __init__(self, severity: int = 1, quantize_midstep: bool = True, truncate: float = 4.0):
+    def __init__(self, severity: int = 1, quantize_midstep: bool = True, truncate: float = 4.0, p=0.5):
         super().__init__()
         assert 1 <= severity <= 5
         self.base_severity = severity

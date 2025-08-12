@@ -150,10 +150,11 @@ def main():
                 v2.RandomGrayscale(p=0.2),
                 v2.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
                 # Tensor + cutout last
-                v2.ToTensor(),
+                
                 v2.RandomErasing(p=0.25, scale=(0.02, 0.15), ratio=(0.3, 3.3), value='random'),
+                v2.ToTensor(),
                 # (optional) Normalize with CIFAR-10 mean/std
-                v2.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2470, 0.2435, 0.2616)),
+                # v2.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2470, 0.2435, 0.2616)),
     ])
     train_loader, test_loader = get_loader(args, data_path, imagenet_path, transform)
     model, optimizer, scheduler = load_model(args)
