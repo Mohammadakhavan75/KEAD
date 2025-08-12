@@ -814,115 +814,271 @@ class GaussianBlur(nn.Module):
         return self.__class__.__name__ + f'(severity={self.severity}, sigma={self.sigma}, kernel_size={self.kernel_size})'
 
 
+
 class GlassBlur(nn.Module):
     """
-    Wraps the original glass_blur function.
-    Requires scikit-image. Operates on CPU via NumPy conversion.
+    Device-agnostic, loop-free glass blur:
+      pre-Gaussian -> (optional) uint8 mid-quantize -> local random-neighbor shuffle -> post-Gaussian.
     """
-    def __init__(self, severity=1, p=0.5):
+    def __init__(self, severity: int = 1, quantize_midstep: bool = True, truncate: float = 4.0):
         super().__init__()
-        # Validate severity
-        if not isinstance(severity, int):
-            raise TypeError(f"Severity must be an integer, got {type(severity)}")
-        if severity < 1 or severity > 5:
-            raise ValueError(f"Severity must be between 1 and 5, got {severity}")
-        # Validate probability
-        if not isinstance(p, float) or not 0.0 <= p <= 1.0:
-             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
-        self.p = p
-        self.severity = severity
-        # sigma, max_delta, iterations
-        self.params = [(0.05,1,1), (0.25,1,1), (0.4,1,1), (0.25,1,2), (0.4,1,2)][severity - 1]
+        assert 1 <= severity <= 5
+        self.base_severity = severity
+        self.quantize_midstep = quantize_midstep
+        self.truncate = truncate
+        self.severity_table = [
+            (0.05, 1, 1),
+            (0.25, 1, 1),
+            (0.40, 1, 1),
+            (0.25, 1, 2),
+            (0.40, 1, 2),
+        ]
+        self._kernel_cache = {}
 
-    def _glass_blur_single(self, np_img):
-        # Input validation
-        if not isinstance(np_img, np.ndarray):
-            raise TypeError(f"Input must be a numpy array, got {type(np_img)}")
-        if np_img.dtype != np.uint8:
-            raise ValueError(f"Input array must be uint8, got {np_img.dtype}")
-        if np_img.ndim not in [2, 3]:
-            raise ValueError(f"Input array must have 2 or 3 dimensions, got {np_img.ndim}")
+    def _kernel_key(self, device, dtype, sigma):
+        return (device.type, str(dtype), float(sigma), float(self.truncate))
 
-        try:
-            sigma, max_delta, iterations = self.params
+    def _gaussian_kernel_1d(self, sigma: float, device, dtype):
+        key = self._kernel_key(device, dtype, sigma)
+        k = self._kernel_cache.get(key)
+        if k is not None and k.device == device and k.dtype == dtype:
+            return k
+        radius = int(self.truncate * sigma + 0.5)
+        if radius == 0:
+            k = torch.ones(1, device=device, dtype=dtype)
+        else:
+            x = torch.arange(-radius, radius + 1, device=device, dtype=dtype)
+            k = torch.exp(-0.5 * (x / sigma) ** 2)
+            k = k / k.sum()
+        self._kernel_cache[key] = k
+        return k
 
-            # Apply initial Gaussian blur
-            img_blurred = gaussian(np_img / 255., sigma=sigma, channel_axis=-1) * 255
-            img_blurred = np.uint8(img_blurred) # Convert back to uint8 for shuffling
+    def _gaussian_blur(self, x: torch.Tensor, sigma: float) -> torch.Tensor:
+        if sigma <= 0:
+            return x
+        N, C, H, W = x.shape
+        if x.dtype not in (torch.float32, torch.float64):
+            x = x.float()
+        k1d = self._gaussian_kernel_1d(sigma, x.device, x.dtype)
+        r = k1d.numel() // 2
 
-            # Locally shuffle pixels
-            h, w = img_blurred.shape[:2]
-            if h <= 2*max_delta or w <= 2*max_delta:
-                raise ValueError(f"Image dimensions ({h},{w}) too small for max_delta={max_delta}")
+        # horizontal
+        x_pad = F.pad(x, (r, r, 0, 0), mode='reflect')
+        w_h = k1d.view(1, 1, 1, -1).repeat(C, 1, 1, 1)
+        x = F.conv2d(x_pad, w_h, groups=C)
+
+        # vertical
+        x_pad = F.pad(x, (0, 0, r, r), mode='reflect')
+        w_v = k1d.view(1, 1, -1, 1).repeat(C, 1, 1, 1)
+        x = F.conv2d(x_pad, w_v, groups=C)
+        return x
+
+    @staticmethod
+    def _local_random_shuffle_unfold(
+        x: torch.Tensor,
+        max_delta: int,
+        iterations: int = 1,
+        generator: torch.Generator | None = None
+    ) -> torch.Tensor:
+        """
+        x: (N,C,H,W). For each pixel, pick one random neighbor from the **top-left quadrant + center**
+        of a (2*max_delta+1)^2 window (dx,dy in [-max_delta..0]). This mirrors the original loop's
+        randint(-1, 1) behavior (exclusive upper bound), which never selects +1 offsets.
+        """
+        if max_delta <= 0 or iterations <= 0:
+            return x
+
+        x_was_u8 = (x.dtype == torch.uint8)
+        if x_was_u8:
+            x = x.to(torch.float32)
+
+        N, C, H, W = x.shape
+        K = 2 * max_delta + 1          # window size
+        r = max_delta                  # radius
+
+        # Precompute allowed neighbor indices within the KxK patch:
+        # allowed dy ∈ [0..r] (top rows), allowed dx ∈ [0..r] (left cols)
+        # Flattened patch index = row*K + col, where row/col are 0-based in the KxK window.
+        rows = torch.arange(0, r + 1, device=x.device)[:, None] * K     # shape (r+1, 1)
+        cols = torch.arange(0, r + 1, device=x.device)[None, :]          # shape (1, r+1)
+        allowed_idx = (rows + cols).reshape(-1)                          # shape ((r+1)^2,)
+
+        for _ in range(iterations):
+            # reflect pad → neighborhoods valid at borders
+            x_pad = F.pad(x, (r, r, r, r), mode='reflect')
+            # Extract KxK patches at every location -> (N, C*K*K, H*W)
+            patches = F.unfold(x_pad, kernel_size=K, stride=1).view(N, C, K*K, H*W)
+
+            # Sample uniformly from allowed_idx for each (N, H*W)
+            choice = torch.randint(
+                0, allowed_idx.numel(), (N, 1, 1, H*W),
+                device=x.device, generator=generator
+            )
+            idx = allowed_idx[choice]                                     # (N,1,1,HW), long
+
+            picked = patches.gather(2, idx.expand(-1, C, -1, -1)).squeeze(2)  # (N,C,HW)
+            x = F.fold(picked, output_size=(H, W), kernel_size=1, stride=1)    # (N,C,H,W)
+
+        if x_was_u8:
+            x = x.clamp(0, 255).to(torch.uint8)
+        return x
+
+    @torch.no_grad()
+    def forward(self, x: torch.Tensor, severity: int | None = None,
+                generator: torch.Generator | None = None) -> torch.Tensor:
+        sev = self.base_severity if severity is None else severity
+        assert 1 <= sev <= 5
+        sigma, max_delta, iterations = self.severity_table[sev - 1]
+
+        squeeze_batch = False
+        if x.ndim == 3:
+            x = x.unsqueeze(0)
+            squeeze_batch = True
+        assert x.ndim == 4
+
+        orig_dtype = x.dtype
+        scale_255_out = False
+        if x.dtype == torch.uint8:
+            x = x.to(torch.float32) / 255.0
+        else:
+            if x.max() > 1.5:
+                x = x / 255.0
+                scale_255_out = True
+            else:
+                x = x.float()
+
+        x = self._gaussian_blur(x, sigma=sigma)
+
+        if self.quantize_midstep:
+            x = (x * 255.0).clamp(0, 255).to(torch.uint8)
+
+        x = self._local_random_shuffle_unfold(x, max_delta=max_delta, iterations=iterations, generator=generator)
+
+        if x.dtype == torch.uint8:
+            x = x.to(torch.float32) / 255.0
+
+        x = self._gaussian_blur(x, sigma=sigma).clamp(0.0, 1.0)
+
+        if orig_dtype == torch.uint8:
+            x = (x * 255.0).clamp(0, 255).to(torch.uint8)
+        elif scale_255_out:
+            x = x * 255.0
+
+        if squeeze_batch:
+            x = x.squeeze(0)
+        return x
+
+
+
+# class GlassBlur(nn.Module):
+#     """
+#     Wraps the original glass_blur function.
+#     Requires scikit-image. Operates on CPU via NumPy conversion.
+#     """
+#     def __init__(self, severity=1, p=0.5):
+#         super().__init__()
+#         # Validate severity
+#         if not isinstance(severity, int):
+#             raise TypeError(f"Severity must be an integer, got {type(severity)}")
+#         if severity < 1 or severity > 5:
+#             raise ValueError(f"Severity must be between 1 and 5, got {severity}")
+#         # Validate probability
+#         if not isinstance(p, float) or not 0.0 <= p <= 1.0:
+#              raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+#         self.p = p
+#         self.severity = severity
+#         # sigma, max_delta, iterations
+#         self.params = [(0.05,1,1), (0.25,1,1), (0.4,1,1), (0.25,1,2), (0.4,1,2)][severity - 1]
+
+#     def _glass_blur_single(self, np_img):
+#         # Input validation
+#         if not isinstance(np_img, np.ndarray):
+#             raise TypeError(f"Input must be a numpy array, got {type(np_img)}")
+#         if np_img.dtype != np.uint8:
+#             raise ValueError(f"Input array must be uint8, got {np_img.dtype}")
+#         if np_img.ndim not in [2, 3]:
+#             raise ValueError(f"Input array must have 2 or 3 dimensions, got {np_img.ndim}")
+
+#         try:
+#             sigma, max_delta, iterations = self.params
+
+#             # Apply initial Gaussian blur
+#             img_blurred = gaussian(np_img / 255., sigma=sigma, channel_axis=-1) * 255
+#             img_blurred = np.uint8(img_blurred) # Convert back to uint8 for shuffling
+
+#             # Locally shuffle pixels
+#             h, w = img_blurred.shape[:2]
+#             if h <= 2*max_delta or w <= 2*max_delta:
+#                 raise ValueError(f"Image dimensions ({h},{w}) too small for max_delta={max_delta}")
                 
-            img_shuffled = img_blurred.copy() # Work on a copy
+#             img_shuffled = img_blurred.copy() # Work on a copy
 
-            try:
-                for _ in range(iterations):
-                    for y in range(h - max_delta, max_delta -1, -1):
-                        for x in range(w - max_delta, max_delta -1, -1):
-                            # Generate random displacement
-                            dx, dy = np.random.randint(-max_delta, max_delta + 1, size=(2,))
-                            # Calculate neighbor coordinates
-                            y_prime = np.clip(y + dy, 0, h - 1)
-                            x_prime = np.clip(x + dx, 0, w - 1)
+#             try:
+#                 for _ in range(iterations):
+#                     for y in range(h - max_delta, max_delta -1, -1):
+#                         for x in range(w - max_delta, max_delta -1, -1):
+#                             # Generate random displacement
+#                             dx, dy = np.random.randint(-max_delta, max_delta + 1, size=(2,))
+#                             # Calculate neighbor coordinates
+#                             y_prime = np.clip(y + dy, 0, h - 1)
+#                             x_prime = np.clip(x + dx, 0, w - 1)
 
-                            # Swap pixels
-                            temp = img_shuffled[y, x].copy()
-                            img_shuffled[y, x] = img_shuffled[y_prime, x_prime]
-                            img_shuffled[y_prime, x_prime] = temp
-            except Exception as e:
-                raise RuntimeError(f"Error during pixel shuffling: {str(e)}")
+#                             # Swap pixels
+#                             temp = img_shuffled[y, x].copy()
+#                             img_shuffled[y, x] = img_shuffled[y_prime, x_prime]
+#                             img_shuffled[y_prime, x_prime] = temp
+#             except Exception as e:
+#                 raise RuntimeError(f"Error during pixel shuffling: {str(e)}")
 
-            # Apply final Gaussian blur
-            img_final_blur = gaussian(img_shuffled / 255., sigma=sigma, channel_axis=-1)
-            return np.clip(img_final_blur * 255, 0, 255).astype(np.uint8)
+#             # Apply final Gaussian blur
+#             img_final_blur = gaussian(img_shuffled / 255., sigma=sigma, channel_axis=-1)
+#             return np.clip(img_final_blur * 255, 0, 255).astype(np.uint8)
 
-        except Exception as e:
-            raise RuntimeError(f"Error in glass blur processing: {str(e)}")
+#         except Exception as e:
+#             raise RuntimeError(f"Error in glass blur processing: {str(e)}")
 
-    def forward(self, x):
-        # Input validation
-        if not isinstance(x, torch.Tensor):
-            raise TypeError(f"Input must be a torch.Tensor, got {type(x)}")
-        if x.ndim != 4:
-            raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
-        if x.min() < 0.0 or x.max() > 1.0:
-            raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
+#     def forward(self, x):
+#         # Input validation
+#         if not isinstance(x, torch.Tensor):
+#             raise TypeError(f"Input must be a torch.Tensor, got {type(x)}")
+#         if x.ndim != 4:
+#             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
+#         if x.min() < 0.0 or x.max() > 1.0:
+#             raise ValueError(f"Input tensor values must be in range [0.0, 1.0], got range [{x.min():.3f}, {x.max():.3f}]")
 
-        # >>> Probabilistic check <<<
-        if torch.rand(1).item() >= self.p:
-            return x # Skip augmentation
+#         # >>> Probabilistic check <<<
+#         if torch.rand(1).item() >= self.p:
+#             return x # Skip augmentation
 
-        try:
-            device = x.device
-            dtype = x.dtype
-            processed_batch = []
+#         try:
+#             device = x.device
+#             dtype = x.dtype
+#             processed_batch = []
             
-            for i in range(x.shape[0]):
-                try:
-                    img_np = tensor_to_numpy_uint8(x[i])
-                    # Ensure 3 channels if grayscale
-                    if img_np.ndim == 2:
-                        img_np = cv2.cvtColor(img_np, cv2.COLOR_GRAY2RGB)
-                    elif img_np.shape[2] == 1:
-                        img_np = cv2.cvtColor(img_np, cv2.COLOR_GRAY2RGB)
+#             for i in range(x.shape[0]):
+#                 try:
+#                     img_np = tensor_to_numpy_uint8(x[i])
+#                     # Ensure 3 channels if grayscale
+#                     if img_np.ndim == 2:
+#                         img_np = cv2.cvtColor(img_np, cv2.COLOR_GRAY2RGB)
+#                     elif img_np.shape[2] == 1:
+#                         img_np = cv2.cvtColor(img_np, cv2.COLOR_GRAY2RGB)
 
-                    corrupted_np = self._glass_blur_single(img_np)
-                    processed_batch.append(numpy_uint8_to_tensor(corrupted_np))
-                except Exception as e:
-                    raise RuntimeError(f"Error processing image {i} in batch: {str(e)}")
+#                     corrupted_np = self._glass_blur_single(img_np)
+#                     processed_batch.append(numpy_uint8_to_tensor(corrupted_np))
+#                 except Exception as e:
+#                     raise RuntimeError(f"Error processing image {i} in batch: {str(e)}")
 
-            return torch.stack(processed_batch).to(device=device, dtype=dtype)
+#             return torch.stack(processed_batch).to(device=device, dtype=dtype)
             
-        except Exception as e:
-            raise RuntimeError(f"Error in GlassBlur forward pass: {str(e)}")
+#         except Exception as e:
+#             raise RuntimeError(f"Error in GlassBlur forward pass: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+#     def __call__(self, x):
+#         return self.forward(x)
 
-    def __repr__(self):
-        return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
+#     def __repr__(self):
+#         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
 
 
 class DefocusBlur(nn.Module):
