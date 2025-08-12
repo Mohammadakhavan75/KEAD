@@ -209,7 +209,12 @@ def main():
         if (epoch) % (args.epochs / 100) == 0:
             torch.save(model.state_dict(), os.path.join(model_save_path, f'model_params_epoch_{epoch}.pt'))
 
+    avg_auc = evaluation(model, args, root_path)
+    print(f"Average AUC: {avg_auc}")
+    writer.add_scalar("Eval/avg_auc", avg_auc, epoch)
+    writer.close()
     torch.save(model.state_dict(), os.path.join(save_path, 'last_params.pt'))
+
 
 if __name__ == '__main__':
     main()
