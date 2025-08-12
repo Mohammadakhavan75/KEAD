@@ -64,7 +64,7 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
 
         # Applying the variance floor on backbone output instead of proj head.
         # So the head can then focus on alignment but the cloud volume is guaranteed upstream.
-        feat_align = torch.cat([feats_a, feats_p], dim=0)
+        feat_align = torch.cat([rep_a, rep_p], dim=0)
         var_loss, std_dev = variance_floor(feat_align, gamma=1.0)
 
         losses['con_loss'].append(con_loss.item())
@@ -142,10 +142,6 @@ def main():
 
     transform = v2.Compose([
             v2.RandomAffine(degrees=5, translate=(0.1,0.1), shear=5),
-            v2.RandomHorizontalFlip(p=0.5),
-            v2.RandomGrayscale(p=0.3),
-            v2.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
-            # 3) Mild color jitter
             v2.ColorJitter(
                 brightness=0.2,   # ±10%
                 contrast=0.2,     # ±10%
