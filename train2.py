@@ -163,9 +163,9 @@ def main():
     with open(f'./ranks/clip/{args.dataset}/wasser_dist_softmaxed.pkl', 'rb') as file:
         probs = pickle.load(file)
 
-    sorted_augs = sorted(probs[args.one_class_idx].items(), key=lambda item: item[1])
-    pos_augs = [aug for aug, score in sorted_augs[:args.n_pos]]
-    neg_augs = [aug for aug, score in sorted_augs[-args.n_neg:]]
+    sorted_augs = list(probs[args.one_class_idx].keys())
+    pos_augs = [aug for aug in sorted_augs[:args.n_pos]]
+    neg_augs = [aug for aug in sorted_augs[-args.n_neg:]]
 
 
     aug_list = augl.get_augmentation_list()
