@@ -196,7 +196,7 @@ def main():
     stats = None
 
     if args.seq_aug:
-        neg_transform_layers = augl.TransformSequential(neg_transform_layers)
+        neg_transform_layers = nn.Sequential(*neg_transform_layers)
 
     train_global_iter = 0
     for epoch in range(0, args.epochs):
