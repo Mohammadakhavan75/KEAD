@@ -34,7 +34,6 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         'con_loss': [],
     }
     n_pos = len(pos_transform_layers)
-    n_neg = len(neg_transform_layers)
 
     # training
     model.train()
@@ -44,7 +43,11 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         B = anchor.size(0)
         
         pos_views = torch.cat([pos_transform_layer(anchor) for pos_transform_layer in pos_transform_layers], dim=0)
-        neg_views = torch.cat([neg_transform_layer(anchor) for neg_transform_layer in neg_transform_layers], dim=0)
+        if not args.seq_aug:
+            neg_views = torch.cat([neg_transform_layer(anchor) for neg_transform_layer in neg_transform_layers], dim=0)
+        else:
+            neg_views = neg_transform_layers(anchor)
+
         
         optimizer.zero_grad()
         
