@@ -33,11 +33,11 @@ def args_parser():
                         help='Weight decay (L2 penalty).')
 
     # Model Configuration
-    parser.add_argument('--proj_head', default=1, type=int,
+    parser.add_argument('--proj_head', action='store_true',
                         help='Using projection head fully connected')
     parser.add_argument('--proj_dim', default=512, type=int,
                         help='Dimension of projection head')
-    parser.add_argument('--fc_available', default=0, type=int,
+    parser.add_argument('--fc_available', action='store_true',
                         help='Considering classification head')
     parser.add_argument('--img_size', default=32, type=int,
                         help='image size selection')
@@ -59,6 +59,8 @@ def args_parser():
                         help='number of positive augmentations')
     parser.add_argument('--n_neg', default=1, type=int,
                         help='number of negative augmentations')
+    parser.add_argument('--seq_aug', action='store_true',
+                        help='generating single sequence of augmentations')
     args = parser.parse_args()
 
     return args

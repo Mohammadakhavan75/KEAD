@@ -2317,7 +2317,7 @@ def get_augmentation_pool(selected_names=None, num_augs=4):
 def return_aug(aug_name=None):
     return augmentation_classes[aug_name](p=1.0)
 
-class TransformSequence(nn.Module):
+class TransformParrallel(nn.Module):
     def __init__(self, transforms):
         super().__init__()
         self.transforms = nn.ModuleList(transforms)
@@ -2327,6 +2327,16 @@ class TransformSequence(nn.Module):
         for transform in self.transforms:
             results.append(transform(x))
         return torch.cat(results, dim=0)
+
+
+class TransformSequential(nn.Module):
+    def __init__(self, transforms):
+        super().__init__()
+        self.transforms = nn.Sequential(transforms)
+    
+    def forward(self, x):
+        return self.transforms(x)
+
 
 
 # Map augmentation names to their classes
