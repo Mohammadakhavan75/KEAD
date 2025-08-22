@@ -314,7 +314,7 @@ def clipped_zoom(img, zoom_factor):
 
 class Rotate90(nn.Module):
     """Applies a 90-degree clockwise rotation (equivalent to 270 degrees counter-clockwise)."""
-    def __init__(self, p=0.5):
+    def __init__(self, severity=None, p=0.5):
         super().__init__()
         # torchvision.transforms.functional.rotate expects counter-clockwise degrees
         self.angle = -90 # Corresponds to 270 degrees counter-clockwise
@@ -352,7 +352,7 @@ class Rotate90(nn.Module):
 
 class Rotate270(nn.Module):
     """Applies a 270-degree clockwise rotation (equivalent to 90 degrees counter-clockwise)."""
-    def __init__(self, p=0.5):
+    def __init__(self, severity=None, p=0.5):
         super().__init__()
         # torchvision.transforms.functional.rotate expects counter-clockwise degrees
         self.angle = 90 # Corresponds to 90 degrees counter-clockwise
@@ -387,7 +387,7 @@ class Rotate270(nn.Module):
 
 class Flip(nn.Module):
     """Applies a horizontal flip with probability 1.0."""
-    def __init__(self, p=0.5):
+    def __init__(self, severity=None, p=0.5):
         super().__init__()
         
         # Validate probability
@@ -815,7 +815,6 @@ class GaussianBlur(nn.Module):
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, sigma={self.sigma}, kernel_size={self.kernel_size})'
-
 
 
 class GlassBlur(nn.Module):
@@ -2302,6 +2301,7 @@ class ElasticTransform(nn.Module):
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
+
 
 def get_augmentation_list():
     return ["Rot90", "Rot270",  "Flip",  "RandomCropResize",  "ColorJitterLayer",\
