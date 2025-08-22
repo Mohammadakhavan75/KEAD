@@ -2332,15 +2332,6 @@ class TransformParrallel(nn.Module):
         return torch.cat(results, dim=0)
 
 
-class TransformSequential(nn.Module):
-    def __init__(self, transforms):
-        super().__init__()
-        self.transforms = nn.Sequential(transforms)
-    
-    def forward(self, x):
-        return self.transforms(x)
-
-
 
 # Map augmentation names to their classes
 augmentation_classes = {

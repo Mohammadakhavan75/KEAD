@@ -34,7 +34,6 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         'con_loss': [],
     }
     n_pos = len(pos_transform_layers)
-    n_neg = len(neg_transform_layers)
 
     # training
     model.train()
@@ -44,7 +43,11 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         B = anchor.size(0)
         
         pos_views = torch.cat([pos_transform_layer(anchor) for pos_transform_layer in pos_transform_layers], dim=0)
-        neg_views = torch.cat([neg_transform_layer(anchor) for neg_transform_layer in neg_transform_layers], dim=0)
+        if not args.seq_aug:
+            neg_views = torch.cat([neg_transform_layer(anchor) for neg_transform_layer in neg_transform_layers], dim=0)
+        else:
+            neg_views = neg_transform_layers(anchor)
+
         
         optimizer.zero_grad()
         
@@ -166,9 +169,11 @@ def main():
         probs = pickle.load(file)
 
     sorted_augs = list(probs[args.one_class_idx].keys())
-    pos_augs = [aug for aug in sorted_augs[:args.n_pos]]
-    neg_augs = [aug for aug in sorted_augs[-args.n_neg:]]
 
+    pos_augs = sorted_augs[:args.n_pos]
+    neg_augs = sorted_augs[-args.n_neg:]
+
+    pos_augs = ["flip"]
 
     aug_list = augl.get_augmentation_list()
     pos_transform_layers = []
@@ -193,7 +198,7 @@ def main():
     stats = None
 
     if args.seq_aug:
-        neg_transform_layers = augl.TransformSequential(neg_transform_layers)
+        neg_transform_layers = nn.Sequential(*neg_transform_layers)
 
     train_global_iter = 0
     for epoch in range(0, args.epochs):
