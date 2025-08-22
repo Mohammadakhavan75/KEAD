@@ -169,9 +169,11 @@ def main():
         probs = pickle.load(file)
 
     sorted_augs = list(probs[args.one_class_idx].keys())
-    pos_augs = [aug for aug in sorted_augs[:args.n_pos]]
-    neg_augs = [aug for aug in sorted_augs[-args.n_neg:]]
 
+    pos_augs = sorted_augs[:args.n_pos]
+    neg_augs = sorted_augs[-args.n_neg:]
+
+    pos_augs = ["flip"]
 
     aug_list = augl.get_augmentation_list()
     pos_transform_layers = []
