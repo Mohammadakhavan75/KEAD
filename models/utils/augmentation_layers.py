@@ -419,114 +419,117 @@ class Flip(nn.Module):
         return self.__class__.__name__ + '()'
 
 
+# -------------------------
+# RandomCropResize (severity-aware)
+# -------------------------
 class RandomCropResize(nn.Module):
-    """Applies a random crop (scaling factor 0.75) and resizes back to original size."""
-    def __init__(self, scale_factor=0.75, p=0.5):
+    """Applies a random crop with severity-based scale factor and resizes back to original size."""
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
-        if not isinstance(scale_factor, (float, int)) or not 0 < scale_factor <= 1:
-             raise ValueError(f"scale_factor must be a number between 0 and 1, got {scale_factor}")
-        self.scale_factor = scale_factor
+        # Validate severity
+        if not isinstance(severity, int):
+            raise TypeError(f"Severity must be an integer, got {type(severity)}")
+        if severity < 1 or severity > 5:
+            raise ValueError(f"Severity must be between 1 and 5, got {severity}")
+        self.severity = severity
+
+        # Map severity → scale factors (portion of image kept)
+        scale_map = [0.85, 0.75, 0.6, 0.5, 0.4]  # mild to aggressive
+        self.scale_factor = scale_map[self.severity - 1]
+
         # Validate probability
         if not isinstance(p, float) or not 0.0 <= p <= 1.0:
-             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+            raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
         self.p = p
 
     def forward(self, x):
-        # Input validation
         if not isinstance(x, torch.Tensor):
             raise TypeError(f"Input must be a torch.Tensor, got {type(x)}")
         if x.ndim != 4:
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
 
-        # >>> Probabilistic check <<<
         if torch.rand(1).item() >= self.p:
-            return x # Skip augmentation
+            return x  # Skip augmentation
 
         try:
             b, c, h, w = x.shape
             original_size = (h, w)
             crop_h = int(h * self.scale_factor)
             crop_w = int(w * self.scale_factor)
+
             if crop_h == 0 or crop_w == 0:
-                warnings.warn(f"Calculated crop size is zero ({crop_h}x{crop_w}) for input size {h}x{w} and scale {self.scale_factor}. Skipping crop.", UserWarning)
+                warnings.warn(f"Crop size is zero for scale {self.scale_factor}. Skipping crop.", UserWarning)
                 return x
 
-            # Get random crop parameters for the batch
-            # Note: This applies the *same* crop to all images in the batch.
-            # If you need a *different* random crop per image, you'll need to loop.
-            # top = torch.randint(0, h - crop_h + 1, size=(1,), device=x.device).item()
-            # left = torch.randint(0, w - crop_w + 1, size=(1,), device=x.device).item()
-            # cropped = TF.crop(x, top, left, crop_h, crop_w)
-
-            # Alternative: Apply different crop per image using a loop (slower)
             cropped_resized_batch = []
-            for img in x: # Iterate through batch dimension
-                 top = torch.randint(0, h - crop_h + 1, size=(1,)).item()
-                 left = torch.randint(0, w - crop_w + 1, size=(1,)).item()
-                 cropped_img = TF.crop(img, top, left, crop_h, crop_w)
-                 resized_img = TF.resize(cropped_img, original_size, interpolation=TF.InterpolationMode.BILINEAR)
-                 cropped_resized_batch.append(resized_img)
-            
-            return torch.stack(cropped_resized_batch)
+            for img in x:
+                top = torch.randint(0, h - crop_h + 1, size=(1,)).item()
+                left = torch.randint(0, w - crop_w + 1, size=(1,)).item()
+                cropped_img = TF.crop(img, top, left, crop_h, crop_w)
+                resized_img = TF.resize(cropped_img, original_size, interpolation=TF.InterpolationMode.BILINEAR)
+                cropped_resized_batch.append(resized_img)
 
-            # Resize back to original size
-            # resized = TF.resize(cropped, original_size, interpolation=TF.InterpolationMode.BILINEAR)
-            # return resized
+            return torch.stack(cropped_resized_batch)
 
         except Exception as e:
             raise RuntimeError(f"Error applying RandomCropResize: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
-
     def __repr__(self):
-        return self.__class__.__name__ + f'(scale_factor={self.scale_factor})'
+        return f"{self.__class__.__name__}(severity={self.severity}, scale_factor={self.scale_factor})"
 
 
+# -------------------------
+# ColorJitterLayer (severity-aware)
+# -------------------------
 class ColorJitterLayer(nn.Module):
-    """Applies ColorJitter transformation."""
-    def __init__(self, brightness=0.5, contrast=0.5, saturation=0.5, hue=0.5, p=0.5):
+    """Applies severity-based ColorJitter transformation."""
+    def __init__(self, severity=1, p=0.5):
         super().__init__()
-        # Store parameters for repr
-        self.brightness = brightness
-        self.contrast = contrast
-        self.saturation = saturation
-        self.hue = hue
-        # Initialize the transform
-        self.jitter = T.ColorJitter(brightness=brightness, contrast=contrast, saturation=saturation, hue=hue)
+        if not isinstance(severity, int):
+            raise TypeError(f"Severity must be an integer, got {type(severity)}")
+        if severity < 1 or severity > 5:
+            raise ValueError(f"Severity must be between 1 and 5, got {severity}")
+        self.severity = severity
 
-        # Validate probability
+        # Map severity → jitter ranges
+        jitter_map = {
+            1: dict(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+            2: dict(brightness=0.35, contrast=0.35, saturation=0.35, hue=0.15),
+            3: dict(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.35),
+            4: dict(brightness=0.6, contrast=0.6, saturation=0.6, hue=0.6),
+            5: dict(brightness=0.75, contrast=0.75, saturation=0.75, hue=0.75),
+        }
+        params = jitter_map[self.severity]
+
+        self.jitter = T.ColorJitter(
+            brightness=params["brightness"],
+            contrast=params["contrast"],
+            saturation=params["saturation"],
+            hue=params["hue"],
+        )
+
+        # Probability
         if not isinstance(p, float) or not 0.0 <= p <= 1.0:
-             raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
+            raise ValueError(f"Probability p must be a float between 0.0 and 1.0, got {p}")
         self.p = p
 
     def forward(self, x):
-        # Input validation
         if not isinstance(x, torch.Tensor):
             raise TypeError(f"Input must be a torch.Tensor, got {type(x)}")
         if x.ndim != 4:
             raise ValueError(f"Input tensor must have 4 dimensions (B,C,H,W), got {x.ndim}")
-        if x.min() < 0.0 or x.max() > 1.0:
-             warnings.warn(f"Input tensor values outside range [0.0, 1.0], got [{x.min():.3f}, {x.max():.3f}]. ColorJitter might behave unexpectedly.", UserWarning)
 
-        # >>> Probabilistic check <<<
         if torch.rand(1).item() >= self.p:
-            return x # Skip augmentation
+            return x
 
         try:
-            # Apply jitter. T.ColorJitter handles batches.
             return self.jitter(x)
         except Exception as e:
             raise RuntimeError(f"Error applying ColorJitterLayer: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
-
     def __repr__(self):
-        return (f"{self.__class__.__name__}("
-                f"brightness={self.brightness}, contrast={self.contrast}, "
-                f"saturation={self.saturation}, hue={self.hue})")
-
+        return f"{self.__class__.__name__}(severity={self.severity}, jitter={self.jitter})"
+    
 
 class GaussianNoise(nn.Module):
     def __init__(self, severity=1, p=0.5):
@@ -2314,8 +2317,8 @@ def get_augmentation_pool(selected_names=None, num_augs=4):
 
     return [augmentation_classes[name](p=1.0) for name in selected_names]
 
-def return_aug(aug_name=None):
-    return augmentation_classes[aug_name](p=1.0)
+def return_aug(aug_name=None, severity=1):
+    return augmentation_classes[aug_name](p=1.0, severity=severity)
 
 class TransformParrallel(nn.Module):
     def __init__(self, transforms):
