@@ -12,12 +12,13 @@ import argparse
 import torchvision
 import numpy as np
 from clip import clip
-from torch.utils.data import DataLoader
+from dataset_loader import get_loader
 from scipy.stats import wasserstein_distance
-from torchvision.datasets import CIFAR10, CIFAR100
+from sklearn.metrics.pairwise import cosine_similarity
 from torchvision.models import wide_resnet50_2
 import sys
 from tqdm import tqdm
+from models.utils import augmentation_layers as augl
 # from utils import CustomImageDataset
 
 
@@ -44,6 +45,9 @@ def parsing():
     parser.add_argument('--gpu', default='0', type=str, help='gpu number')
     parser.add_argument('--config', type=str, 
                         help='config')
+    parser.add_argument('--severity', default=1, type=int,
+                        help='severity of augmentation selection')
+    
     args = parser.parse_args()
     return args
 
@@ -56,6 +60,23 @@ torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
 
+with open(args.config, 'r') as config_file:
+    config = json.load(config_file)
+
+root_path = config['root_path']
+data_path = config['data_path']
+imagenet_path = config['imagenet_path']
+generalization_path = config['generalization_path']
+representations_path = config['representations_path']
+args.config = config
+
+cosine_diff = []
+wasser_diff = []
+euclidean_diffs = []
+targets_list = []
+
+sys.path.append(args.config["library_path"])
+
 if args.gpu != str(0):
     device = f'cuda:{args.gpu}'
 else:
@@ -67,7 +88,7 @@ if args.backbone == 'clip':
     # model, transform = clip.load("RN50x4", device=device)
     model = model.to(device)
 elif args.backbone == 'resnet50':
-    model = wide_resnet50_2("IMAGENET1K_V2")
+    model = wide_resnet50_2(weights="IMAGENET1K_V2")
     layers = list(model.children())
     layers = layers[:-1] # Remove the last layer
     model = torch.nn.Sequential(*layers) # Reconstruct the model without the last layer
@@ -92,20 +113,6 @@ elif args.backbone == 'dinov2':
 else:
     raise NotImplemented("Backbone not available !!!")
 
-with open(args.config, 'r') as config_file:
-    config = json.load(config_file)
-
-root_path = config['root_path']
-data_path = config['data_path']
-imagenet_path = config['imagenet_path']
-generalization_path = config['generalization_path']
-representations_path = config['representations_path']
-args.config = config
-
-sys.path.append(args.config["library_path"])
-from contrastive import cosine_similarity
-from dataset_loader import load_cifar10, load_cifar100, load_svhn, load_mvtec_ad, load_visa, load_np_dataset, load_imagenet
-
 
 if args.save_rep_norm:
     rep_norm_path = os.path.normpath(f'{representations_path}/{args.backbone}/{args.dataset}/seed_{args.seed}/normal/').replace("\r", "")
@@ -122,115 +129,33 @@ os.makedirs(f'{save_pickles_path}/cosine_pair/'.replace("\r", ""), exist_ok=True
 os.makedirs(f'{save_pickles_path}/wasser_pair/'.replace("\r", ""), exist_ok=True)
 
 
+loader, _ = get_loader(args, data_path, imagenet_path, transform)
 
-if args.dataset == 'cifar10':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar10_Train_s1/seed_{args.seed}/{args.aug}.npy')).replace("\r", "")
-    train_aug_targets_path = os.path.join(generalization_path, f'cifar10_Train_s1/seed_{args.seed}/labels.npy').replace("\r", "")
-    
-    normal_loader, _ = load_cifar10(data_path,
-                                    batch_size=args.batch_size,
-                                    transform=transform,
-                                    seed=args.seed,
-                                    drop_last=False)
-    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
-    
-elif args.dataset == 'svhn':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'svhn_Train_s1/seed_{args.seed}/{args.aug}.npy').replace("\r", ""))
-    train_aug_targets_path = os.path.join(generalization_path, f'svhn_Train_s1/seed_{args.seed}/labels.npy').replace("\r", "")
-    
-    normal_loader, _ = load_svhn(data_path,
-                                    batch_size=args.batch_size,
-                                    transform=transform,
-                                    seed=args.seed)
-    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset='svhn')
+aug_list = augl.get_augmentation_list()
 
-elif args.dataset == 'cifar100':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'cifar100_Train_s1/seed_{args.seed}/{args.aug}.npy').replace("\r", ""))
-    train_aug_targets_path = os.path.join(generalization_path, f'cifar100_Train_s1/seed_{args.seed}/labels.npy').replace("\r", "")
-    
-    normal_loader, _ = load_cifar100(data_path,
-                                    batch_size=args.batch_size,
-                                    transform=transform,
-                                    seed=args.seed)
-    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=transform, dataset=args.dataset)
+for aug_name in aug_list:
+    if aug_name.lower() == args.lower().replace('_', ''):
+        print(f"Using {aug_name} as negative augmentation")
+        transform_layer = augl.return_aug(aug_name, severity=args.severity).to(args.device)
+with torch.no_grad():
+    model.eval()
 
-elif args.dataset == 'mvtec_ad':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'mvtec_ad_Train_s1/seed_{args.seed}/{args.aug}.npy')).replace("\r", "")
-    train_aug_targets_path = os.path.join(generalization_path, f'mvtec_ad_Train_s1/seed_{args.seed}/labels.npy').replace("\r", "")
-    
-    normal_loader, _ = load_mvtec_ad(data_path,
-                                    batch_size=args.batch_size,
-                                    transform=transform,
-                                    seed=args.seed)
-    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
+    for i, data in tqdm(enumerate(loader)):
+        imgs_n, n_targets = data
+        imgs_n = imgs_n.to(device)
+        imgs_aug = transform_layer(imgs_n)
 
-elif args.dataset == 'visa':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'visa_Train_s1/seed_{args.seed}/{args.aug}.npy')).replace("\r", "")
-    train_aug_targets_path = os.path.join(generalization_path, f'visa_Train_s1/seed_{args.seed}/labels.npy').replace("\r", "")
-    
-    normal_loader, _ = load_visa(data_path,
-                                batch_size=args.batch_size,
-                                transforms=transform,
-                                seed=args.seed)
-    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
+        if args.backbone == 'clip':
+            imgs_n_features = model.encode_image(imgs_n)
+            imgs_aug_features = model.encode_image(imgs_aug)
+        elif args.backbone == 'dinov2':
+            imgs_n_features = model(imgs_n)
+            imgs_aug_features = model(imgs_aug)
+        elif args.backbone == 'resnet50':
+            imgs_n_features = model(imgs_n)
+            imgs_aug_features = model(imgs_aug)
 
-elif args.dataset == 'imagenet':
-    # imagenet_path = os.path.join(data_path,'ImageNet')
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_Train_s1/seed_{args.seed}/{args.aug}.npy')).replace("\r", "")
-    train_aug_targets_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_Train_s1/seed_{args.seed}/labels.npy')).replace("\r", "")
-    
-    if args.backbone != 'clip':
-        transform = torchvision.transforms.Compose([
-        torchvision.transforms.Resize(256),
-        torchvision.transforms.CenterCrop(224),
-        torchvision.transforms.ToTensor()])
 
-    normal_loader, _ = load_imagenet(args.config['imagenet_30_path'],
-                                    batch_size=args.batch_size,
-                                    transforms=transform,
-                                    seed=args.seed)
-    
-    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
-
-elif args.dataset == 'imagenet_30':
-    train_aug_imgs_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_30_Train_s1/seed_{args.seed}/{args.aug}.npy')).replace("\r", "")
-    train_aug_targets_path = os.path.join(generalization_path, os.path.normpath(f'imagenet_30_Train_s1/seed_{args.seed}/labels.npy')).replace("\r", "")
-    
-    if args.backbone != 'clip':
-        transform = torchvision.transforms.Compose([
-        torchvision.transforms.Resize(256),
-        torchvision.transforms.CenterCrop(224),
-        torchvision.transforms.ToTensor()])
-
-    normal_loader, _ = load_imagenet(args.config['imagenet_30_path'],
-                                    batch_size=args.batch_size,
-                                    transforms=transform,
-                                    seed=args.seed)
-    
-    aug_dataset = load_np_dataset(train_aug_imgs_path, train_aug_targets_path, transform=torchvision.transforms.ToTensor(), dataset=args.dataset)
-
-else:
-    raise NotImplemented(f"Not Available Dataset {args.dataset}!")
-
-generator_aug = torch.Generator().manual_seed(args.seed)
-aug_loader = DataLoader(aug_dataset, shuffle=True, batch_size=args.batch_size, num_workers=args.num_workers, generator=generator_aug)
-
-loader = zip(normal_loader, aug_loader)
-cosine_diff = []
-wasser_diff = []
-euclidean_diffs = []
-targets_list = []
-for i, data in tqdm(enumerate(loader)):
-    data_normal, data_aug = data
-    imgs_n, n_targets = data_normal
-    imgs_aug, augs_targets = data_aug
-    assert torch.equal(n_targets, torch.squeeze(augs_targets)), f"The labels of aug images do not match to noraml images, {n_targets}, {augs_targets}"
-    # This condition is for when len imgs_aug is larger than imgs_normal
-    if len(imgs_n) != len(imgs_aug):
-        imgs_aug = imgs_aug[:len(imgs_n)]
-        imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
-        imgs_n_features = model.encode_image(imgs_n)
-        imgs_aug_features = model.encode_image(imgs_aug)
         # Saving the representations
         if args.save_rep_norm:
             with open(os.path.join(rep_norm_path, f'batch_{i}.pkl').replace("\r", ""), 'wb') as f:
@@ -240,42 +165,15 @@ for i, data in tqdm(enumerate(loader)):
                 pickle.dump(imgs_aug_features.detach().cpu().numpy(), f)
 
         for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
-            cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
-            wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
+            cosine_diff.append(cosine_similarity(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
+            # wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
 
         euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
         targets_list.extend(n_targets.detach().cpu().numpy())
-        break
-
-    imgs_n, imgs_aug = imgs_n.to(device), imgs_aug.to(device)
-    if args.backbone == 'clip':
-        imgs_n_features = model.encode_image(imgs_n)
-        imgs_aug_features = model.encode_image(imgs_aug)
-    elif args.backbone == 'dinov2':
-        imgs_n_features = model(imgs_n)
-        imgs_aug_features = model(imgs_aug)
-    elif args.backbone == 'resnet50':
-        imgs_n_features = model(imgs_n)
-        imgs_aug_features = model(imgs_aug)
-
-
-    # Saving the representations
-    if args.save_rep_norm:
-        with open(os.path.join(rep_norm_path, f'batch_{i}.pkl').replace("\r", ""), 'wb') as f:
-            pickle.dump(imgs_n_features.detach().cpu().numpy(), f)
-    if args.save_rep_aug:
-        with open(os.path.join(rep_aug_path, f'batch_{i}.pkl').replace("\r", ""), 'wb') as f:
-            pickle.dump(imgs_aug_features.detach().cpu().numpy(), f)
-
-    # for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
-    #     cosine_diff.append(cosine_similarity(f_n, f_a).detach().cpu().numpy())
-        # wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
-
-    euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
-    targets_list.extend(n_targets.detach().cpu().numpy())
 
 euclidean_diffs = np.asarray(euclidean_diffs)
 targets_list = np.asarray(targets_list)
+cosine_diff = np.asarray(cosine_diff)
 
 
 
@@ -283,7 +181,7 @@ with open(f'{save_pickles_path}/targets/{args.aug}.pkl'.replace("\r", ""), 'wb')
     pickle.dump(targets_list, f)
 with open(f'{save_pickles_path}/euclidean_diffs/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
     pickle.dump(euclidean_diffs, f)
-# with open(f'{save_pickles_path}/cosine_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
-#     pickle.dump(cosine_diff, f)
+with open(f'{save_pickles_path}/cosine_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
+    pickle.dump(cosine_diff, f)
 # with open(f'{save_pickles_path}/wasser_pair/{args.aug}.pkl'.replace("\r", ""), 'wb') as f:
 #     pickle.dump(wasser_diff, f)
