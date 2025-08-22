@@ -12,13 +12,13 @@ import argparse
 import torchvision
 import numpy as np
 from clip import clip
-from dataset_loader import get_loader
+
 from scipy.stats import wasserstein_distance
 from sklearn.metrics.pairwise import cosine_similarity
 from torchvision.models import wide_resnet50_2
 import sys
 from tqdm import tqdm
-from models.utils import augmentation_layers as augl
+
 # from utils import CustomImageDataset
 
 
@@ -47,6 +47,8 @@ def parsing():
                         help='config')
     parser.add_argument('--severity', default=1, type=int,
                         help='severity of augmentation selection')
+    parser.add_argument('--one_class_idx', default=1, type=int,
+                        help='severity of augmentation selection')
     
     args = parser.parse_args()
     return args
@@ -69,6 +71,7 @@ imagenet_path = config['imagenet_path']
 generalization_path = config['generalization_path']
 representations_path = config['representations_path']
 args.config = config
+args.one_class_idx = None
 
 cosine_diff = []
 wasser_diff = []
@@ -76,6 +79,8 @@ euclidean_diffs = []
 targets_list = []
 
 sys.path.append(args.config["library_path"])
+from dataset_loader import get_loader
+from models.utils import augmentation_layers as augl
 
 if args.gpu != str(0):
     device = f'cuda:{args.gpu}'
@@ -134,9 +139,9 @@ loader, _ = get_loader(args, data_path, imagenet_path, transform)
 aug_list = augl.get_augmentation_list()
 
 for aug_name in aug_list:
-    if aug_name.lower() == args.lower().replace('_', ''):
-        print(f"Using {aug_name} as negative augmentation")
-        transform_layer = augl.return_aug(aug_name, severity=args.severity).to(args.device)
+    if aug_name.lower() == args.aug.lower().replace('_', ''):
+        print(f"Using {aug_name} as an augmentation")
+        transform_layer = augl.return_aug(aug_name, severity=args.severity).to(device)
 with torch.no_grad():
     model.eval()
 
@@ -164,10 +169,10 @@ with torch.no_grad():
             with open(os.path.join(rep_aug_path, f'batch_{i}.pkl').replace("\r", ""), 'wb') as f:
                 pickle.dump(imgs_aug_features.detach().cpu().numpy(), f)
 
-        for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
-            cosine_diff.append(cosine_similarity(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
+        # for f_n, f_a in zip(imgs_n_features, imgs_aug_features):
             # wasser_diff.append(wasserstein_distance(f_n.detach().cpu().numpy(), f_a.detach().cpu().numpy()))
 
+        cosine_diff.append(cosine_similarity(imgs_n_features.detach().cpu().numpy(), imgs_aug_features.detach().cpu().numpy()))
         euclidean_diffs.extend(torch.sum(torch.pow((imgs_n_features - imgs_aug_features), 2), dim=1).float().detach().cpu().numpy())
         targets_list.extend(n_targets.detach().cpu().numpy())
 
