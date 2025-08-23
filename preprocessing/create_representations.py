@@ -142,6 +142,10 @@ for aug_name in aug_list:
     if aug_name.lower() == args.aug.lower().replace('_', ''):
         print(f"Using {aug_name} as an augmentation")
         transform_layer = augl.return_aug(aug_name, severity=args.severity).to(device)
+
+to01 = augl.To01(mode='auto')
+from01 = augl.From01(mode='auto')
+
 with torch.no_grad():
     model.eval()
 
@@ -150,12 +154,12 @@ with torch.no_grad():
         imgs_n = imgs_n.to(device)
 
         if args.backbone == 'clip':
-            imgs_to01 = augl.To01(imgs_n, mode='auto')
+            imgs_to01 = to01(imgs_n)
 
         imgs_aug = transform_layer(imgs_to01)
 
         if args.backbone == 'clip':
-            imgs_aug =  augl.From01(imgs_aug, mode='auto')
+            imgs_aug =  from01(imgs_aug)
 
         if args.backbone == 'clip':
             imgs_n_features = model.encode_image(imgs_n)
