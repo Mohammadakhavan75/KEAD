@@ -148,14 +148,14 @@ with torch.no_grad():
     for i, data in tqdm(enumerate(loader)):
         imgs_n, n_targets = data
         imgs_n = imgs_n.to(device)
-        
+
         if args.backbone == 'clip':
-            imgs_to01 = augl.To01(imgs_n)
+            imgs_to01 = augl.To01(imgs_n, mode='auto')
 
         imgs_aug = transform_layer(imgs_to01)
 
         if args.backbone == 'clip':
-            imgs_aug =  augl.From01(imgs_aug)
+            imgs_aug =  augl.From01(imgs_aug, mode='auto')
 
         if args.backbone == 'clip':
             imgs_n_features = model.encode_image(imgs_n)
