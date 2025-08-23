@@ -13,6 +13,8 @@ from skimage.filters import gaussian
 from scipy.ndimage import zoom as scizoom
 from scipy.ndimage.interpolation import map_coordinates
 import warnings
+from typing import Optional, Sequence
+
 
 # --- Dependency Imports for Original Functions (Keep if needed) ---
 try:
@@ -309,6 +311,135 @@ def clipped_zoom(img, zoom_factor):
 # --- Augmentation Layers ---
 
 
+class To01(nn.Module):
+    """
+    Map input from its current domain to [0,1].
+
+    Domains:
+      - "01"           : assumed already in [0,1] -> clamp [0,1]
+      - "pm1"          : assumed in [-1,1]        -> (x+1)/2, clamp [0,1]
+      - "standardized" : x_std = (x - mean)/std  -> x_img = x*std + mean, clamp [0,1]
+      - "auto"         : detect via min/max with tolerance
+
+    Args:
+        mode: {"auto","01","pm1","standardized"}
+        mean, std: Required for exact invert when mode is "standardized" (or detected as such).
+        eps: tolerance for auto-detection.
+    """
+    def __init__(
+        self,
+        mode: str = "auto",
+        mean: Optional[Sequence[float]] = None,
+        std: Optional[Sequence[float]] = None,
+        eps: float = 1e-3,
+    ):
+        super().__init__()
+        if mode not in {"auto","01","pm1","standardized"}:
+            raise ValueError("mode must be one of {'auto','01','pm1','standardized'}")
+        self.mode = mode
+        self.eps = eps
+
+        if mean is not None:
+            self.register_buffer("mean", torch.tensor(mean, dtype=torch.float32))
+        else:
+            self.mean = None
+        if std is not None:
+            self.register_buffer("std", torch.tensor(std, dtype=torch.float32))
+        else:
+            self.std = None
+
+    @torch.no_grad()
+    def _detect(self, x: torch.Tensor) -> str:
+        xmin = x.min().item()
+        xmax = x.max().item()
+        if (xmin >= -self.eps) and (xmax <= 1.0 + self.eps):
+            return "01"
+        elif (xmin >= -1.0 - self.eps) and (xmax <= 1.0 + self.eps):
+            return "pm1"
+        else:
+            return "standardized"
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not isinstance(x, torch.Tensor) or x.ndim != 4:
+            raise ValueError("To01 expects a 4D torch.Tensor (B,C,H,W).")
+
+        domain = self.mode if self.mode != "auto" else self._detect(x)
+
+        if domain == "01":
+            return x.clamp(0.0, 1.0)
+
+        if domain == "pm1":
+            return ((x + 1.0) * 0.5).clamp(0.0, 1.0)
+
+        # standardized
+        if self.mean is None or self.std is None:
+            # Best-effort fallback (not exact): assume already [0,1]
+            return x.clamp(0.0, 1.0)
+
+        mean = self.mean.to(device=x.device, dtype=x.dtype).view(1, -1, 1, 1)
+        std  = self.std .to(device=x.device, dtype=x.dtype).view(1, -1, 1, 1)
+        img = x * std + mean
+        return img.clamp(0.0, 1.0)
+
+
+class From01(nn.Module):
+    """
+    Map tensor from [0,1] back to the given (or detected) domain.
+
+    Args:
+        mode: {"auto","01","pm1","standardized"} — when "auto", you must tell us
+              what the *target* should be via target_mode (see below).
+        target_mode: If mode="auto", choose {"01","pm1","standardized"} as the target.
+                     If mode!="auto", this is ignored.
+        mean, std: Used only if target is "standardized".
+    """
+    def __init__(
+        self,
+        mode: str = "auto",
+        target_mode: str = "01",
+        mean: Optional[Sequence[float]] = None,
+        std: Optional[Sequence[float]] = None,
+    ):
+        super().__init__()
+        if mode not in {"auto","01","pm1","standardized"}:
+            raise ValueError("mode must be one of {'auto','01','pm1','standardized'}")
+        if target_mode not in {"01","pm1","standardized"}:
+            raise ValueError("target_mode must be one of {'01','pm1','standardized'}")
+        self.mode = mode
+        self.target_mode = target_mode
+
+        if mean is not None:
+            self.register_buffer("mean", torch.tensor(mean, dtype=torch.float32))
+        else:
+            self.mean = None
+        if std is not None:
+            self.register_buffer("std", torch.tensor(std, dtype=torch.float32))
+        else:
+            self.std = None
+
+    def forward(self, x01: torch.Tensor) -> torch.Tensor:
+        if not isinstance(x01, torch.Tensor) or x01.ndim != 4:
+            raise ValueError("From01 expects a 4D torch.Tensor (B,C,H,W) in [0,1].")
+
+        # If mode is not auto, we *return to that mode*.
+        target = self.target_mode if self.mode == "auto" else self.mode
+
+        if target == "01":
+            return x01.clamp(0.0, 1.0)
+
+        if target == "pm1":
+            return (x01 * 2.0 - 1.0).clamp(-1.0, 1.0)
+
+        # standardized
+        if self.mean is None or self.std is None:
+            # Without explicit mean/std we cannot standardize properly;
+            # return as-is to avoid silent drift.
+            return x01
+
+        mean = self.mean.to(device=x01.device, dtype=x01.dtype).view(1, -1, 1, 1)
+        std  = self.std .to(device=x01.device, dtype=x01.dtype).view(1, -1, 1, 1)
+        return (x01 - mean) / std
+
 
 # --- Geometric Augmentations as Layers ---
 
@@ -343,8 +474,7 @@ class Rotate90(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error applying Rotate90: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(angle={self.angle})'
@@ -378,8 +508,7 @@ class Rotate270(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error applying Rotate270: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(angle={self.angle})'
@@ -412,8 +541,7 @@ class Flip(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error applying HorizontalFlip: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + '()'
@@ -573,8 +701,7 @@ class GaussianNoise(nn.Module):
         except Exception as e:
             raise Exception(f"Unexpected error in GaussianNoise forward pass: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, c={self.c})'
@@ -624,8 +751,7 @@ class ShotNoise(nn.Module):
         except Exception as e:
             raise Exception(f"Unexpected error in ShotNoise forward pass: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, c={self.c})'
@@ -706,8 +832,7 @@ class ImpulseNoise(nn.Module):
         except Exception as e:
             raise Exception(f"Unexpected error in ImpulseNoise forward pass: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, c={self.c})'
@@ -755,8 +880,7 @@ class SpeckleNoise(nn.Module):
         except Exception as e:
             raise Exception(f"Unexpected error in SpeckleNoise forward pass: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, c={self.c})'
@@ -810,8 +934,7 @@ class GaussianBlur(nn.Module):
         except Exception as e:
             raise Exception(f"Unexpected error in GaussianBlur forward pass: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, sigma={self.sigma}, kernel_size={self.kernel_size})'
@@ -1183,8 +1306,7 @@ class DefocusBlur(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error in DefocusBlur forward pass: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
@@ -1303,8 +1425,7 @@ class MotionBlur(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Failed to process batch: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
@@ -1412,8 +1533,7 @@ class ZoomBlur(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error in ZoomBlur forward pass: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity})'
@@ -1524,8 +1644,7 @@ class Fog(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error in fog forward pass: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
@@ -1668,8 +1787,7 @@ class Snow(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error in Snow forward pass: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
@@ -1809,8 +1927,7 @@ class Spatter(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error in forward pass: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'
@@ -1857,8 +1974,7 @@ class Contrast(nn.Module):
         except Exception as e:
             raise Exception(f"Unexpected error in contrast adjustment: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, contrast_factor={self.c})'
@@ -1926,8 +2042,7 @@ class Brightness(nn.Module):
         # return torch.stack(processed_batch).to(device=device, dtype=dtype)
         # --- End Alternative ---
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         # Show both c and the derived factor if using TF.adjust_brightness
@@ -1997,8 +2112,7 @@ class Saturate(nn.Module):
         # return torch.stack(processed_batch).to(device=device, dtype=dtype)
         # --- End Alternative ---
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         # Show original params and the factor used if using TF.adjust_saturation
@@ -2087,8 +2201,7 @@ class JpegCompression(nn.Module):
         except Exception as e:
             raise RuntimeError(f"Error in JPEG compression forward pass: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, quality={self.quality})'
@@ -2158,8 +2271,7 @@ class Pixelate(nn.Module):
         except Exception as e:
             raise Exception(f"Unexpected error in Pixelate forward pass: {str(e)}")
 
-    def __call__(self, x):
-        return self.forward(x)
+    
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, factor={self.c})'
@@ -2295,9 +2407,6 @@ class ElasticTransform(nn.Module):
             
         except Exception as e:
             raise RuntimeError(f"Error in forward pass: {str(e)}")
-
-    def __call__(self, x):
-        return self.forward(x)
 
     def __repr__(self):
         return self.__class__.__name__ + f'(severity={self.severity}, params={self.params})'

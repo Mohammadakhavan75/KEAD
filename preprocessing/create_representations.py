@@ -148,7 +148,14 @@ with torch.no_grad():
     for i, data in tqdm(enumerate(loader)):
         imgs_n, n_targets = data
         imgs_n = imgs_n.to(device)
-        imgs_aug = transform_layer(imgs_n)
+        
+        if args.backbone == 'clip':
+            imgs_to01 = augl.To01(imgs_n)
+
+        imgs_aug = transform_layer(imgs_to01)
+
+        if args.backbone == 'clip':
+            imgs_aug =  augl.From01(imgs_aug)
 
         if args.backbone == 'clip':
             imgs_n_features = model.encode_image(imgs_n)
@@ -178,7 +185,7 @@ with torch.no_grad():
 
 euclidean_diffs = np.asarray(euclidean_diffs)
 targets_list = np.asarray(targets_list)
-cosine_diff = np.asarray(cosine_diff)
+# cosine_diff = np.asarray(cosine_diff)
 
 
 
