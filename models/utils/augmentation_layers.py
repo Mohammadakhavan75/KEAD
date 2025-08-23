@@ -335,7 +335,7 @@ class To01(nn.Module):
     ):
         super().__init__()
         if mode not in {"auto","01","pm1","standardized"}:
-            raise ValueError("mode must be one of {'auto','01','pm1','standardized'}")
+            raise ValueError(f"mode must be one of {'auto','01','pm1','standardized'} got {mode}")
         self.mode = mode
         self.eps = eps
 
