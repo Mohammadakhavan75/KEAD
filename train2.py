@@ -35,6 +35,13 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         'con_loss': [],
     }
     n_pos = len(pos_transform_layers) if policy is None else args.n_pos
+    # Track per-epoch selection counts when using policy
+    pos_select_counts = {}
+    neg_select_counts = {}
+    if policy is not None:
+        for nm in policy.aug_names:
+            pos_select_counts[nm] = 0
+            neg_select_counts[nm] = 0
 
     # training
     model.train()
@@ -55,6 +62,15 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         else:
             policy_optim.zero_grad()
             pos_views, neg_views, logp_pos, logp_neg, pos_idx, neg_idx = policy(anchor, n_pos=args.n_pos, n_neg=args.n_neg)
+            # Record which augmentations were selected this step
+            pnames, nnames = policy.selected_names(pos_idx, neg_idx)
+            for nm in pnames:
+                pos_select_counts[nm] += 1
+            for nm in nnames:
+                neg_select_counts[nm] += 1
+            # Add a short text log to TensorBoard for quick inspection
+            writer.add_text("Policy/selected_pos", ", ".join(pnames), train_global_iter)
+            writer.add_text("Policy/selected_neg", ", ".join(nnames), train_global_iter)
 
         
         optimizer.zero_grad()
@@ -147,7 +163,7 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
 
         train_global_iter += 1
 
-    return train_global_iter, losses
+    return train_global_iter, losses, pos_select_counts, neg_select_counts
 
 def set_seed(seed_nu):
     torch.manual_seed(seed_nu)
@@ -253,7 +269,7 @@ def main():
     train_global_iter = 0
     for epoch in range(0, args.epochs):
         print('epoch', epoch, '/', args.epochs)
-        train_global_iter, losses = train_contrastive(
+        train_global_iter, losses, pos_counts_epoch, neg_counts_epoch = train_contrastive(
             stats, model, train_loader, optimizer,
             pos_transform_layers, neg_transform_layers,
             epoch, scheduler, args, train_global_iter, writer,
@@ -265,6 +281,22 @@ def main():
         writer.add_scalar("Train/lr", args.last_lr, epoch)
         writer.add_scalar("Train/con_loss", torch.mean(torch.tensor(losses['con_loss'])), epoch)
         writer.add_scalar("Train/var_loss", torch.mean(torch.tensor(losses['var_loss'])), epoch)
+
+        # Per-epoch policy diagnostics (counts and current probs)
+        if policy_module is not None:
+            # Selection counts per augmentation this epoch
+            for nm, c in pos_counts_epoch.items():
+                writer.add_scalar(f"Policy/pos_count/{nm}", c, epoch)
+            for nm, c in neg_counts_epoch.items():
+                writer.add_scalar(f"Policy/neg_count/{nm}", c, epoch)
+
+            # Current probability distributions per augmentation
+            with torch.no_grad():
+                prob_pos = torch.softmax(policy_module.pos_logits, dim=0).detach().cpu()
+                prob_neg = torch.softmax(policy_module.neg_logits, dim=0).detach().cpu()
+                for i, nm in enumerate(policy_module.aug_names):
+                    writer.add_scalar(f"Policy/prob_pos/{nm}", float(prob_pos[i].item()), epoch)
+                    writer.add_scalar(f"Policy/prob_neg/{nm}", float(prob_neg[i].item()), epoch)
 
         if epoch % 10 == 0:
             avg_auc = evaluation(model, args, root_path)
@@ -279,6 +311,20 @@ def main():
     writer.add_scalar("Eval/avg_auc", avg_auc, epoch)
     writer.close()
     torch.save(model.state_dict(), os.path.join(save_path, 'last_params.pt'))
+
+    # Save final policy probabilities table
+    if policy_module is not None:
+        import csv
+        with torch.no_grad():
+            p_pos = torch.softmax(policy_module.pos_logits, dim=0).detach().cpu().tolist()
+            p_neg = torch.softmax(policy_module.neg_logits, dim=0).detach().cpu().tolist()
+            out_csv = os.path.join(save_path, 'policy_final_probs.csv')
+            with open(out_csv, 'w', newline='') as f:
+                writer_csv = csv.writer(f)
+                writer_csv.writerow(['augmentation', 'pos_prob', 'neg_prob'])
+                for nm, pp, pn in zip(policy_module.aug_names, p_pos, p_neg):
+                    writer_csv.writerow([nm, f"{pp:.6f}", f"{pn:.6f}"])
+            print(f"Saved final policy probabilities to {out_csv}")
 
 
 if __name__ == '__main__':
