@@ -15,7 +15,7 @@ def variance_floor(z: torch.Tensor, gamma: float = 1.0, eps: float = 1e-4) -> to
         scalar loss: mean over dimensions of max(0, gamma - std_d)^2
     """
     # Normalize each vector to unit length so that target gamma=1.0 makes sense.
-    z = F.normalize(z, dim=1)                     # (N, D)
+    # z = F.normalize(z, dim=1)                     # (N, D)
     # Per-dimension standard deviation across the batch
     std = torch.sqrt(z.var(dim=0, unbiased=False) + eps)  # (D,)
     # Penalize only if std < gamma
