@@ -36,10 +36,9 @@ class LearnableAugPolicy(nn.Module):
         for aug_name in self.aug_names:
             for aug in aug_list:
                 if aug.lower() == aug_name.lower().replace('_', ''):
-                    augs.append(augl.return_aug(aug, severity=self.severity))
+                    augs.append(augl.return_aug(aug, severity=self.severity).to(self.device))
         # Build transform modules
         self.transforms = nn.ModuleList(augs)
-        self.to(device)
 
         # Learnable logits for positive and negative policies
         n = len(self.aug_names)
@@ -47,8 +46,8 @@ class LearnableAugPolicy(nn.Module):
         self.neg_logits = nn.Parameter(torch.zeros(n))
 
         # Moving baseline for REINFORCE advantage
-        self.register_buffer("baseline", torch.tensor(0.0))
-        self.register_buffer("_baseline_initialized", torch.tensor(0, dtype=torch.uint8))
+        self.register_buffer("baseline", torch.tensor(0.0, device=self.device))
+        self.register_buffer("_baseline_initialized", torch.tensor(0, dtype=torch.uint8, device=self.device))
 
     @property
     def pos_probs(self) -> torch.Tensor:
