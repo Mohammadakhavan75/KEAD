@@ -20,18 +20,18 @@ seed=$5
 # done
 
 # creating representation from selected backbone and dataset
-# C=0
-# cat ./preprocessing/selected_noises.txt | while read -r noise
-# do
-#     echo "running on $noise"
-#     if [ $C -eq 0 ]
-#     then
-#         python ./preprocessing/create_representations.py --aug $noise --dataset $dataset --config $config --backbone $backbone --batch_size $batch_size --seed $seed --save_rep_norm --save_rep_aug --gpu 0
-#         C=1
-#     else
-#         python ./preprocessing/create_representations.py --aug $noise --dataset $dataset --config $config --backbone $backbone --batch_size $batch_size --seed $seed --save_rep_aug --gpu 0
-#     fi
-# done
+C=0
+cat ./preprocessing/selected_noises.txt | while read -r noise
+do
+    echo "running on $noise"
+    if [ $C -eq 0 ]
+    then
+        python ./preprocessing/create_representations.py --aug $noise --dataset $dataset --config $config --backbone $backbone --batch_size $batch_size  --severity 1 --save_rep_norm --save_rep_aug --gpu 0
+        C=1
+    else
+        python ./preprocessing/create_representations.py --aug $noise --dataset $dataset --config $config --backbone $backbone --batch_size $batch_size --severity 1 --save_rep_aug --gpu 0 
+    fi
+done
 
 # creating wasserstein distances on dataset and augmented dataset
 cat ./preprocessing/selected_noises.txt | while read -r noise
@@ -42,4 +42,4 @@ done
 
 # sleep 600
 # # combine distances for dataset into a dictionary
-# python ./preprocessing/dist_combination.py --dataset $dataset --backbone $backbone --config $config --one_class
+python ./preprocessing/dist_combination.py --dataset $dataset --backbone $backbone --config $config --one_class

@@ -155,8 +155,9 @@ with torch.no_grad():
 
         if args.backbone == 'clip':
             imgs_to01 = to01(imgs_n)
-
-        imgs_aug = transform_layer(imgs_to01)
+            imgs_aug = transform_layer(imgs_to01)
+        else:
+            imgs_aug = transform_layer(imgs_n)
 
         if args.backbone == 'clip':
             imgs_aug =  from01(imgs_aug)
