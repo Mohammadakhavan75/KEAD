@@ -2413,7 +2413,7 @@ class ElasticTransform(nn.Module):
 
 
 def get_augmentation_list():
-    return ["Rot90", "Rot270",  "Flip",  "RandomCropResize",  "ColorJitterLayer",\
+    return ["Rot90", "Rot270",  "Flip",  "RandomCrop",  "ColorJitter",\
             "GaussianNoise",  "ShotNoise",  "ImpulseNoise",  "SpeckleNoise",  "GaussianBlur",  "GlassBlur",\
             "DefocusBlur",  "MotionBlur", "ZoomBlur", "Fog", "Snow", "Spatter", "Contrast", "Brightness",\
             "Saturate", "JpegCompression", "Pixelate", "ElasticTransform"]
@@ -2447,8 +2447,8 @@ augmentation_classes = {
     "Rot90" : Rotate90,
     "Rot270" : Rotate270,
     "Flip" : Flip,
-    "RandomCropResize" : RandomCropResize,
-    "ColorJitterLayer" : ColorJitterLayer,
+    "RandomCrop" : RandomCropResize,
+    "ColorJitter" : ColorJitterLayer,
     "GaussianNoise" : GaussianNoise,
     "ShotNoise" : ShotNoise,
     "ImpulseNoise" : ImpulseNoise,
