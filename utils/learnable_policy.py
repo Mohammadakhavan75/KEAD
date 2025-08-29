@@ -26,7 +26,23 @@ class LearnableAugPolicy(nn.Module):
         device: torch.device | str = "cpu",
     ) -> None:
         super().__init__()
-        self.aug_names = list(aug_names)
+        # Canonicalize provided names to match augmentation_classes keys
+        provided = list(aug_names)
+        canon_pool = augl.get_augmentation_list()
+        canon_map = {}
+        for nm in provided:
+            nm_l = nm.lower().replace("_", "")
+            match = None
+            for ref in canon_pool:
+                if ref.lower() == nm_l:
+                    match = ref
+                    break
+            if match is None:
+                raise ValueError(f"Unknown augmentation name '{nm}'. Available: {canon_pool}")
+            canon_map[nm] = match
+
+        # Keep canonical names for modules and logging
+        self.aug_names = [canon_map[nm] for nm in provided]
         self.severity = severity
         self.device = device
 
@@ -125,4 +141,3 @@ class LearnableAugPolicy(nn.Module):
         neg_views = torch.cat(neg_views_list, dim=0) if len(neg_views_list) > 0 else anchor.new_empty((0,) + anchor.shape[1:])
 
         return pos_views, neg_views, logp_pos, logp_neg, pos_idx, neg_idx
-
