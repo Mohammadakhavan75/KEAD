@@ -61,6 +61,22 @@ def args_parser():
                         help='number of negative augmentations')
     parser.add_argument('--seq_aug', action='store_true',
                         help='generating single sequence of augmentations')
+
+    # Learnable augmentation policy
+    parser.add_argument('--learnable_policy', action='store_true',
+                        help='Use a learnable augmentation policy for pos/neg selection')
+    parser.add_argument('--policy_lr', type=float, default=None,
+                        help='Learning rate for policy parameters (defaults to --learning_rate)')
+    parser.add_argument('--policy_coef', type=float, default=1.0,
+                        help='Coefficient for REINFORCE policy loss term')
+    parser.add_argument('--policy_entropy_coef', type=float, default=0.01,
+                        help='Entropy regularization coefficient for policy distributions')
+    parser.add_argument('--policy_neg_adversarial', action='store_true',
+                        help='Adversarial update for negative policy (hard negative mining)')
+    parser.add_argument('--policy_baseline_momentum', type=float, default=0.9,
+                        help='EMA momentum for REINFORCE baseline')
+    parser.add_argument('--aug_severity', type=int, default=1,
+                        help='Severity level for augmentation layers (1-5 if supported)')
     args = parser.parse_args()
 
     return args

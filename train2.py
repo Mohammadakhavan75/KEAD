@@ -13,6 +13,7 @@ from models.utils import augmentation_layers as augl
 import torchvision.transforms.v2 as v2
 
 from contrastive import contrastive_matrix
+from utils.learnable_policy import LearnableAugPolicy
 
 from utils.eval import evaluation
 from utils.paths import create_path
@@ -27,13 +28,13 @@ from utils.monitoring import variance_floor
 # -------------------------------
 # Main training & test routines
 # -------------------------------
-def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layers, neg_transform_layers, epoch, scheduler, args, train_global_iter, writer):
+def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layers, neg_transform_layers, epoch, scheduler, args, train_global_iter, writer, policy: LearnableAugPolicy | None = None, policy_optim = None):
     device = args.device
     losses = {
         'var_loss': [],
         'con_loss': [],
     }
-    n_pos = len(pos_transform_layers)
+    n_pos = len(pos_transform_layers) if policy is None else args.n_pos
 
     # training
     model.train()
@@ -41,12 +42,19 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
     for anchor, _ in pbar:
         anchor = anchor.to(device)
         B = anchor.size(0)
-        
-        pos_views = torch.cat([pos_transform_layer(anchor) for pos_transform_layer in pos_transform_layers], dim=0)
-        if not args.seq_aug:
-            neg_views = torch.cat([neg_transform_layer(anchor) for neg_transform_layer in neg_transform_layers], dim=0)
+        if policy is None:
+            pos_views = torch.cat([pos_transform_layer(anchor) for pos_transform_layer in pos_transform_layers], dim=0)
+            if not args.seq_aug:
+                neg_views = torch.cat([neg_transform_layer(anchor) for neg_transform_layer in neg_transform_layers], dim=0)
+            else:
+                neg_views = neg_transform_layers(anchor)
+            logp_pos = None
+            logp_neg = None
+            pos_idx = None
+            neg_idx = None
         else:
-            neg_views = neg_transform_layers(anchor)
+            policy_optim.zero_grad()
+            pos_views, neg_views, logp_pos, logp_neg, pos_idx, neg_idx = policy(anchor, n_pos=args.n_pos, n_neg=args.n_neg)
 
         
         optimizer.zero_grad()
@@ -75,7 +83,36 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         losses['var_loss'].append(var_loss.item())
 
         loss = con_loss + var_loss
-        # loss = con_loss #+ var_loss
+
+        # Policy learning: REINFORCE + entropy regularization
+        if policy is not None:
+            # Update EMA baseline first
+            policy.update_baseline(loss.detach(), momentum=args.policy_baseline_momentum)
+
+            # Advantage: smaller is better (we minimize loss)
+            advantage = (loss.detach() - policy.baseline)
+
+            # For adversarial negative policy, flip sign (hard-negative mining)
+            if args.policy_neg_adversarial and logp_neg is not None:
+                policy_loss = args.policy_coef * (advantage * (logp_pos - logp_neg))
+            else:
+                # Cooperative: both pos and neg chosen to minimize training loss
+                # Note: no gradient flows into encoder from these terms; only into policy logits
+                logp_total = 0.0
+                if logp_pos is not None:
+                    logp_total = logp_total + logp_pos
+                if logp_neg is not None:
+                    logp_total = logp_total + logp_neg
+                policy_loss = args.policy_coef * (advantage * logp_total)
+
+            # Entropy regularization to avoid collapse to trivial transforms
+            H_pos, H_neg = policy.entropy()
+            entropy_reg = -args.policy_entropy_coef * (H_pos + H_neg)
+            policy_loss = policy_loss + entropy_reg
+
+            policy_loss.backward()
+            policy_optim.step()
+
         loss.backward()
         pp = []
         for param in model.parameters():
@@ -99,6 +136,14 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         writer.add_scalar("Train/norm_p", torch.mean(norm_p).detach().cpu().numpy(), train_global_iter)
         writer.add_scalar("Train/std_min", std_dev.min().item(), train_global_iter)
         writer.add_scalar("Train/std_max", std_dev.max().item(), train_global_iter)
+        if policy is not None:
+            writer.add_scalar("Policy/entropy_pos", policy.entropy()[0].item(), train_global_iter)
+            writer.add_scalar("Policy/entropy_neg", policy.entropy()[1].item(), train_global_iter)
+            writer.add_scalar("Policy/baseline", policy.baseline.item(), train_global_iter)
+            if logp_pos is not None:
+                writer.add_scalar("Policy/logp_pos", logp_pos.item(), train_global_iter)
+            if logp_neg is not None:
+                writer.add_scalar("Policy/logp_neg", logp_neg.item(), train_global_iter)
 
         train_global_iter += 1
 
@@ -160,44 +205,60 @@ def main():
 
     model = model.to(args.device)
 
+    # Build augmentation selection: fixed or learnable policy
+    # Candidate list comes from CLIP-ranks file if present; fallback to all known augs
     with open(f'./ranks/clip/{args.dataset}/wasser_dist_softmaxed.pkl', 'rb') as file:
         probs = pickle.load(file)
-
     sorted_augs = list(probs[args.one_class_idx].keys())
 
-    pos_augs = sorted_augs[:args.n_pos]
-    neg_augs = sorted_augs[-args.n_neg:]
-
-    aug_list = augl.get_augmentation_list()
+    policy_module = None
+    policy_optim = None
     pos_transform_layers = []
     neg_transform_layers = []
-    
-    for aug_name in pos_augs:
-        for aug in aug_list:
-            if aug.lower() == aug_name.lower().replace('_', ''):
-                print(f"Using {aug} as positive augmentation")
-                pos_transform_layers.append(augl.return_aug(aug).to(args.device))
 
-    for aug_name in neg_augs:
-        print(aug_name)
-        for aug in aug_list:
-            if aug.lower() == aug_name.lower().replace('_', ''):
-                print(f"Using {aug} as negative augmentation")
-                neg_transform_layers.append(augl.return_aug(aug).to(args.device))
+    if args.learnable_policy:
+        # Use the entire ranked list as candidate pool; the policy learns pos/neg allocations
+        policy_module = LearnableAugPolicy(sorted_augs, severity=args.aug_severity, device=args.device)
+        # Add policy params to optimizer
+        policy_lr = args.policy_lr if args.policy_lr is not None else args.learning_rate
+        policy_optim = torch.optim.Adam(policy_module.parameters(), lr=policy_lr)
+        print(f"Initialized learnable policy over {len(sorted_augs)} augmentations (lr={policy_lr}).")
+    else:
+        # Fixed selection from head/tail of ranked list
+        pos_augs = sorted_augs[:args.n_pos]
+        neg_augs = sorted_augs[-args.n_neg:]
 
+        aug_list = augl.get_augmentation_list()
 
-    assert len(pos_transform_layers) == args.n_pos, f"Expected {args.n_pos} positive augmentations, but found {len(pos_transform_layers)}"
-    assert len(neg_transform_layers) == args.n_neg, f"Expected {args.n_neg} negative augmentations, but found {len(neg_transform_layers)}"
+        for aug_name in pos_augs:
+            for aug in aug_list:
+                if aug.lower() == aug_name.lower().replace('_', ''):
+                    print(f"Using {aug} as positive augmentation")
+                    pos_transform_layers.append(augl.return_aug(aug, severity=args.aug_severity).to(args.device))
+
+        for aug_name in neg_augs:
+            for aug in aug_list:
+                if aug.lower() == aug_name.lower().replace('_', ''):
+                    print(f"Using {aug} as negative augmentation")
+                    neg_transform_layers.append(augl.return_aug(aug, severity=args.aug_severity).to(args.device))
+
+        assert len(pos_transform_layers) == args.n_pos, f"Expected {args.n_pos} positive augmentations, but found {len(pos_transform_layers)}"
+        assert len(neg_transform_layers) == args.n_neg, f"Expected {args.n_neg} negative augmentations, but found {len(neg_transform_layers)}"
 
     stats = None
 
-    if args.seq_aug:
+    if (not args.learnable_policy) and args.seq_aug:
         neg_transform_layers = nn.Sequential(*neg_transform_layers)
 
     train_global_iter = 0
     for epoch in range(0, args.epochs):
         print('epoch', epoch, '/', args.epochs)
-        train_global_iter, losses = train_contrastive(stats, model, train_loader, optimizer, pos_transform_layers, neg_transform_layers, epoch, scheduler, args, train_global_iter, writer)
+        train_global_iter, losses = train_contrastive(
+            stats, model, train_loader, optimizer,
+            pos_transform_layers, neg_transform_layers,
+            epoch, scheduler, args, train_global_iter, writer,
+            policy_module, policy_optim,
+        )
         
         scheduler.step()
         args.last_lr = optimizer.param_groups[0]['lr']
