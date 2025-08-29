@@ -67,13 +67,15 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
 
         # Applying the variance floor on backbone output instead of proj head.
         # So the head can then focus on alignment but the cloud volume is guaranteed upstream.
-        feat_align = torch.cat([rep_a, rep_p], dim=0)
+        # feat_align = torch.cat([rep_a, rep_p], dim=0)
+        feat_align = torch.cat([feats_a, feats_p], dim=0)
         var_loss, std_dev = variance_floor(feat_align, gamma=1.0)
 
         losses['con_loss'].append(con_loss.item())
         losses['var_loss'].append(var_loss.item())
 
         loss = con_loss + var_loss
+        # loss = con_loss #+ var_loss
         loss.backward()
         pp = []
         for param in model.parameters():
@@ -144,17 +146,10 @@ def main():
 
 
     transform = v2.Compose([
-                # Geometric (light): keep horizon horizontal
-                v2.RandomResizedCrop(args.img_size, scale=(0.7, 1.0), ratio=(0.85, 1.18)),
                 v2.RandomHorizontalFlip(p=0.5),
                 v2.RandomAffine(degrees=5, translate=(0.10, 0.10), shear=5),
-                # Photometric
-                v2.RandomApply([v2.ColorJitter(0.4, 0.4, 0.2, 0.1)], p=0.8),
+                v2.RandomApply([v2.ColorJitter(0.05, 0.05, 0.05, 0.01)], p=0.8),
                 v2.RandomGrayscale(p=0.2),
-                v2.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
-                # Tensor + cutout last
-                
-                v2.RandomErasing(p=0.25, scale=(0.02, 0.15), ratio=(0.3, 3.3), value='random'),
                 v2.ToTensor(),
                 # (optional) Normalize with CIFAR-10 mean/std
                 # v2.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2470, 0.2435, 0.2616)),
@@ -173,8 +168,6 @@ def main():
     pos_augs = sorted_augs[:args.n_pos]
     neg_augs = sorted_augs[-args.n_neg:]
 
-    pos_augs = ["flip"]
-
     aug_list = augl.get_augmentation_list()
     pos_transform_layers = []
     neg_transform_layers = []
@@ -186,6 +179,7 @@ def main():
                 pos_transform_layers.append(augl.return_aug(aug).to(args.device))
 
     for aug_name in neg_augs:
+        print(aug_name)
         for aug in aug_list:
             if aug.lower() == aug_name.lower().replace('_', ''):
                 print(f"Using {aug} as negative augmentation")
