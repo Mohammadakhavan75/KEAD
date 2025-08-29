@@ -26,10 +26,10 @@ do
     echo "running on $noise"
     if [ $C -eq 0 ]
     then
-        python ./preprocessing/create_representations.py --aug $noise --dataset $dataset --config $config --backbone $backbone --batch_size $batch_size --save_rep_norm --save_rep_aug --gpu 0
+        python ./preprocessing/create_representations.py --aug $noise --dataset $dataset --config $config --backbone $backbone --batch_size $batch_size  --severity 1 --save_rep_norm --save_rep_aug --gpu 0
         C=1
     else
-        python ./preprocessing/create_representations.py --aug $noise --dataset $dataset --config $config --backbone $backbone --batch_size $batch_size --save_rep_aug --gpu 0 
+        python ./preprocessing/create_representations.py --aug $noise --dataset $dataset --config $config --backbone $backbone --batch_size $batch_size --severity 1 --save_rep_aug --gpu 0 
     fi
 done
 
