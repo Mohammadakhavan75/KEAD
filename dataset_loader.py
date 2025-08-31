@@ -265,17 +265,15 @@ def noise_loader(args, transform=None, batch_size=64, num_workers=0, one_class_i
     return train_positives_loader, train_negetives_loader, test_positives_loader, test_negetives_loader
 
 
-def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None, transforms=None, shuffle=True, seed=1):
+def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None, transform=None, shuffle=True, seed=1):
     print('loading Imagenet')
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-    if transforms is None:
+    if not transform:
         transform = torchvision.transforms.Compose([
                 torchvision.transforms.Resize(256),
                 torchvision.transforms.CenterCrop(224),
                 torchvision.transforms.ToTensor()])
-    else:
-        transform = transforms
 
     train_data = torchvision.datasets.ImageNet(root=path, split='train', transform=transform)
     val_data = torchvision.datasets.ImageNet(root=path, split='val', transform=transform)
@@ -290,11 +288,13 @@ def load_imagenet(path, batch_size=64, num_workers=0, one_class_idx=None, transf
     return train_loader, val_loader
 
 
-def load_cifar10(path, transform=transforms.ToTensor(), batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1, drop_last=True):
+def load_cifar10(path, transform=None, batch_size=64, num_workers=0, one_class_idx=None, shuffle=True, seed=1, drop_last=True):
     print('loading cifar10')
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-    transform = transform
+    if not transform:
+        transform = transforms.ToTensor()
+
     train_data = torchvision.datasets.CIFAR10(
         path, train=True, transform=transform, download=True)
     test_data = torchvision.datasets.CIFAR10(
@@ -314,7 +314,9 @@ def load_svhn(path, transform=transforms.ToTensor(), batch_size=64, num_workers=
     print('loading SVHN')
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-    transform = transform
+    if not transform:
+        transform = transforms.ToTensor()
+
     train_data = SVHN(root=path, split="train", transform=transform)
     test_data = SVHN(root=path, split="test", transform=transform)
 
@@ -331,7 +333,9 @@ def load_svhn(path, transform=transforms.ToTensor(), batch_size=64, num_workers=
 def load_cifar100(path, transform=transforms.ToTensor(), batch_size=64, num_workers=0, one_class_idx=None, coarse=True, shuffle=True, seed=1):
     generator_train = torch.Generator().manual_seed(seed)
     generator_test = torch.Generator().manual_seed(seed)
-    transform = transform
+    if not transform:
+        transform = transforms.ToTensor()
+
     train_data = torchvision.datasets.CIFAR100(path, train=True, download=True, transform=transform)
     test_data = torchvision.datasets.CIFAR100(path, train=False, download=True, transform=transform)
     
@@ -564,6 +568,8 @@ def get_loader(args, data_path, imagenet_path, transform):
                                                 batch_size=args.batch_size,
                                                 one_class_idx=args.one_class_idx,
                                                 seed=args.seed)
+    else:
+        raise ValueError(f"Unknown dataset: {args.dataset}")
     
     return train_loader, test_loader
 
