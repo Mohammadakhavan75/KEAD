@@ -148,7 +148,7 @@ def main():
     transform = v2.Compose([
                 v2.RandomHorizontalFlip(p=0.5),
                 v2.RandomAffine(degrees=5, translate=(0.10, 0.10), shear=5),
-                v2.RandomApply([v2.ColorJitter(0.05, 0.05, 0.05, 0.01)], p=0.8),
+                v2.RandomApply([v2.ColorJitter(0.2, 0.2, 0.2, 0.1)], p=0.8),
                 v2.RandomGrayscale(p=0.2),
                 v2.ToTensor(),
                 # (optional) Normalize with CIFAR-10 mean/std
