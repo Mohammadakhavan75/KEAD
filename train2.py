@@ -144,17 +144,14 @@ def main():
         json.dump(args_dict, f, indent=4)
     print(f"All config arguments saved to {config_file_path}")
 
-
-    transform = v2.Compose([
-                v2.RandomHorizontalFlip(p=0.5),
-                v2.RandomAffine(degrees=5, translate=(0.10, 0.10), shear=5),
-                v2.RandomApply([v2.ColorJitter(0.2, 0.2, 0.2, 0.1)], p=0.8),
-                v2.RandomGrayscale(p=0.2),
-                v2.ToTensor(),
-                # (optional) Normalize with CIFAR-10 mean/std
-                # v2.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.2470, 0.2435, 0.2616)),
+    # This is the less harmful augmentation so the model can learn better.
+    general_transform = v2.Compose([
+        v2.RandomRotation(degrees=10), # Even if you specify only degrees in RandomAffine, it still goes through the affine pipeline (so performance-wise it’s equivalent but not simpler than RandomRotation)
+        v2.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05),
+        v2.ToTensor(),
     ])
-    train_loader, test_loader = get_loader(args, data_path, imagenet_path, transform)
+
+    train_loader, test_loader = get_loader(args, data_path, imagenet_path, general_transform)
     model, optimizer, scheduler = load_model(args)
     # model = SimCLRModel(base_model=args.model)
 
