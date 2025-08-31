@@ -14,9 +14,16 @@ def load_model(args):
     if args.optimizer == 'sgd':
         optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, 
                                 momentum=args.momentum,weight_decay=args.decay)
+        lr_decay_gamma = 0.1
     elif args.optimizer == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), args.learning_rate,
                                     weight_decay=args.decay)
+        lr_decay_gamma = 0.1
+    elif args.optimizer == 'lars':
+        from torchlars import LARS
+        base_optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum, weight_decay=args.weight_decay)
+        optimizer = LARS(base_optimizer, eps=1e-8, trust_coef=0.001)
+        lr_decay_gamma = 0.1
     else:
         raise NotImplementedError("Not implemented optimizer!")
 
@@ -26,6 +33,12 @@ def load_model(args):
     #     args.from_epoch = int(model_name.split('_')[-1].split('.')[0])
     #     model.load_state_dict(torch.load(os.path.join(model_folder, model_name), weights_only=True))
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=0.)
+    if args.lr_scheduler == 'cosine':
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+    elif args.lr_scheduler == 'step_decay':
+        milestones = [int(0.5 * args.epochs), int(0.75 * args.epochs)]
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, gamma=lr_decay_gamma, milestones=milestones)
+    else:
+        raise NotImplementedError("Not implemented learning rate scheduler!")
 
     return model, optimizer, scheduler
