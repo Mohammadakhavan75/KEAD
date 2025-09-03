@@ -47,8 +47,8 @@ def train_contrastive(stats, model, classifier, bce_criterion, train_loader, opt
         images1 = anchor.clone()
         images2 = anchor.clone()
 
-        images1 = torch.cat([images1, neg_transform_layers(images1.clone())], dim=0)  # 2B
-        images2 = torch.cat([images2, neg_transform_layers(images2.clone())], dim=0)  # 2B
+        images1 = torch.cat([pos_transform_layers(images1.clone()), neg_transform_layers(images1.clone())], dim=0)  # 2B
+        images2 = torch.cat([pos_transform_layers(images2.clone()), neg_transform_layers(images2.clone())], dim=0)  # 2B
 
         # Shift labels per snippet: [1s, 0s] then repeat for the second view -> 4B
         shift_labels = torch.cat([torch.ones_like(labels), torch.zeros_like(labels)], dim=0)
@@ -56,7 +56,7 @@ def train_contrastive(stats, model, classifier, bce_criterion, train_loader, opt
 
         # Concatenate views and apply SimCLR-style augmentation stochastically to each image
         images_pair = torch.cat([images1, images2], dim=0)  # 4B
-        images_pair = pos_transform_layers(images_pair)
+        # images_pair = pos_transform_layers(images_pair)
 
         optimizer.zero_grad()
 
