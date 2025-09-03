@@ -2426,8 +2426,8 @@ def get_augmentation_pool(selected_names=None, num_augs=4):
 
     return [augmentation_classes[name](p=1.0) for name in selected_names]
 
-def return_aug(aug_name=None, severity=1):
-    return augmentation_classes[aug_name](p=1.0, severity=severity)
+def return_aug(aug_name=None, p=1.0, severity=1):
+    return augmentation_classes[aug_name](p=p, severity=severity)
 
 class TransformParrallel(nn.Module):
     def __init__(self, transforms):
