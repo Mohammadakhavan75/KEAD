@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 from models.utils import augmentation_layers as augl
 import torchvision.transforms.v2 as v2
 
-from contrastive import contrastive_matrix
+from contrastive import nt_xent
 
 from utils.eval import evaluation
 from utils.paths import create_path
@@ -21,64 +21,65 @@ from utils.parser import args_parser
 from utils.simclr_model import SimCLRModel
 from dataset_loader import get_loader
 
-from utils.monitoring import variance_floor
+# from utils.monitoring import variance_floor
 
 
 # -------------------------------
 # Main training & test routines
 # -------------------------------
-def train_contrastive(stats, model, classifier, ce_criterion, train_loader, optimizer, pos_transform_layers, neg_transform_layers, epoch, scheduler, args, train_global_iter, writer):
+def train_contrastive(stats, model, classifier, bce_criterion, train_loader, optimizer, pos_transform_layers, neg_transform_layers, epoch, scheduler, args, train_global_iter, writer):
     device = args.device
     losses = {
-        'var_loss': [],
         'con_loss': [],
-        'ce_loss': [],
+        'bc_loss': [],
     }
 
     # training
     model.train()
     classifier.train()
     pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
-    for anchor, _ in pbar:
+    for anchor, labels in pbar:
         anchor = anchor.to(device)
+        labels = labels.to(device)
         B = anchor.size(0)
         
-        anchor_views = pos_transform_layers(anchor)
-        neg_views = neg_transform_layers(anchor)
+        # Build two view lists (pre-augmentation) and append their negative pairs
+        images1 = anchor.clone()
+        images2 = anchor.clone()
 
-        
+        images1 = torch.cat([images1, neg_transform_layers(images1.clone())], dim=0)  # 2B
+        images2 = torch.cat([images2, neg_transform_layers(images2.clone())], dim=0)  # 2B
+
+        # Shift labels per snippet: [1s, 0s] then repeat for the second view -> 4B
+        shift_labels = torch.cat([torch.ones_like(labels), torch.zeros_like(labels)], dim=0)
+        shift_labels = shift_labels.repeat(2).float()  # BCE targets as float
+
+        # Concatenate views and apply SimCLR-style augmentation stochastically to each image
+        images_pair = torch.cat([images1, images2], dim=0)  # 4B
+        images_pair = pos_transform_layers(images_pair)
+
         optimizer.zero_grad()
-        
-        model_input = torch.cat([anchor_views, neg_views], dim=0)
-        preds, feats = model(model_input)
-        
-        rep_a = preds[:B]
-        rep_n = preds[B:]
 
-        feat_align = feats[:B]
-        
-        con_loss, sim_p, sim_n, norm_a, norm_n = contrastive_matrix(
-            rep_a, rep_n, args.temperature
-        )
+        # One forward over all images; split into two views for NT-Xent
+        z_cat, feats_cat = model(images_pair)  # z_cat: (4B, D), feats: (4B, F)
 
-        # Applying the variance floor on backbone output instead of proj head.
-        # So the head can then focus on alignment but the cloud volume is guaranteed upstream.
-        var_loss, std_dev = variance_floor(feat_align, gamma=1.0)
+        B2 = 2 * B
+        z1 = z_cat[:B2]
+        z2 = z_cat[B2:]
+        feat_all = feats_cat  # (4B, F)
 
-        # Classification logits over concatenated views: first B are anchors (label 0), next B are negatives (label 1)
-        logits = classifier(feats)
-        labels = torch.cat([
-            torch.zeros(B, dtype=torch.long, device=device),
-            torch.ones(B, dtype=torch.long, device=device)
-        ], dim=0)
-        ce_loss = ce_criterion(logits, labels)
+        # NT-Xent over both original and negative pairs (2B anchors)
+        con_loss, sim_p, sim_n, norm_z1, norm_z2 = nt_xent(z1, z2, args.temperature)
+
+        # Binary classification (BCE) with provided shift labels (length 4B)
+        logits = classifier(feat_all).view(-1)
+        bc_loss = bce_criterion(logits, shift_labels)
 
         losses['con_loss'].append(con_loss.item())
-        losses['var_loss'].append(var_loss.item())
-        losses['ce_loss'].append(ce_loss.item())
+        losses['bc_loss'].append(bc_loss.item())
 
-        loss = con_loss + var_loss + ce_loss
-        # loss = con_loss #+ var_loss
+        # Final objective: NT-Xent + alpha * BCE (CSI-style)
+        loss = con_loss + args.alpha * bc_loss
         loss.backward()
         pp = []
         for param in model.parameters():
@@ -95,13 +96,12 @@ def train_contrastive(stats, model, classifier, ce_criterion, train_loader, opti
         pbar.set_postfix(loss=loss.item())
 
         writer.add_scalar("Train/loss", loss.item(), train_global_iter)
-        writer.add_scalar("Train/sim_p", torch.mean(sim_p).detach().cpu().numpy(), train_global_iter)
-        writer.add_scalar("Train/sim_n", torch.mean(sim_n).detach().cpu().numpy(), train_global_iter)
-        writer.add_scalar("Train/norm_a", torch.mean(norm_a).detach().cpu().numpy(), train_global_iter)
-        writer.add_scalar("Train/norm_n", torch.mean(norm_n).detach().cpu().numpy(), train_global_iter)
-        writer.add_scalar("Train/std_min", std_dev.min().item(), train_global_iter)
-        writer.add_scalar("Train/std_max", std_dev.max().item(), train_global_iter)
-        writer.add_scalar("Train/ce_loss", ce_loss.item(), train_global_iter)
+        writer.add_scalar("Train/con_loss", con_loss.item(), train_global_iter)
+        writer.add_scalar("Train/bc_loss", bc_loss.item(), train_global_iter)
+        writer.add_scalar("Train/sim_p", float(sim_p.item()) if torch.is_tensor(sim_p) else float(sim_p), train_global_iter)
+        writer.add_scalar("Train/sim_n", float(sim_n.item()) if torch.is_tensor(sim_n) else float(sim_n), train_global_iter)
+        writer.add_scalar("Train/norm_z1", float(norm_z1.item()) if torch.is_tensor(norm_z1) else float(norm_z1), train_global_iter)
+        writer.add_scalar("Train/norm_z2", float(norm_z2.item()) if torch.is_tensor(norm_z2) else float(norm_z2), train_global_iter)
 
         train_global_iter += 1
 
@@ -160,7 +160,7 @@ def main():
 
     model = model.to(args.device)
 
-    # Build a lightweight linear classifier on top of backbone features (2-way: anchor=0, negative=1)
+    # Build a lightweight binary classifier on top of backbone features (BCE: positive views=0, negative views=1)
     model.eval()
     with torch.no_grad():
         dummy = torch.zeros(1, 3, args.img_size, args.img_size, device=args.device)
@@ -171,8 +171,8 @@ def main():
             raise RuntimeError("Model did not return features; ensure --proj_head is enabled.")
     model.train()
 
-    classifier = nn.Linear(feat_dim, 2).to(args.device)
-    ce_criterion = nn.CrossEntropyLoss()
+    classifier = nn.Linear(feat_dim, 1).to(args.device)
+    bce_criterion = nn.BCEWithLogitsLoss()
     # Add classifier params to optimizer
     optimizer.add_param_group({'params': classifier.parameters()})
 
@@ -211,14 +211,13 @@ def main():
     train_global_iter = 0
     for epoch in range(0, args.epochs):
         print('epoch', epoch, '/', args.epochs)
-        train_global_iter, losses = train_contrastive(stats, model, classifier, ce_criterion, train_loader, optimizer, pos_transform_layers, neg_transform_layers, epoch, scheduler, args, train_global_iter, writer)
+        train_global_iter, losses = train_contrastive(stats, model, classifier, bce_criterion, train_loader, optimizer, pos_transform_layers, neg_transform_layers, epoch, scheduler, args, train_global_iter, writer)
         
         scheduler.step()
         args.last_lr = optimizer.param_groups[0]['lr']
         writer.add_scalar("Train/lr", args.last_lr, epoch)
         writer.add_scalar("Train/con_loss", torch.mean(torch.tensor(losses['con_loss'])), epoch)
-        writer.add_scalar("Train/var_loss", torch.mean(torch.tensor(losses['var_loss'])), epoch)
-        writer.add_scalar("Train/ce_loss", torch.mean(torch.tensor(losses['ce_loss'])), epoch)
+        writer.add_scalar("Train/bc_loss", torch.mean(torch.tensor(losses['bc_loss'])), epoch)
 
         if epoch % 10 == 0:
             avg_auc = evaluation(model, args, root_path)

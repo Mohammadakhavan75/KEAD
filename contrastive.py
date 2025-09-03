@@ -111,3 +111,80 @@ def contrastive_matrix(
                     else torch.tensor(float("nan"), device=device)
 
     return con_loss, sim_p_mean, sim_n_mean, norm_a, norm_n
+
+
+def nt_xent(
+    z1: torch.Tensor,
+    z2: torch.Tensor,
+    temperature: float = 0.5,
+    eps: float = 1e-8,
+):
+    """
+    NT-Xent loss (SimCLR/CSI): given two augmented views per sample.
+
+    Args:
+        z1: tensor of shape (B, D) - projection head outputs for view 1
+        z2: tensor of shape (B, D) - projection head outputs for view 2
+        temperature: temperature scalar (tau)
+        eps: small constant for numerical stability
+
+    Returns:
+        loss: scalar NT-Xent loss averaged over 2B anchors
+        sim_p_mean: mean cosine similarity over positive pairs
+        sim_n_mean: mean cosine similarity over all negatives
+        raw_norm_1: mean L2 norm of z1 before normalization (diagnostic)
+        raw_norm_2: mean L2 norm of z2 before normalization (diagnostic)
+    """
+    device = z1.device
+    B = z1.size(0)
+
+    # Keep raw norms for diagnostics
+    raw_norm_1 = z1.norm(p=2, dim=1).mean().detach()
+    raw_norm_2 = z2.norm(p=2, dim=1).mean().detach()
+
+    # L2-normalize
+    z1 = F.normalize(z1, p=2, dim=1)
+    z2 = F.normalize(z2, p=2, dim=1)
+
+    # Cosine similarity matrix across 2B vectors
+    z = torch.cat([z1, z2], dim=0)   # (2B, D)
+    sim = (z @ z.t()) / temperature  # (2B, 2B)
+
+    # Mask out self-similarities for denominator
+    self_mask = torch.eye(2 * B, dtype=torch.bool, device=device)
+
+    # Stabilize
+    sim_max, _ = sim.max(dim=1, keepdim=True)
+    sim_stable = sim - sim_max
+
+    # Denominator: sum over all except self
+    exp_sim = torch.exp(sim_stable) * (~self_mask).float()
+    log_den = torch.log(exp_sim.sum(dim=1) + eps)  # (2B,)
+
+    # Numerator: positive pair for each anchor
+    # For i in [0..B-1], pos is (i, i+B); for i in [B..2B-1], pos is (i, i-B)
+    pos_logits = torch.cat([
+        torch.diag(sim_stable, B),
+        torch.diag(sim_stable, -B)
+    ], dim=0)  # (2B,)
+
+    loss = -(pos_logits - log_den).mean()
+
+    # Diagnostics: positive and negative cosine similarity means
+    # Using unit-normalized z => cosine similarity = dot product
+    pos_sims = (z1 * z2).sum(dim=1)  # (B,)
+    sim_p_mean = pos_sims.mean().detach()
+
+    with torch.no_grad():
+        sim_full = z @ z.t()
+        neg_mask = (~self_mask).clone()
+        # remove positive-pair positions from negatives for mean calc
+        pos_mask_upper = torch.eye(B, device=device, dtype=torch.bool)
+        pos_mask = torch.zeros_like(neg_mask)
+        pos_mask[:B, B:] = pos_mask_upper
+        pos_mask[B:, :B] = pos_mask_upper
+        neg_mask = neg_mask & (~pos_mask)
+        sim_n_mean = sim_full[neg_mask].mean() if neg_mask.any() else torch.tensor(float('nan'), device=device)
+        sim_n_mean = sim_n_mean.detach()
+
+    return loss, sim_p_mean, sim_n_mean, raw_norm_1, raw_norm_2
