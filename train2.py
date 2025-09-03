@@ -4,6 +4,7 @@ import pickle
 import random
 import numpy as np
 from tqdm import tqdm
+import warnings
 
 import torch
 import torch.nn as nn
@@ -68,12 +69,45 @@ def train_contrastive(stats, model, classifier, bce_criterion, train_loader, opt
         z2 = z_cat[B2:]
         feat_all = feats_cat  # (4B, F)
 
+        # Sanity checks: shapes and alignment
+        assert images_pair.size(0) == 4 * B, f"images_pair mismatch: {images_pair.size(0)} vs {4*B}"
+        assert z_cat.size(0) == 4 * B, f"z_cat mismatch: {z_cat.size(0)} vs {4*B}"
+        assert feat_all.size(0) == 4 * B, f"feat_all mismatch: {feat_all.size(0)} vs {4*B}"
+        assert z1.size(0) == B2 and z2.size(0) == B2, f"view split mismatch: {z1.size(0)}, {z2.size(0)} vs {B2}"
+
         # NT-Xent over both original and negative pairs (2B anchors)
         con_loss, sim_p, sim_n, norm_z1, norm_z2 = nt_xent(z1, z2, args.temperature)
 
         # Binary classification (BCE) with provided shift labels (length 4B)
         logits = classifier(feat_all).view(-1)
+        assert logits.numel() == shift_labels.numel(), f"logits/labels mismatch: {logits.numel()} vs {shift_labels.numel()}"
         bc_loss = bce_criterion(logits, shift_labels)
+
+        # BCE accuracy and sanity metrics
+        with torch.no_grad():
+            probs = torch.sigmoid(logits)
+            preds = (probs > 0.5).float()
+            bc_acc = (preds == shift_labels).float().mean()
+
+            pos_mask = (shift_labels > 0.5)
+            neg_mask = ~pos_mask
+            pos_count = int(pos_mask.sum().item())
+            neg_count = int(neg_mask.sum().item())
+
+            pos_acc = (preds[pos_mask] == 1).float().mean().item() if pos_count > 0 else float('nan')
+            neg_acc = (preds[neg_mask] == 0).float().mean().item() if neg_count > 0 else float('nan')
+
+            pos_prob_mean = probs[pos_mask].mean().item() if pos_count > 0 else float('nan')
+            neg_prob_mean = probs[neg_mask].mean().item() if neg_count > 0 else float('nan')
+
+            # Post-transform negative deltas for both views
+            try:
+                diff1 = (images1[B:] - images1[:B]).abs().mean().item()
+                diff2 = (images2[B:] - images2[:B]).abs().mean().item()
+                neg_delta_mean = 0.5 * (diff1 + diff2)
+            except Exception as e:
+                warnings.warn(f"Neg-delta calc failed: {e}")
+                neg_delta_mean = float('nan')
 
         losses['con_loss'].append(con_loss.item())
         losses['bc_loss'].append(bc_loss.item())
@@ -102,6 +136,15 @@ def train_contrastive(stats, model, classifier, bce_criterion, train_loader, opt
         writer.add_scalar("Train/sim_n", float(sim_n.item()) if torch.is_tensor(sim_n) else float(sim_n), train_global_iter)
         writer.add_scalar("Train/norm_z1", float(norm_z1.item()) if torch.is_tensor(norm_z1) else float(norm_z1), train_global_iter)
         writer.add_scalar("Train/norm_z2", float(norm_z2.item()) if torch.is_tensor(norm_z2) else float(norm_z2), train_global_iter)
+        # BCE accuracy and sanity logs
+        writer.add_scalar("Train/bc_acc", float(bc_acc.item()), train_global_iter)
+        writer.add_scalar("Train/bc_pos_acc", pos_acc, train_global_iter)
+        writer.add_scalar("Train/bc_neg_acc", neg_acc, train_global_iter)
+        writer.add_scalar("Train/bc_pos_prob_mean", pos_prob_mean, train_global_iter)
+        writer.add_scalar("Train/bc_neg_prob_mean", neg_prob_mean, train_global_iter)
+        writer.add_scalar("Sanity/pos_count", pos_count, train_global_iter)
+        writer.add_scalar("Sanity/neg_count", neg_count, train_global_iter)
+        writer.add_scalar("Sanity/neg_delta_post", neg_delta_mean, train_global_iter)
 
         train_global_iter += 1
 
