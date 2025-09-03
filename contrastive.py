@@ -59,91 +59,55 @@ def contrastive(input, positive, negative, temperature=0.5, epsilon = 1e-12): # 
     return (- 1/card) * torch.log(torch.sum(torch.exp(sim_p/temperature), dim=0)/(torch.sum(denom, dim=0) + epsilon)), sim_p, sim_n # epsilon for non getting devided by zero error
 
 
-
-
-import torch
-import warnings
-from typing import Optional
-
 def contrastive_matrix(
-    anchors: torch.Tensor,          # (B, D)
-    positives: torch.Tensor,        # (B·Kₚ, D)  or (B, D) if Kₚ=1
-    negatives: torch.Tensor,        # (B·Kₙ, D)  or arbitrary (M, D) if Kₙ=None
-    temperature: float = 0.5,
-    epsilon: float = 1e-9,
-    positives_per_anchor: Optional[int] = None,     # Kₚ, or None → infer
-    negatives_per_anchor: Optional[int] = None,     # Kₙ, or None → treat all M as negatives
+    rep_a: torch.Tensor,
+    rep_n: torch.Tensor,
+    temperature: float,
+    eps: float = 1e-8,
 ):
     """
-    General NT‑Xent with Kₚ positives and Kₙ negatives per anchor.
+    In-batch positives (requested): rep_p is None
+    - Positives = *all other anchors* (off-diagonals in rep_a @ rep_a^T).
+    - Negatives = all rows in rep_n.
 
-    If negatives_per_anchor is None, every entry in `negatives`
-    is used for every anchor (SimCLR‑like).
+    Returns:
+        con_loss, sim_p_mean, sim_n_mean, norm_a, norm_n
     """
+    device = rep_a.device
+    T = temperature
 
-    B = anchors.shape[0]
-    D = anchors.shape[1]
-    device = anchors.device
+    # L2-normalize
+    rep_a = F.normalize(rep_a, p=2, dim=1)
+    norm_a = rep_a.norm(p=2, dim=1).mean().detach()
 
-    # ---------------- l2 norms ----------------
-    norm_a = torch.norm(anchors,   p=2, dim=1, keepdim=True).clamp_min(epsilon)    # (B,1)
-    norm_p = torch.norm(positives, p=2, dim=1, keepdim=True).clamp_min(epsilon)    # (B·Kₚ,1) or (B,1)
-    norm_n = torch.norm(negatives, p=2, dim=1, keepdim=True).clamp_min(epsilon)    # (B·Kₙ,1) or (M,1)
+    
+    rep_n = F.normalize(rep_n, p=2, dim=1)
+    norm_n = rep_n.norm(p=2, dim=1).mean().detach()
+    
+    B = rep_a.size(0)
+    
+    # anchor-anchor sims
+    S_aa = (rep_a @ rep_a.t()) / T        # (B, B)
+    # mask out self as positive (we want off-diagonals)
+    offdiag_mask = ~torch.eye(B, dtype=torch.bool, device=device)
+    pos_logits = S_aa[offdiag_mask].view(B, B - 1)   # (B, B-1)
 
-    if (norm_a == 0).any() or (norm_p == 0).any() or (norm_n == 0).any():
-        warnings.warn("Zero‑norm row(s) detected; cosine similarity undefined there.")
+    # anchor-negative sims
+    S_an = (rep_a @ rep_n.t()) / T               # (B, M)
+    all_logits = torch.cat([pos_logits, S_an], dim=1)  # (B, (B-1)+M)
 
-    # ---------------- cosine similarities ----------------
-    sim_p_full = anchors @ positives.t() / (norm_a * norm_p.t() + epsilon)   # (B, B·Kₚ) or (B, B)
-    sim_n_full = anchors @ negatives.t() / (norm_a * norm_n.t() + epsilon)   # (B, B·Kₙ) or (B, M)
+    # log-sum-exp numerator/denominator (stable)
+    max_logits, _ = all_logits.max(dim=1, keepdim=True)
+    all_logits_stable = all_logits - max_logits
 
-    # ----------- extract Kₚ positives for each anchor ------------
-    if positives_per_anchor is None:
-        positives_per_anchor = positives.shape[0] // B                       # infers 1 or Kₚ
-    Kp = positives_per_anchor
+    log_num = torch.logsumexp(all_logits_stable[:, :pos_logits.size(1)], dim=1)  # positives only
+    log_den = torch.logsumexp(all_logits_stable, dim=1)                          # pos + neg
 
-    if Kp > 1:
-        row_offset = (torch.arange(B, device=device) * Kp).unsqueeze(1)      # (B,1)
-        col_index  = torch.arange(Kp, device=device).unsqueeze(0)            # (1,Kₚ)
-        idx_p      = row_offset + col_index                                  # (B,Kₚ)
-        sim_p = sim_p_full.gather(1, idx_p)                                  # (B,Kₚ)
-    else:                                                                    # Kₚ = 1
-        sim_p = sim_p_full.diag().unsqueeze(1)                               # (B,1)
+    con_loss = -(log_num - log_den).mean()
 
-    # ----------- extract Kₙ negatives for each anchor ------------
-    # if negatives_per_anchor is None:                                         # use ALL negatives
-    #     # sim_n = sim_n_full                                                   # (B,M)
-    #     # Kn    = sim_n.shape[1]                                               # M
-    #     # exclude the “self‐negative” n_i for anchor x_i
-    #     mask = ~torch.eye(B, dtype=torch.bool, device=device)   # (B,B)
-    #     sim_n = sim_n_full[mask].view(B, B-1)                   # (B, B−1)
-    #     Kn    = B - 1
-    # else:
-    #     Kn = negatives_per_anchor
-    #     row_offset = (torch.arange(B, device=device) * Kn).unsqueeze(1)      # (B,1)
-    #     col_index  = torch.arange(Kn, device=device).unsqueeze(0)            # (1,Kₙ)
-    #     idx_n      = row_offset + col_index                                  # (B,Kₙ)
-    #     sim_n      = sim_n_full.gather(1, idx_n)                             # (B,Kₙ)
+    # diagnostics
+    sim_p_mean = pos_logits.mean().detach()
+    sim_n_mean = S_an.mean().detach() if S_an is not None and S_an.numel() > 0 \
+                    else torch.tensor(float("nan"), device=device)
 
-    # default: pick exactly the matching negative n_i for x_i
-    # sim_n = sim_n_full.diag().unsqueeze(1)  # (B,1)
-    # Kn    = 1
-    # For each anchor, all samples in the `negatives` tensor are used as negatives.
-    sim_n = sim_n_full
-    Kn = sim_n.shape[1]
-
-    # ---------------- denominator ----------------
-    denom = (
-        torch.sum(torch.exp(sim_p / temperature), dim=1, keepdim=True) +
-        torch.sum(torch.exp(sim_n / temperature), dim=1, keepdim=True)
-    )                                                                        # (B,1)
-
-    # ---------------- loss ----------------
-    loss_per_positive = (
-        -torch.log(torch.exp(sim_p / temperature) / (denom + epsilon))
-    ) / Kp                                                                    # (B,Kₚ) or (B,1)
-
-    loss = loss_per_positive.mean()
-
-    return loss, sim_p, sim_n, norm_a, norm_n, norm_p
-
+    return con_loss, sim_p_mean, sim_n_mean, norm_a, norm_n

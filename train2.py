@@ -33,7 +33,6 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         'var_loss': [],
         'con_loss': [],
     }
-    n_pos = len(pos_transform_layers)
 
     # training
     model.train()
@@ -42,33 +41,26 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         anchor = anchor.to(device)
         B = anchor.size(0)
         
-        pos_views = torch.cat([pos_transform_layer(anchor) for pos_transform_layer in pos_transform_layers], dim=0)
-        if not args.seq_aug:
-            neg_views = torch.cat([neg_transform_layer(anchor) for neg_transform_layer in neg_transform_layers], dim=0)
-        else:
-            neg_views = neg_transform_layers(anchor)
+        anchor_views = pos_transform_layers(anchor)
+        neg_views = neg_transform_layers(anchor)
 
         
         optimizer.zero_grad()
         
-        model_input = torch.cat([anchor, pos_views, neg_views], dim=0)
+        model_input = torch.cat([anchor_views, neg_views], dim=0)
         preds, feats = model(model_input)
         
         rep_a = preds[:B]
-        rep_p = preds[B:B * (1 + n_pos)]
-        rep_n = preds[B * (1 + n_pos):]
+        rep_n = preds[B:]
+
+        feat_align = feats[:B]
         
-        feats_a = feats[:B]
-        feats_p = feats[B:B * (1 + n_pos)]
-        
-        con_loss, sim_p, sim_n, norm_a, norm_n, norm_p = contrastive_matrix(
-            rep_a, rep_p, rep_n, args.temperature, positives_per_anchor=n_pos
+        con_loss, sim_p, sim_n, norm_a, norm_n = contrastive_matrix(
+            rep_a, rep_n, args.temperature
         )
 
         # Applying the variance floor on backbone output instead of proj head.
         # So the head can then focus on alignment but the cloud volume is guaranteed upstream.
-        # feat_align = torch.cat([rep_a, rep_p], dim=0)
-        feat_align = torch.cat([feats_a, feats_p], dim=0)
         var_loss, std_dev = variance_floor(feat_align, gamma=1.0)
 
         losses['con_loss'].append(con_loss.item())
@@ -96,7 +88,6 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         writer.add_scalar("Train/sim_n", torch.mean(sim_n).detach().cpu().numpy(), train_global_iter)
         writer.add_scalar("Train/norm_a", torch.mean(norm_a).detach().cpu().numpy(), train_global_iter)
         writer.add_scalar("Train/norm_n", torch.mean(norm_n).detach().cpu().numpy(), train_global_iter)
-        writer.add_scalar("Train/norm_p", torch.mean(norm_p).detach().cpu().numpy(), train_global_iter)
         writer.add_scalar("Train/std_min", std_dev.min().item(), train_global_iter)
         writer.add_scalar("Train/std_max", std_dev.max().item(), train_global_iter)
 
@@ -173,23 +164,21 @@ def main():
         for aug in aug_list:
             if aug.lower() == aug_name.lower().replace('_', ''):
                 print(f"Using {aug} as positive augmentation")
-                pos_transform_layers.append(augl.return_aug(aug).to(args.device))
+                pos_transform_layers.append(augl.return_aug(aug, p=0.5).to(args.device))
 
     for aug_name in neg_augs:
         print(aug_name)
         for aug in aug_list:
             if aug.lower() == aug_name.lower().replace('_', ''):
                 print(f"Using {aug} as negative augmentation")
-                neg_transform_layers.append(augl.return_aug(aug).to(args.device))
+                neg_transform_layers.append(augl.return_aug(aug, p=0.5).to(args.device))
 
-
-    assert len(pos_transform_layers) == args.n_pos, f"Expected {args.n_pos} positive augmentations, but found {len(pos_transform_layers)}"
-    assert len(neg_transform_layers) == args.n_neg, f"Expected {args.n_neg} negative augmentations, but found {len(neg_transform_layers)}"
 
     stats = None
 
-    if args.seq_aug:
-        neg_transform_layers = nn.Sequential(*neg_transform_layers)
+
+    pos_transform_layers = nn.Sequential(*pos_transform_layers)
+    neg_transform_layers = nn.Sequential(*neg_transform_layers)
 
     train_global_iter = 0
     for epoch in range(0, args.epochs):
