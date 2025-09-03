@@ -61,6 +61,8 @@ def args_parser():
                         help='number of negative augmentations')
     parser.add_argument('--seq_aug', action='store_true',
                         help='generating single sequence of augmentations')
+    parser.add_argument('--lr_scheduler', default='cosine', type=str,
+                        help='Learning rate scheduler typeclear')
     args = parser.parse_args()
 
     return args
