@@ -77,7 +77,8 @@ def feature_extraction(loader, net, args):
                 # Clear any unused memory
                 del inputs
                 del normal_features
-                torch.cuda.empty_cache()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
         
         features = torch.cat(features, dim=0)
         return features
@@ -128,7 +129,8 @@ def evaluation(model, args, root_path):
         raise
     finally:
         # Final cleanup
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         if 'train_features_in' in locals():
             del train_features_in
 
@@ -177,7 +179,8 @@ def test_novelty(backbone, args):
         raise
     finally:
         # Cleanup
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         if hasattr(test_loader, 'dataset'):
             del test_loader
         if 'Z_train' in locals():
