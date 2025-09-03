@@ -27,15 +27,17 @@ from utils.monitoring import variance_floor
 # -------------------------------
 # Main training & test routines
 # -------------------------------
-def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layers, neg_transform_layers, epoch, scheduler, args, train_global_iter, writer):
+def train_contrastive(stats, model, classifier, ce_criterion, train_loader, optimizer, pos_transform_layers, neg_transform_layers, epoch, scheduler, args, train_global_iter, writer):
     device = args.device
     losses = {
         'var_loss': [],
         'con_loss': [],
+        'ce_loss': [],
     }
 
     # training
     model.train()
+    classifier.train()
     pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
     for anchor, _ in pbar:
         anchor = anchor.to(device)
@@ -63,10 +65,19 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         # So the head can then focus on alignment but the cloud volume is guaranteed upstream.
         var_loss, std_dev = variance_floor(feat_align, gamma=1.0)
 
+        # Classification logits over concatenated views: first B are anchors (label 0), next B are negatives (label 1)
+        logits = classifier(feats)
+        labels = torch.cat([
+            torch.zeros(B, dtype=torch.long, device=device),
+            torch.ones(B, dtype=torch.long, device=device)
+        ], dim=0)
+        ce_loss = ce_criterion(logits, labels)
+
         losses['con_loss'].append(con_loss.item())
         losses['var_loss'].append(var_loss.item())
+        losses['ce_loss'].append(ce_loss.item())
 
-        loss = con_loss + var_loss
+        loss = con_loss + var_loss + ce_loss
         # loss = con_loss #+ var_loss
         loss.backward()
         pp = []
@@ -90,6 +101,7 @@ def train_contrastive(stats, model, train_loader, optimizer, pos_transform_layer
         writer.add_scalar("Train/norm_n", torch.mean(norm_n).detach().cpu().numpy(), train_global_iter)
         writer.add_scalar("Train/std_min", std_dev.min().item(), train_global_iter)
         writer.add_scalar("Train/std_max", std_dev.max().item(), train_global_iter)
+        writer.add_scalar("Train/ce_loss", ce_loss.item(), train_global_iter)
 
         train_global_iter += 1
 
@@ -148,6 +160,22 @@ def main():
 
     model = model.to(args.device)
 
+    # Build a lightweight linear classifier on top of backbone features (2-way: anchor=0, negative=1)
+    model.eval()
+    with torch.no_grad():
+        dummy = torch.zeros(1, 3, args.img_size, args.img_size, device=args.device)
+        _, feat_dim_probe = model(dummy)
+        if isinstance(feat_dim_probe, torch.Tensor):
+            feat_dim = feat_dim_probe.shape[1]
+        else:
+            raise RuntimeError("Model did not return features; ensure --proj_head is enabled.")
+    model.train()
+
+    classifier = nn.Linear(feat_dim, 2).to(args.device)
+    ce_criterion = nn.CrossEntropyLoss()
+    # Add classifier params to optimizer
+    optimizer.add_param_group({'params': classifier.parameters()})
+
     with open(f'./ranks/clip/{args.dataset}/wasser_dist_softmaxed.pkl', 'rb') as file:
         probs = pickle.load(file)
 
@@ -171,7 +199,7 @@ def main():
         for aug in aug_list:
             if aug.lower() == aug_name.lower().replace('_', ''):
                 print(f"Using {aug} as negative augmentation")
-                neg_transform_layers.append(augl.return_aug(aug, p=0.5).to(args.device))
+                neg_transform_layers.append(augl.return_aug(aug, p=1.0).to(args.device))
 
 
     stats = None
@@ -183,13 +211,14 @@ def main():
     train_global_iter = 0
     for epoch in range(0, args.epochs):
         print('epoch', epoch, '/', args.epochs)
-        train_global_iter, losses = train_contrastive(stats, model, train_loader, optimizer, pos_transform_layers, neg_transform_layers, epoch, scheduler, args, train_global_iter, writer)
+        train_global_iter, losses = train_contrastive(stats, model, classifier, ce_criterion, train_loader, optimizer, pos_transform_layers, neg_transform_layers, epoch, scheduler, args, train_global_iter, writer)
         
         scheduler.step()
         args.last_lr = optimizer.param_groups[0]['lr']
         writer.add_scalar("Train/lr", args.last_lr, epoch)
         writer.add_scalar("Train/con_loss", torch.mean(torch.tensor(losses['con_loss'])), epoch)
         writer.add_scalar("Train/var_loss", torch.mean(torch.tensor(losses['var_loss'])), epoch)
+        writer.add_scalar("Train/ce_loss", torch.mean(torch.tensor(losses['ce_loss'])), epoch)
 
         if epoch % 10 == 0:
             avg_auc = evaluation(model, args, root_path)
@@ -198,12 +227,14 @@ def main():
 
         if (epoch) % (args.epochs / 100) == 0:
             torch.save(model.state_dict(), os.path.join(model_save_path, f'model_params_epoch_{epoch}.pt'))
+            torch.save(classifier.state_dict(), os.path.join(model_save_path, f'classifier_params_epoch_{epoch}.pt'))
 
     avg_auc = evaluation(model, args, root_path)
     print(f"Average AUC: {avg_auc}")
     writer.add_scalar("Eval/avg_auc", avg_auc, epoch)
     writer.close()
     torch.save(model.state_dict(), os.path.join(save_path, 'last_params.pt'))
+    torch.save(classifier.state_dict(), os.path.join(save_path, 'last_classifier.pt'))
 
 
 if __name__ == '__main__':
